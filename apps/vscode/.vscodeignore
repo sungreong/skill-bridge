@@ -1,0 +1,8 @@
+**
+!dist/**
+!resources/**
+!package.json
+!README.md
+!LICENSE
+!node_modules/diff/**
+*.vsix

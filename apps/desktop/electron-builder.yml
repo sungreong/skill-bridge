@@ -1,0 +1,16 @@
+﻿extends: ../../package.json
+appId: com.skillbridge.app
+productName: Skill Bridge
+directories:
+  output: ../../release
+files:
+  - dist/main/**
+  - dist/preload/**
+  - dist-renderer/**
+  - assets/**
+  - ../../packages/core/dist/**
+  - ../../node_modules/**
+win:
+  icon: assets/icon.ico
+  target:
+    - nsis

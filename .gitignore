@@ -1,0 +1,18 @@
+﻿node_modules/
+*.log
+dist/
+apps/desktop/dist/
+apps/desktop/dist-renderer/
+packages/core/dist/
+release/
+
+.agents
+.claude
+skill_workspace.json
+skills-lock.json
+
+# Internal planning docs
+AGENTS.md
+GUIDE.md
+IMPROVEMENT.md
+PLAN.md

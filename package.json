@@ -1,0 +1,43 @@
+{
+  "name": "skill-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Skill Bridge desktop app",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:core": "tsc -p packages/core/tsconfig.json --watch",
+    "dev:main": "tsc -p apps/desktop/tsconfig.main.json --watch",
+    "dev:preload": "tsc -p apps/desktop/tsconfig.preload.json --watch",
+    "dev:renderer": "vite --config apps/desktop/vite.config.ts",
+    "build": "npm run build:core && npm run build:main && npm run build:preload && npm run build:renderer && npm run build:vscode",
+    "build:core": "tsc -p packages/core/tsconfig.json",
+    "build:main": "tsc -p apps/desktop/tsconfig.main.json",
+    "build:preload": "tsc -p apps/desktop/tsconfig.preload.json",
+    "build:renderer": "vite build --config apps/desktop/vite.config.ts",
+    "build:vscode": "tsc -p apps/vscode/tsconfig.json",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p apps/desktop/tsconfig.main.json --noEmit && tsc -p apps/desktop/tsconfig.preload.json --noEmit && tsc -p apps/desktop/tsconfig.renderer.json --noEmit && tsc -p apps/vscode/tsconfig.json --noEmit",
+    "dist": "npm run build && electron-builder --config apps/desktop/electron-builder.yml"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.2.1",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
+    "nodemon": "^3.1.10",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.20",
+    "wait-on": "^9.0.1"
+  },
+  "dependencies": {
+    "diff": "^8.0.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
