@@ -1,7 +1,25 @@
 ﻿import { contextBridge, ipcRenderer } from "electron";
 
-type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity";
+type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
+type SkillAssetWarning = {
+  code: string;
+  severity: "info" | "warning" | "danger";
+  message: string;
+  relativePath?: string;
+};
+type SkillAsset = {
+  source: SkillSource;
+  tool: ToolType;
+  skillName: string;
+  rootRelativePath: string;
+  hasManifest: boolean;
+  fileCount: number;
+  totalBytes: number;
+  updatedAt: string | null;
+  files: Array<{ tool: ToolType; relativePath: string; absolutePath: string }>;
+  warnings: SkillAssetWarning[];
+};
 
 type Selection = { tool: ToolType; relativePath: string };
 
@@ -10,11 +28,14 @@ const api = {
   loadConfig: () => ipcRenderer.invoke("config:load"),
   saveConfig: (payload: unknown) => ipcRenderer.invoke("config:save", payload),
   inspectWorkspace: (workspacePath: string) => ipcRenderer.invoke("workspace:inspect", workspacePath),
+  listWorkspaceSkillAssets: (workspacePath: string): Promise<SkillAsset[]> => ipcRenderer.invoke("workspace:listSkillAssets", workspacePath),
   loadWorkspaceGroups: (workspacePath: string) => ipcRenderer.invoke("workspace:loadGroups", workspacePath),
   saveWorkspaceGroups: (payload: { workspacePath: string; data: unknown }) => ipcRenderer.invoke("workspace:saveGroups", payload),
   listCentralSkills: (centralRepoPath: string) => ipcRenderer.invoke("central:list", centralRepoPath),
+  listCentralSkillAssets: (centralRepoPath: string): Promise<SkillAsset[]> => ipcRenderer.invoke("central:listSkillAssets", centralRepoPath),
   checkCentralRepo: (centralRepoPath: string) => ipcRenderer.invoke("central:check", centralRepoPath),
   initializeCentralRepo: (centralRepoPath: string) => ipcRenderer.invoke("central:init", centralRepoPath),
+  buildSkillAssetInventory: (payload: { workspacePath: string; centralRepoPath: string }): Promise<{ workspace: SkillAsset[]; central: SkillAsset[] }> => ipcRenderer.invoke("skills:assetInventory", payload),
   compareSkill: (payload: { workspacePath: string; centralRepoPath: string; tool: ToolType; relativePath: string; mode: "promote" | "import" }) => ipcRenderer.invoke("diff:compare", payload),
   scanSensitive: (text: string) => ipcRenderer.invoke("sensitive:scan", text),
   promoteSkills: (payload: { workspacePath: string; centralRepoPath: string; selections: Selection[] }) => ipcRenderer.invoke("skills:promote", payload),

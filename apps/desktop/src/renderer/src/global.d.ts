@@ -1,21 +1,47 @@
 ﻿export {};
 
-type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity";
+type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
 type Selection = { tool: ToolType; relativePath: string };
+type SkillAssetWarning = {
+  code: string;
+  severity: "info" | "warning" | "danger";
+  message: string;
+  relativePath?: string;
+};
+type SkillAsset = {
+  source: SkillSource;
+  tool: ToolType;
+  skillName: string;
+  rootRelativePath: string;
+  hasManifest: boolean;
+  fileCount: number;
+  totalBytes: number;
+  updatedAt: string | null;
+  files: Array<{ tool: ToolType; relativePath: string; absolutePath: string }>;
+  warnings: SkillAssetWarning[];
+};
 
 declare global {
   interface Window {
     electronAPI: {
       chooseDirectory: () => Promise<string | null>;
-      loadConfig: () => Promise<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; workspaces: Array<{ id: string; name: string; path: string }>; activeWorkspaceId: string | null }>;
-      saveConfig: (payload: Partial<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; workspaces: Array<{ id: string; name: string; path: string }>; activeWorkspaceId: string | null }>) => Promise<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; workspaces: Array<{ id: string; name: string; path: string }>; activeWorkspaceId: string | null }>;
-      inspectWorkspace: (workspacePath: string) => Promise<{ workspacePath: string; statuses: Array<{ tool: ToolType; workspaceDir: string; exists: boolean }>; workspaceSkills: Array<{ tool: ToolType; relativePath: string; absolutePath: string }> }>;
+      loadConfig: () => Promise<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; treeFontScale: number; workspaces: Array<{ id: string; name: string; path: string; autoRefreshSeconds: number }>; activeWorkspaceId: string | null }>;
+      saveConfig: (payload: Partial<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; treeFontScale: number; workspaces: Array<{ id: string; name: string; path: string; autoRefreshSeconds: number }>; activeWorkspaceId: string | null }>) => Promise<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number; treeFontScale: number; workspaces: Array<{ id: string; name: string; path: string; autoRefreshSeconds: number }>; activeWorkspaceId: string | null }>;
+      inspectWorkspace: (workspacePath: string) => Promise<{
+        workspacePath: string;
+        statuses: Array<{ tool: ToolType; workspaceDir: string; exists: boolean }>;
+        workspaceSkills: Array<{ tool: ToolType; relativePath: string; absolutePath: string }>;
+        invalidSkillFolders?: Array<{ tool: ToolType; relativePath: string }>;
+      }>;
+      listWorkspaceSkillAssets: (workspacePath: string) => Promise<SkillAsset[]>;
       loadWorkspaceGroups: (workspacePath: string) => Promise<{ version: number; groups: Array<{ id: string; name: string; side: "workspace" | "central"; targets: Array<{ kind: "file" | "folder"; tool: ToolType; relativePath: string }> }> }>;
       saveWorkspaceGroups: (payload: { workspacePath: string; data: { version: number; groups: Array<{ id: string; name: string; side: "workspace" | "central"; targets: Array<{ kind: "file" | "folder"; tool: ToolType; relativePath: string }> }> } }) => Promise<void>;
       listCentralSkills: (centralRepoPath: string) => Promise<Array<{ tool: ToolType; relativePath: string; absolutePath: string }>>;
+      listCentralSkillAssets: (centralRepoPath: string) => Promise<SkillAsset[]>;
       checkCentralRepo: (centralRepoPath: string) => Promise<{ exists: boolean; isGitRepo: boolean }>;
       initializeCentralRepo: (centralRepoPath: string) => Promise<void>;
+      buildSkillAssetInventory: (payload: { workspacePath: string; centralRepoPath: string }) => Promise<{ workspace: SkillAsset[]; central: SkillAsset[] }>;
       compareSkill: (payload: { workspacePath: string; centralRepoPath: string; tool: ToolType; relativePath: string; mode: "promote" | "import" }) => Promise<{ hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string }>;
       scanSensitive: (text: string) => Promise<Array<{ rule: string; description: string }>>;
       promoteSkills: (payload: { workspacePath: string; centralRepoPath: string; selections: Selection[] }) => Promise<{ changedFiles: string[]; commitHash?: string }>;

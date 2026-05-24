@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
+import { access } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import {
   applyUpdates,
@@ -16,6 +18,9 @@ import {
   inspectWorkspace,
   isEditableTextFile,
   listCentralSkills,
+  listCentralSkillAssets,
+  listWorkspaceSkillAssets,
+  buildSkillAssetInventory,
   loadWorkspaceGroupFile,
   loadConfig,
   promoteSkills,
@@ -33,14 +38,38 @@ import {
 
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow(): void {
-  const iconPath = path.join(app.getAppPath(), "apps", "desktop", "assets", "icon.ico");
+async function resolveWindowIconPath(): Promise<string | null> {
+  const candidates = [
+    path.join(__dirname, "../../assets/icon.ico"),
+    path.join(app.getAppPath(), "apps", "desktop", "assets", "icon.ico"),
+    path.join(process.cwd(), "apps", "desktop", "assets", "icon.ico")
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, fsConstants.F_OK);
+      return candidate;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
+async function createWindow(): Promise<void> {
+  const iconPath = await resolveWindowIconPath();
+  const iconImage = iconPath ? nativeImage.createFromPath(iconPath) : null;
+  const icon = iconImage && !iconImage.isEmpty() ? iconImage : undefined;
+
+  app.setName("Skill Bridge");
+  app.setAppUserModelId("com.skillbridge.app");
+
   mainWindow = new BrowserWindow({
     width: 1450,
     height: 920,
     minWidth: 1180,
     minHeight: 760,
-    icon: iconPath,
+    icon,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,
@@ -65,11 +94,14 @@ ipcMain.handle("dialog:chooseDirectory", async () => {
 ipcMain.handle("config:load", async () => loadConfig());
 ipcMain.handle("config:save", async (_event, payload) => saveConfig(payload));
 ipcMain.handle("workspace:inspect", async (_event, workspacePath: string) => inspectWorkspace(workspacePath));
+ipcMain.handle("workspace:listSkillAssets", async (_event, workspacePath: string) => listWorkspaceSkillAssets(workspacePath));
 ipcMain.handle("workspace:loadGroups", async (_event, workspacePath: string) => loadWorkspaceGroupFile(workspacePath));
 ipcMain.handle("workspace:saveGroups", async (_event, payload: { workspacePath: string; data: unknown }) => saveWorkspaceGroupFile(payload.workspacePath, payload.data as never));
 ipcMain.handle("central:list", async (_event, centralRepoPath: string) => listCentralSkills(centralRepoPath));
+ipcMain.handle("central:listSkillAssets", async (_event, centralRepoPath: string) => listCentralSkillAssets(centralRepoPath));
 ipcMain.handle("central:check", async (_event, centralRepoPath: string) => checkCentralRepo(centralRepoPath));
 ipcMain.handle("central:init", async (_event, centralRepoPath: string) => initializeCentralRepo(centralRepoPath));
+ipcMain.handle("skills:assetInventory", async (_event, payload: { workspacePath: string; centralRepoPath: string }) => buildSkillAssetInventory(payload.workspacePath, payload.centralRepoPath));
 ipcMain.handle("diff:compare", async (_event, payload) => compareSkill(payload.workspacePath, payload.centralRepoPath, payload.tool, payload.relativePath, payload.mode));
 ipcMain.handle("sensitive:scan", async (_event, text: string) => scanSensitiveContent(text));
 ipcMain.handle("skills:promote", async (_event, payload) => promoteSkills(payload));
@@ -94,9 +126,11 @@ ipcMain.handle("file:exists", async (_event, payload) => existsSkillNode(payload
 ipcMain.handle("file:validateTarget", async (_event, payload) => validateSkillTarget(payload.basePath, payload.source, payload.tool, payload.relativePath));
 
 app.whenReady().then(() => {
-  createWindow();
+  void createWindow();
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow();
+    }
   });
 });
 

@@ -1,24 +1,26 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 
-type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity";
+type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
 type TreeSide = "workspace" | "central";
 type Selection = { tool: ToolType; relativePath: string };
 type Skill = { tool: ToolType; relativePath: string; absolutePath: string };
-type WorkspaceEntry = { id: string; name: string; path: string };
+type WorkspaceEntry = { id: string; name: string; path: string; autoRefreshSeconds: number };
 type DiffData = { hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string };
 type UpdateCandidate = { tool: ToolType; relativePath: string; diff: DiffData };
 type WorkspaceInfo = {
   workspacePath: string;
   statuses: Array<{ tool: ToolType; workspaceDir: string; exists: boolean }>;
   workspaceSkills: Skill[];
+  invalidSkillFolders?: Array<{ tool: ToolType; relativePath: string }>;
 };
 type Config = {
   centralRepo: string;
   autoPush: boolean;
   defaultTool: ToolType;
   fontSize: number;
+  treeFontScale: number;
   workspaces: WorkspaceEntry[];
   activeWorkspaceId: string | null;
 };
@@ -69,6 +71,17 @@ type TransferPreview = {
   existingChanged: Array<{ tool: ToolType; relativePath: string; diff: DiffData }>;
   newFiles: number;
   unchanged: number;
+  skillSummary: {
+    totalSkills: number;
+    changedSkills: number;
+    newSkills: number;
+    sameSkills: number;
+  };
+  groupTransfer?: {
+    sourceSide: TreeSide;
+    groupId: string;
+    groupName: string;
+  };
 };
 type EditorTarget = { source: SkillSource; basePath: string; tool: ToolType; relativePath: string };
 type CrudAction = "createFile" | "createFolder" | "rename" | "delete" | "duplicate";
@@ -91,7 +104,15 @@ type SelectionGroup = {
   targets: GroupTarget[];
 };
 
-const toolOrder: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
+type SelectionGroupNormalizedResult = {
+  groups: SelectionGroup[];
+  removedTargets: number;
+  removedGroups: number;
+  splitGroups: number;
+  duplicateMerged: number;
+};
+
+const toolOrder: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity", "agents"];
 const GLOBAL_WORKSPACE_ID = "ws-global-default";
 
 export function App() {
@@ -141,12 +162,14 @@ export function App() {
   const [workspaceAnchor, setWorkspaceAnchor] = useState<string | null>(null);
   const [centralAnchor, setCentralAnchor] = useState<string | null>(null);
 
-  const [detailTab, setDetailTab] = useState<"editor" | "central" | "diff" | "updates" | "git">("editor");
+  const [detailTab, setDetailTab] = useState<"editor" | "diff" | "updates" | "git">("editor");
+  const [centralPaneCollapsed, setCentralPaneCollapsed] = useState(false);
+  const [detailPaneCollapsed, setDetailPaneCollapsed] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [treePaneMode, setTreePaneMode] = useState<"narrow" | "balanced" | "wide">("narrow");
   const [leftPaneWidth, setLeftPaneWidth] = useState(520);
   const [isResizing, setIsResizing] = useState(false);
-  const [stackedLayout, setStackedLayout] = useState(window.innerWidth <= 1240);
+  const [stackedLayout] = useState(false);
   const [preview, setPreview] = useState<TransferPreview | null>(null);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -155,14 +178,24 @@ export function App() {
   const [selectedUpdates, setSelectedUpdates] = useState<Record<string, boolean>>({});
   const [syncCommitMessage, setSyncCommitMessage] = useState("chore: sync skill bridge changes");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsDraft, setSettingsDraft] = useState<{ centralRepo: string; autoPush: boolean; defaultTool: ToolType; fontSize: number }>({
+  const [settingsDraft, setSettingsDraft] = useState<{
+    centralRepo: string;
+    autoPush: boolean;
+    defaultTool: ToolType;
+    fontSize: number;
+    treeFontScale: number;
+    workspaceAutoRefreshSeconds: number;
+  }>({
     centralRepo: "",
     autoPush: true,
     defaultTool: "claude",
-    fontSize: 15
+    fontSize: 15,
+    treeFontScale: 1,
+    workspaceAutoRefreshSeconds: 0
   });
   const [groupSideTab, setGroupSideTab] = useState<TreeSide>("workspace");
   const [miniGroupsOpen, setMiniGroupsOpen] = useState(false);
+  const [workspaceListExpanded, setWorkspaceListExpanded] = useState(false);
   const [gitDiagnostics, setGitDiagnostics] = useState<GitDiagnostics | null>(null);
   const [gitBusy, setGitBusy] = useState(false);
   const [skillsCliTarget, setSkillsCliTarget] = useState<"workspace" | "central">("workspace");
@@ -185,9 +218,27 @@ export function App() {
     if (!config?.activeWorkspaceId) return null;
     return config.workspaces.find((item) => item.id === config.activeWorkspaceId) ?? null;
   }, [config]);
+  const workspaceItems = useMemo(() => config?.workspaces ?? [], [config?.workspaces]);
+  const workspaceIndexMap = useMemo(() => {
+    const out = new Map<string, number>();
+    workspaceItems.forEach((item, index) => out.set(item.id, index + 1));
+    return out;
+  }, [workspaceItems]);
+  const visibleWorkspaceItems = useMemo(
+    () => getVisibleWorkspaceEntries(workspaceItems, config?.activeWorkspaceId ?? null, workspaceListExpanded, 4),
+    [workspaceItems, config?.activeWorkspaceId, workspaceListExpanded]
+  );
+  const hiddenWorkspaceCount = Math.max(0, workspaceItems.length - visibleWorkspaceItems.length);
 
   const workspaceTree = useMemo(() => buildTree("workspace", workspaceInfo?.workspaceSkills ?? []), [workspaceInfo]);
   const centralTree = useMemo(() => buildTree("central", centralSkills), [centralSkills]);
+  const validSkillFolders = useMemo(
+    () => ({
+      workspace: buildSkillFolderKeySet(workspaceInfo?.workspaceSkills ?? []),
+      central: buildSkillFolderKeySet(centralSkills)
+    }),
+    [workspaceInfo?.workspaceSkills, centralSkills]
+  );
   const filteredWorkspaceTree = useMemo(() => filterTree(workspaceTree, workspaceFilter), [workspaceTree, workspaceFilter]);
   const filteredCentralTree = useMemo(() => filterTree(centralTree, centralFilter), [centralTree, centralFilter]);
   const effectiveWorkspaceGroupIds = useMemo(() => {
@@ -225,6 +276,8 @@ export function App() {
   const editorDirty = editorText !== savedEditorText;
   const mainStripRef = useRef<HTMLElement | null>(null);
   const groupsHydratedRef = useRef(false);
+  const autoRefreshRunningRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
 
   useEffect(() => {
     void initialize();
@@ -260,12 +313,6 @@ export function App() {
       window.removeEventListener("contextmenu", closeMenu);
       window.removeEventListener("keydown", onEscape);
     };
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setStackedLayout(window.innerWidth <= 1240);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
@@ -305,8 +352,10 @@ export function App() {
         const groups = Array.isArray(loaded.groups) ? loaded.groups : [];
         const sanitized = sanitizeSelectionGroups(groups);
         setSelectionGroups(sanitized.groups);
-        if (sanitized.removedTargets > 0 || sanitized.removedGroups > 0) {
-          setStatus(`기존 그룹 정리: non-skills 타겟 ${sanitized.removedTargets}개, 빈 그룹 ${sanitized.removedGroups}개 제외`);
+        if (sanitized.removedTargets > 0 || sanitized.removedGroups > 0 || sanitized.splitGroups > 0 || sanitized.duplicateMerged > 0) {
+          setStatus(
+            `그룹 정규화: 제거 타깃 ${sanitized.removedTargets}개 · 제거 그룹 ${sanitized.removedGroups}개 · 분리 ${sanitized.splitGroups}개 · 병합 ${sanitized.duplicateMerged}개`
+          );
         }
       } catch {
         if (!cancelled) setSelectionGroups([]);
@@ -338,12 +387,54 @@ export function App() {
   }, [selectionGroups, activeWorkspace?.path]);
 
   useEffect(() => {
+    if (!groupsHydratedRef.current) return;
+    setSelectionGroups((prev) => {
+      const canValidate = validSkillFolders.workspace.size > 0 || validSkillFolders.central.size > 0;
+      const sanitized = sanitizeSelectionGroups(prev, canValidate ? validSkillFolders : undefined);
+      if (areSelectionGroupsEqual(prev, sanitized.groups)) return prev;
+      return sanitized.groups;
+    });
+  }, [validSkillFolders]);
+
+  useEffect(() => {
     syncCheckedWithSelectedGroups("workspace", effectiveWorkspaceGroupIds);
   }, [effectiveWorkspaceGroupIds, selectionGroups, workspaceByKey]);
 
   useEffect(() => {
     syncCheckedWithSelectedGroups("central", effectiveCentralGroupIds);
   }, [effectiveCentralGroupIds, selectionGroups, centralByKey]);
+
+  useEffect(() => {
+    if (!config?.centralRepo || !activeWorkspace?.path) return;
+    const seconds = normalizeAutoRefreshSeconds(activeWorkspace.autoRefreshSeconds);
+    if (seconds <= 0) return;
+
+    const intervalId = window.setInterval(() => {
+      if (autoRefreshRunningRef.current) return;
+      if (blockUi || modalOpen || Boolean(promptModal) || editorDirty) return;
+      autoRefreshRunningRef.current = true;
+      void refreshAll(activeWorkspace.path, config.centralRepo, {
+        silent: true,
+        preserveSelection: true,
+        source: "auto"
+      }).finally(() => {
+        autoRefreshRunningRef.current = false;
+      });
+    }, seconds * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    config?.centralRepo,
+    activeWorkspace?.id,
+    activeWorkspace?.path,
+    activeWorkspace?.autoRefreshSeconds,
+    blockUi,
+    modalOpen,
+    promptModal,
+    editorDirty
+  ]);
 
   function showPrompt(message: string, defaultValue = ""): Promise<string | null> {
     return new Promise((resolve) => {
@@ -357,7 +448,8 @@ export function App() {
       const loaded = await window.electronAPI.loadConfig();
       setConfig(loaded);
       const fontSize = loaded.fontSize ?? 15;
-      document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`);
+      const treeFontScale = normalizeTreeFontScale(loaded.treeFontScale ?? 1);
+      applyTypographySettings(fontSize, treeFontScale);
 
       const repo = await window.electronAPI.checkCentralRepo(loaded.centralRepo);
       setStatus(repo.isGitRepo ? "설정을 불러왔습니다." : "중앙 저장소가 Git이 아닙니다. 설정에서 초기화해주세요.");
@@ -384,10 +476,23 @@ export function App() {
     setCentralAnchor(null);
   }
 
-  async function refreshAll(targetWorkspacePath = activeWorkspace?.path, targetCentral = config?.centralRepo) {
+  async function refreshAll(
+    targetWorkspacePath = activeWorkspace?.path,
+    targetCentral = config?.centralRepo,
+    options?: { silent?: boolean; preserveSelection?: boolean; source?: "manual" | "auto" | "switch" | "init" }
+  ) {
     if (!targetWorkspacePath || !targetCentral) return;
-    setIsBusy(true);
-    setBusyMessage("목록을 새로고침하는 중...");
+    const silent = options?.silent ?? false;
+    const preserveSelection = options?.preserveSelection ?? false;
+    if (refreshInFlightRef.current) {
+      if (!silent) setStatus("이미 새로고침이 진행 중입니다.");
+      return;
+    }
+    refreshInFlightRef.current = true;
+    if (!silent) {
+      setIsBusy(true);
+      setBusyMessage("목록을 새로고침하는 중...");
+    }
     try {
       const [workspace, central] = await Promise.all([
         window.electronAPI.inspectWorkspace(targetWorkspacePath),
@@ -395,16 +500,29 @@ export function App() {
       ]);
       setWorkspaceInfo(workspace);
       setCentralSkills(central);
-      clearSelections();
-      setUpdateCandidates([]);
-      setSelectedUpdates({});
+      if (!preserveSelection) {
+        clearSelections();
+        setUpdateCandidates([]);
+        setSelectedUpdates({});
+      }
       void loadOverview(targetWorkspacePath, targetCentral, true);
-      setStatus("목록을 갱신했습니다.");
+      const invalidCount = workspace.invalidSkillFolders?.length ?? 0;
+      if (!silent) {
+        if (invalidCount > 0) {
+          setStatus(`목록 갱신 완료 · 유효 스킬 ${workspace.workspaceSkills.length}개 · SKILL.md 누락 폴더 ${invalidCount}개`);
+        } else {
+          setStatus("목록을 갱신했습니다.");
+        }
+      }
     } catch (error) {
-      setStatus(`새로고침 실패: ${String(error)}`);
+      const isAuto = options?.source === "auto";
+      setStatus(`${isAuto ? "자동 " : ""}새로고침 실패: ${String(error)}`);
     } finally {
-      setIsBusy(false);
-      setBusyMessage("");
+      if (!silent) {
+        setIsBusy(false);
+        setBusyMessage("");
+      }
+      refreshInFlightRef.current = false;
     }
   }
 
@@ -440,7 +558,7 @@ export function App() {
     }
 
     const name = picked.split(/[\\/]/).filter(Boolean).pop() ?? "workspace";
-    const entry = { id: `ws-${Date.now()}`, name, path: picked };
+    const entry = { id: `ws-${Date.now()}`, name, path: picked, autoRefreshSeconds: 0 };
     const next = await window.electronAPI.saveConfig({ workspaces: [...config.workspaces, entry], activeWorkspaceId: entry.id });
     setConfig(next);
     await refreshAll(entry.path, next.centralRepo);
@@ -526,11 +644,14 @@ export function App() {
 
   async function openSettingsPanel() {
     if (!config) return;
+    const activeRefreshSeconds = normalizeAutoRefreshSeconds(activeWorkspace?.autoRefreshSeconds ?? 0);
     setSettingsDraft({
       centralRepo: config.centralRepo,
       autoPush: config.autoPush,
       defaultTool: config.defaultTool,
-      fontSize: config.fontSize ?? 15
+      fontSize: config.fontSize ?? 15,
+      treeFontScale: normalizeTreeFontScale(config.treeFontScale ?? 1),
+      workspaceAutoRefreshSeconds: activeRefreshSeconds
     });
     setSettingsOpen(true);
     setSkillsCliOutput("");
@@ -582,19 +703,32 @@ export function App() {
 
     try {
       const fontSize = Math.max(11, Math.min(22, settingsDraft.fontSize));
-      document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`);
+      const treeFontScale = normalizeTreeFontScale(settingsDraft.treeFontScale);
+      const autoRefreshSeconds = normalizeAutoRefreshSeconds(settingsDraft.workspaceAutoRefreshSeconds);
+      const nextWorkspaces = config.workspaces.map((workspace) =>
+        workspace.id === config.activeWorkspaceId
+          ? { ...workspace, autoRefreshSeconds }
+          : workspace
+      );
+      applyTypographySettings(fontSize, treeFontScale);
       const next = await window.electronAPI.saveConfig({
         centralRepo,
         autoPush: settingsDraft.autoPush,
         defaultTool: settingsDraft.defaultTool,
-        fontSize
+        fontSize,
+        treeFontScale,
+        workspaces: nextWorkspaces
       });
       setConfig(next);
       setSettingsOpen(false);
       if (activeWorkspace) {
         await refreshAll(activeWorkspace.path, next.centralRepo);
       }
-      setStatus("관리자 설정 저장 완료");
+      const applied = next.workspaces.find((workspace) => workspace.id === next.activeWorkspaceId);
+      const timerText = applied && applied.autoRefreshSeconds > 0
+        ? `${applied.autoRefreshSeconds}초`
+        : "끔";
+      setStatus(`관리자 설정 저장 완료 · 자동 목록 갱신 ${timerText}`);
     } catch (error) {
       setStatus(`설정 저장 실패: ${String(error)}`);
     }
@@ -686,15 +820,39 @@ export function App() {
 
           if (targets.length > 0) {
             const baseName = normalizeSkillsRepoName(skillsCliRepo.trim()) || "skills-installed";
-            const groupName = uniqueGroupName(selectionGroups, groupSide, baseName);
-            const group: SelectionGroup = {
-              id: `${groupSide}-${Date.now()}`,
-              name: groupName,
-              side: groupSide,
-              targets
-            };
-            setSelectionGroups((prev) => [...prev, group]);
-            statusMessage = `${statusMessage} · 그룹 생성: ${groupName} (${targets.length}개 폴더)`;
+            const normalizedTargets = normalizeTargetsToSkillFolders(groupSide, targets, validSkillFolders);
+            const tool = normalizedTargets[0]?.tool;
+            if (!tool) {
+              statusMessage = `${statusMessage} · 그룹 생성할 유효 스킬을 찾지 못했습니다.`;
+            } else {
+              const exists = selectionGroups.find((group) => (
+                group.side === groupSide
+                && group.targets[0]?.tool === tool
+                && normalizeGroupNameKey(group.name) === normalizeGroupNameKey(baseName)
+              ));
+              if (exists) {
+                const merged = selectionGroups.map((group) => {
+                  if (group.id !== exists.id) return group;
+                  return {
+                    ...group,
+                    targets: normalizeTargetsToSkillFolders(groupSide, [...group.targets, ...normalizedTargets], validSkillFolders)
+                  };
+                });
+                const sanitized = sanitizeSelectionGroups(merged, validSkillFolders);
+                setSelectionGroups(sanitized.groups);
+                statusMessage = `${statusMessage} · 기존 그룹 병합: ${exists.name} (+${normalizedTargets.length}개 스킬)`;
+              } else {
+                const group: SelectionGroup = {
+                  id: `${groupSide}-${Date.now()}`,
+                  name: baseName,
+                  side: groupSide,
+                  targets: normalizedTargets
+                };
+                const sanitized = sanitizeSelectionGroups([...selectionGroups, group], validSkillFolders);
+                setSelectionGroups(sanitized.groups);
+                statusMessage = `${statusMessage} · 그룹 생성: ${baseName} (${normalizedTargets.length}개 스킬)`;
+              }
+            }
           } else {
             statusMessage = `${statusMessage} · 그룹 생성할 폴더를 찾지 못했습니다.`;
           }
@@ -854,19 +1012,24 @@ export function App() {
     const { multi, activeKey, byKey } = getCollections(side);
     const out = new Map<string, Selection>();
 
+    const addFromNode = (node: TreeNode | undefined) => {
+      if (!node) return;
+      if (node.type === "file") {
+        out.set(`${node.tool}:${node.relativePath}`, { tool: node.tool, relativePath: node.relativePath });
+        return;
+      }
+      for (const fileNode of collectFileDescendants(node)) {
+        out.set(`${fileNode.tool}:${fileNode.relativePath}`, { tool: fileNode.tool, relativePath: fileNode.relativePath });
+      }
+    };
+
     for (const key of Object.keys(multi)) {
       if (!multi[key]) continue;
-      const node = byKey.get(key);
-      if (node?.type === "file") {
-        out.set(`${node.tool}:${node.relativePath}`, { tool: node.tool, relativePath: node.relativePath });
-      }
+      addFromNode(byKey.get(key));
     }
 
     if (activeKey) {
-      const active = byKey.get(activeKey);
-      if (active?.type === "file") {
-        out.set(`${active.tool}:${active.relativePath}`, { tool: active.tool, relativePath: active.relativePath });
-      }
+      addFromNode(byKey.get(activeKey));
     }
 
     return [...out.values()];
@@ -888,7 +1051,10 @@ export function App() {
   function getSelectionCountLabel(side: TreeSide) {
     const checkedCount = getCheckedSelections(side).length;
     const explorerCount = getExplorerSelections(side).length;
-    return checkedCount > 0 ? `${checkedCount}개 파일 선택(체크)` : `${explorerCount}개 파일 선택`;
+    const checkedSkills = countSkillFoldersFromSelections(getCheckedSelections(side));
+    const explorerSkills = countSkillFoldersFromSelections(getExplorerSelections(side));
+    if (checkedCount > 0) return `${checkedSkills}개 스킬 선택(체크)`;
+    return `${explorerSkills}개 스킬 선택`;
   }
 
   function toggleFolderCheck(side: TreeSide, key: string, value: boolean) {
@@ -976,53 +1142,13 @@ export function App() {
   }
 
   function getCurrentGroupTargets(side: TreeSide): GroupTarget[] {
-    const { checked, byKey } = getCollections(side);
-    const out: GroupTarget[] = [];
-    const hasFolder = new Set<string>();
-
-    for (const key of Object.keys(checked)) {
-      if (!checked[key]) continue;
-      const node = byKey.get(key);
-      if (!node) continue;
-      if (node.type !== "folder") continue;
-      const folderKey = `${node.tool}:${node.relativePath}`;
-      hasFolder.add(folderKey);
-      out.push({ kind: "folder", tool: node.tool, relativePath: node.relativePath });
-    }
-
-    const addFolder = (node: TreeNode | undefined) => {
-      if (!node || node.type !== "folder") return;
-      const folderKey = `${node.tool}:${node.relativePath}`;
-      if (hasFolder.has(folderKey)) return;
-      hasFolder.add(folderKey);
-      out.push({ kind: "folder", tool: node.tool, relativePath: node.relativePath });
-    };
-
-    addFolder(getActiveNode(side) ?? undefined);
-    for (const key of Object.keys(getCollections(side).multi)) {
-      if (!getCollections(side).multi[key]) continue;
-      addFolder(byKey.get(key));
-    }
-
-    const explorerFiles = getExplorerSelections(side).map((item) => ({ kind: "file" as const, tool: item.tool, relativePath: item.relativePath }));
-    for (const file of explorerFiles) {
-      let covered = false;
-      for (const folderKey of hasFolder) {
-        const [tool, folderPath] = folderKey.split(":");
-        if (tool !== file.tool) continue;
-        if (!folderPath || file.relativePath.startsWith(`${folderPath}/`)) {
-          covered = true;
-          break;
-        }
-      }
-      if (!covered) out.push(file);
-    }
-
-    const unique = new Map<string, GroupTarget>();
-    for (const target of out) {
-      unique.set(`${target.kind}:${target.tool}:${target.relativePath}`, target);
-    }
-    return [...unique.values()].filter((target) => isSkillsRelativePath(target.relativePath));
+    const selections = getTransferSelections(side);
+    const normalized = normalizeTargetsToSkillFolders(
+      side,
+      selections.map((item) => ({ kind: "file", tool: item.tool, relativePath: item.relativePath })),
+      validSkillFolders
+    );
+    return normalized;
   }
 
   function syncCheckedWithSelectedGroups(side: TreeSide, groupIds: string[]) {
@@ -1070,21 +1196,137 @@ export function App() {
   async function saveCurrentSelectionGroup(side: TreeSide) {
     const targets = getCurrentGroupTargets(side);
     if (targets.length === 0) {
-      setStatus("그룹으로 저장할 선택이 없습니다.");
+      setStatus("유효 스킬 선택이 없습니다. (skills/<skill>/SKILL.md 포함 폴더만 가능)");
       return;
     }
-    const name = await showPrompt("그룹 이름을 입력하세요", `group-${new Date().toLocaleDateString("ko")}`);
+    const tools = [...new Set(targets.map((target) => target.tool))];
+    if (tools.length !== 1) {
+      setStatus("그룹은 같은 에이전트(tool) 스킬만 함께 저장할 수 있습니다.");
+      return;
+    }
+
+    const defaultName = `group-${new Date().toLocaleDateString("ko")}`;
+    const name = await showPrompt("그룹 이름을 입력하세요", defaultName);
     if (!name?.trim()) return;
-    const group: SelectionGroup = {
-      id: `${side}-${Date.now()}`,
-      name: name.trim(),
-      side,
-      targets
+
+    const key = normalizeGroupNameKey(name);
+    if (!key) return;
+    const duplicate = selectionGroups.find((group) => (
+      group.side === side
+      && group.targets[0]?.tool === tools[0]
+      && normalizeGroupNameKey(group.name) === key
+    ));
+    if (duplicate) {
+      setStatus(`같은 이름의 그룹이 이미 있습니다: ${duplicate.name} (${tools[0]})`);
+      return;
+    }
+
+    const group: SelectionGroup = { id: `${side}-${Date.now()}`, name: name.trim(), side, targets };
+    const sanitized = sanitizeSelectionGroups([...selectionGroups, group], validSkillFolders);
+    setSelectionGroups(sanitized.groups);
+    setStatus(`그룹 저장 완료: ${group.name} (${targets.length}개 스킬)`);
+  }
+
+  async function addCurrentSelectionToExistingGroup(side: TreeSide) {
+    const targets = getCurrentGroupTargets(side);
+    if (targets.length === 0) {
+      setStatus("추가할 유효 스킬 선택이 없습니다. (skills/<skill>/SKILL.md 포함 폴더만 가능)");
+      return;
+    }
+    const tools = [...new Set(targets.map((target) => target.tool))];
+    if (tools.length !== 1) {
+      setStatus("기존 그룹 추가는 같은 에이전트(tool) 선택만 가능합니다.");
+      return;
+    }
+    const selectedTool = tools[0];
+    if (!selectedTool) {
+      setStatus("선택한 스킬의 에이전트(tool)를 확인할 수 없습니다.");
+      return;
+    }
+    const candidates = getSideGroups(side).filter((group) => group.targets[0]?.tool === selectedTool);
+
+    const createGroupAndAssign = (rawName: string) => {
+      const trimmed = rawName.trim();
+      if (!trimmed) return false;
+      const key = normalizeGroupNameKey(trimmed);
+      const duplicate = selectionGroups.find((group) => (
+        group.side === side
+        && group.targets[0]?.tool === selectedTool
+        && normalizeGroupNameKey(group.name) === key
+      ));
+      if (duplicate) {
+        setStatus(`같은 이름의 그룹이 이미 있습니다: ${duplicate.name} (${selectedTool})`);
+        return false;
+      }
+      const group: SelectionGroup = {
+        id: `${side}-${Date.now()}`,
+        name: trimmed,
+        side,
+        targets
+      };
+      const sanitized = sanitizeSelectionGroups([...selectionGroups, group], validSkillFolders);
+      setSelectionGroups(sanitized.groups);
+      setStatus(`그룹 생성 + 추가 완료: ${group.name} (${targets.length}개 스킬)`);
+      return true;
     };
-    setSelectionGroups((prev) => [...prev, group]);
-    const folderCount = group.targets.filter((t) => t.kind === "folder").length;
-    const fileCount = group.targets.filter((t) => t.kind === "file").length;
-    setStatus(`그룹 저장 완료: ${group.name} (폴더 ${folderCount}, 파일 ${fileCount})`);
+
+    if (candidates.length === 0) {
+      const defaultName = buildSuggestedGroupName(selectionGroups, side, selectedTool, `${selectedTool}-group`);
+      const createName = await showPrompt(
+        `${side === "workspace" ? "Workspace" : "Central"}에 ${selectedTool} 그룹이 없습니다.\n새 그룹 이름을 입력하면 생성 후 현재 선택을 추가합니다.`,
+        defaultName
+      );
+      if (!createName?.trim()) {
+        setStatus("그룹 생성이 취소되었습니다.");
+        return;
+      }
+      createGroupAndAssign(createName);
+      return;
+    }
+
+    const selectedName = await showPrompt(
+      `추가할 그룹 이름을 입력하세요 (${selectedTool})\n가능: ${candidates.map((group) => group.name).join(", ")}\n(없는 이름 입력 시 새 그룹 생성)`,
+      candidates[0].name
+    );
+    if (!selectedName?.trim()) return;
+    const targetGroup = candidates.find((group) => normalizeGroupNameKey(group.name) === normalizeGroupNameKey(selectedName));
+    if (!targetGroup) {
+      const shouldCreate = window.confirm(`일치하는 그룹이 없습니다. '${selectedName.trim()}' 그룹을 새로 만들까요?`);
+      if (!shouldCreate) {
+        setStatus("기존 그룹 선택이 취소되었습니다.");
+        return;
+      }
+      createGroupAndAssign(selectedName);
+      return;
+    }
+
+    const next = selectionGroups.map((group) => {
+      if (group.id !== targetGroup.id) return group;
+      return { ...group, targets: normalizeTargetsToSkillFolders(side, [...group.targets, ...targets], validSkillFolders) };
+    });
+    const sanitized = sanitizeSelectionGroups(next, validSkillFolders);
+    setSelectionGroups(sanitized.groups);
+    setStatus(`그룹 추가 완료: ${targetGroup.name} (+${targets.length}개)`);
+  }
+
+  async function removeCurrentSelectionFromGroups(side: TreeSide) {
+    const targets = getCurrentGroupTargets(side);
+    if (targets.length === 0) {
+      setStatus("해제할 유효 스킬 선택이 없습니다.");
+      return;
+    }
+    const toRemove = new Set(targets.map((target) => `${target.tool}:${normalizeSkillsPath(target.relativePath)}`));
+    const next = selectionGroups.map((group) => {
+      if (group.side !== side) return group;
+      const kept = group.targets.filter((target) => !toRemove.has(`${target.tool}:${normalizeSkillsPath(target.relativePath)}`));
+      return { ...group, targets: kept };
+    });
+    const sanitized = sanitizeSelectionGroups(next, validSkillFolders);
+    const removedCount = selectionGroups.reduce((count, group, idx) => (
+      count + Math.max(0, (group.targets?.length ?? 0) - (next[idx]?.targets?.length ?? 0))
+    ), 0);
+    setSelectionGroups(sanitized.groups);
+    setStatus(`그룹 해제 완료: ${removedCount}개 타깃 제거`);
   }
 
   async function runSavedGroup(side: TreeSide, groupId: string) {
@@ -1099,7 +1341,13 @@ export function App() {
       setStatus("그룹에서 전송할 파일을 찾지 못했습니다.");
       return;
     }
-    await startTransferWithSelections(mode, selections);
+    await startTransferWithSelections(mode, selections, {
+      groupTransfer: {
+        sourceSide: side,
+        groupId: group.id,
+        groupName: group.name
+      }
+    });
   }
 
   function deleteGroup(side: TreeSide, groupId: string) {
@@ -1120,20 +1368,36 @@ export function App() {
 
   async function saveGroupFromNode(side: TreeSide, node: TreeNode) {
     if (!isSkillsRelativePath(node.relativePath)) {
-      setStatus("skills 폴더 하위 항목만 그룹으로 저장할 수 있습니다.");
+      setStatus("그룹 대상은 skills/<skill>/SKILL.md가 있는 스킬 폴더만 가능합니다.");
       return;
     }
     const defaultName = node.type === "folder" ? `${node.name}-group` : `${node.name}-file-group`;
     const name = await showPrompt("그룹 이름을 입력하세요", defaultName);
     if (!name?.trim()) return;
 
-    const group: SelectionGroup = {
-      id: `${side}-${Date.now()}`,
-      name: name.trim(),
+    const normalizedTargets = normalizeTargetsToSkillFolders(
       side,
-      targets: [{ kind: node.type, tool: node.tool, relativePath: node.relativePath }]
-    };
-    setSelectionGroups((prev) => [...prev, group]);
+      [{ kind: node.type, tool: node.tool, relativePath: node.relativePath }],
+      validSkillFolders
+    );
+    if (normalizedTargets.length === 0) {
+      setStatus("그룹 대상은 skills/<skill>/SKILL.md가 있는 스킬 폴더만 가능합니다.");
+      return;
+    }
+    const key = normalizeGroupNameKey(name);
+    const duplicate = selectionGroups.find((group) => (
+      group.side === side
+      && group.targets[0]?.tool === node.tool
+      && normalizeGroupNameKey(group.name) === key
+    ));
+    if (duplicate) {
+      setStatus(`같은 이름의 그룹이 이미 있습니다: ${duplicate.name} (${node.tool})`);
+      return;
+    }
+
+    const group: SelectionGroup = { id: `${side}-${Date.now()}`, name: name.trim(), side, targets: normalizedTargets };
+    const sanitized = sanitizeSelectionGroups([...selectionGroups, group], validSkillFolders);
+    setSelectionGroups(sanitized.groups);
     setStatus(`그룹 저장 완료: ${group.name}`);
   }
 
@@ -1187,7 +1451,7 @@ export function App() {
   }
 
   async function promptTool(defaultTool?: ToolType): Promise<ToolType | null> {
-    const raw = await showPrompt("툴 이름을 입력하세요: claude/codex/gemini/cursor/antigravity", defaultTool ?? "claude");
+    const raw = await showPrompt("툴 이름을 입력하세요: claude/codex/gemini/cursor/antigravity/agents", defaultTool ?? "claude");
     if (!raw) return null;
     const value = raw.trim().toLowerCase();
     if (toolOrder.includes(value as ToolType)) return value as ToolType;
@@ -1369,15 +1633,21 @@ export function App() {
     setContextMenu({ side, node, x: event.clientX, y: event.clientY });
   }
 
-  async function startTransferWithSelections(mode: "toCentral" | "toWorkspace", selections: Selection[]) {
+  async function startTransferWithSelections(
+    mode: "toCentral" | "toWorkspace",
+    selections: Selection[],
+    options?: { groupTransfer?: TransferPreview["groupTransfer"] }
+  ) {
     if (!config || !activeWorkspace || blockUi || modalOpen) return;
     if (!(await confirmDiscardDirty("저장하지 않은 변경이 있습니다. 전송을 진행할까요?"))) return;
     if (!(await ensureCentralRepoReady())) return;
-    setDetailTab("central");
-    if (selections.length === 0) {
+    const sourceSide: TreeSide = mode === "toCentral" ? "workspace" : "central";
+    const normalizedSelections = expandSelectionsToSkillFiles(sourceSide, selections, workspaceInfo?.workspaceSkills ?? [], centralSkills);
+    if (normalizedSelections.length === 0) {
       setStatus("전송할 파일을 선택하세요.");
       return;
     }
+    setDetailTab("diff");
 
     setIsBusy(true);
     setBusyMessage(mode === "toCentral" ? "중앙 저장 전 변경사항을 계산하는 중..." : "workspace 반영 전 변경사항을 계산하는 중...");
@@ -1387,7 +1657,7 @@ export function App() {
       let unchanged = 0;
       let newTextJoined = "";
 
-      for (const item of selections) {
+      for (const item of normalizedSelections) {
         const diff = await window.electronAPI.compareSkill({
           workspacePath: activeWorkspace.path,
           centralRepoPath: config.centralRepo,
@@ -1408,7 +1678,22 @@ export function App() {
       const warningRows = mode === "toCentral" ? await window.electronAPI.scanSensitive(newTextJoined) : [];
       setWarnings(warningRows);
 
-      const previewData: TransferPreview = { mode, selections, existingChanged: changed, newFiles, unchanged };
+      const skillSummary = summarizeSkillTransfer(normalizedSelections, changed);
+      changed.sort((a, b) => {
+        const aSkillMd = a.relativePath.toLowerCase().endsWith("/skill.md") ? 0 : 1;
+        const bSkillMd = b.relativePath.toLowerCase().endsWith("/skill.md") ? 0 : 1;
+        if (aSkillMd !== bSkillMd) return aSkillMd - bSkillMd;
+        return a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath);
+      });
+      const previewData: TransferPreview = {
+        mode,
+        selections: normalizedSelections,
+        existingChanged: changed,
+        newFiles,
+        unchanged,
+        skillSummary,
+        groupTransfer: options?.groupTransfer
+      };
       if (changed.length === 0) {
         setStatus("변경된 파일이 없습니다.");
         return;
@@ -1448,6 +1733,13 @@ export function App() {
           selections: preview.selections
         });
         setStatus(`workspace 반영 완료: ${result.changedFiles.length}개 파일`);
+      }
+
+      if (preview.groupTransfer) {
+        setSelectionGroups((prev) => {
+          const next = mirrorTransferredGroup(prev, preview.groupTransfer!, preview.selections);
+          return areSelectionGroupsEqual(prev, next) ? prev : next;
+        });
       }
 
       setPreview(null);
@@ -1564,24 +1856,26 @@ export function App() {
           </button>
           {sidebarCollapsed ? (
             <div className="workspace-mini-list">
-              {(config?.workspaces ?? []).map((item) => (
-                <button
-                  key={item.id}
-                  className={`ws-tab mini ${config?.activeWorkspaceId === item.id ? "active" : ""}`}
-                  onClick={() => void switchWorkspace(item.id)}
-                  disabled={blockUi || modalOpen}
-                  title={item.id === GLOBAL_WORKSPACE_ID ? "Global (Home)" : item.name}
-                >
-                  {workspaceShortLabel(item)}
-                </button>
-              ))}
+              <div className="workspace-mini-scroll">
+                {(config?.workspaces ?? []).map((item) => (
+                  <button
+                    key={item.id}
+                    className={`ws-tab mini ${config?.activeWorkspaceId === item.id ? "active" : ""}`}
+                    onClick={() => void switchWorkspace(item.id)}
+                    disabled={blockUi || modalOpen}
+                    title={item.id === GLOBAL_WORKSPACE_ID ? "Global (Home)" : item.name}
+                  >
+                    {workspaceShortLabel(item)}
+                  </button>
+                ))}
+              </div>
               <div className="mini-groups-wrap">
                 <button
                   className={`ws-tab mini mini-groups-btn ${miniGroupsOpen ? "active" : ""}`}
                   onClick={() => setMiniGroupsOpen((v) => !v)}
                   title="스킬 그룹"
                 >
-                  G
+                  GR
                   {selectionGroups.length > 0 && (
                     <span className="mini-groups-badge">{selectionGroups.length}</span>
                   )}
@@ -1628,7 +1922,7 @@ export function App() {
                       <p className="group-empty-hint">트리에서 체크 후 「+ 새 그룹」을 누르세요.</p>
                     )}
                     <div className="group-card-list">
-                      {getSideGroups(groupSideTab).map((group) => (
+                      {getSideGroups(groupSideTab).map((group, index) => (
                         <div
                           key={group.id}
                           className={`group-card ${getActiveGroupIds(groupSideTab).includes(group.id) ? "active" : ""}`}
@@ -1638,23 +1932,24 @@ export function App() {
                             onClick={() => {
                               toggleGroupFilter(groupSideTab, group.id);
                             }}
-                            disabled={blockUi || modalOpen}
-                          >
+                          disabled={blockUi || modalOpen}
+                        >
+                          <div className="group-card-main">
+                            <span className="group-card-index">{String(index + 1).padStart(2, "0")}</span>
                             <span className="group-card-title">{group.name}</span>
                             <span className="group-card-meta">{groupTargetSummary(group.targets)}</span>
-                          </button>
-                          <div className="group-card-actions">
-                            <button
-                              className="group-action-btn primary"
+                          </div>
+                        </button>
+                        <div className="group-card-actions">
+                          <button
+                            className="group-action-btn primary"
                               onClick={() => void runSavedGroup(groupSideTab, group.id)}
                               disabled={blockUi || modalOpen}
                               title={groupSideTab === "workspace" ? "중앙 저장소로 전송" : "작업 폴더로 가져오기"}
-                            >
-                              {groupSideTab === "workspace" ? "↑" : "↓"}
-                            </button>
-                            <button
-                              className="group-action-btn danger"
-                              onClick={() => deleteGroup(groupSideTab, group.id)}
+                          >{groupSideTab === "workspace" ? "↑" : "↓"}</button>
+                          <button
+                            className="group-action-btn danger"
+                            onClick={() => deleteGroup(groupSideTab, group.id)}
                               disabled={blockUi || modalOpen}
                             >
                               ×
@@ -1674,19 +1969,43 @@ export function App() {
                 <code>{config?.centralRepo ?? "-"}</code>
               </div>
               <div className="meta-card workspace-switcher">
-                <span className="meta-label">workspace</span>
-                <div className="workspace-list">
-                  {(config?.workspaces ?? []).map((item) => (
-                    <button
-                      key={item.id}
-                      className={`ws-tab ${config?.activeWorkspaceId === item.id ? "active" : ""}`}
-                      onClick={() => void switchWorkspace(item.id)}
-                      disabled={blockUi || modalOpen}
-                    >
-                      {item.id === GLOBAL_WORKSPACE_ID ? "Global (Home)" : item.name}
-                    </button>
-                  ))}
+                <span className="meta-label">workspace ({config?.workspaces?.length ?? 0})</span>
+                <div className={`workspace-list ${workspaceListExpanded ? "expanded" : "collapsed"}`}>
+                  {visibleWorkspaceItems.map((item) => {
+                    const displayName = item.id === GLOBAL_WORKSPACE_ID ? "Global (Home)" : item.name;
+                    const indexLabel = String(workspaceIndexMap.get(item.id) ?? 0).padStart(2, "0");
+                    return (
+                      <button
+                        key={item.id}
+                        className={`ws-tab workspace-item ${config?.activeWorkspaceId === item.id ? "active" : ""}`}
+                        onClick={() => void switchWorkspace(item.id)}
+                        disabled={blockUi || modalOpen}
+                        title={displayName}
+                      >
+                        <span className="ws-index">{indexLabel}</span>
+                        <span className="ws-name">{displayName}</span>
+                        {item.autoRefreshSeconds > 0 && (
+                          <span className="ws-auto-chip">⟳ {item.autoRefreshSeconds}s</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+                {workspaceItems.length > 4 && (
+                  <div className="workspace-list-controls">
+                    <button
+                      className="ws-inline-btn"
+                      onClick={() => setWorkspaceListExpanded((prev) => !prev)}
+                      disabled={blockUi || modalOpen}
+                      title={workspaceListExpanded ? "워크스페이스 목록 접기" : "워크스페이스 목록 더 보기"}
+                    >
+                      {workspaceListExpanded ? "접기" : `더 보기 (${hiddenWorkspaceCount})`}
+                    </button>
+                    {!workspaceListExpanded && hiddenWorkspaceCount > 0 && (
+                      <span className="workspace-list-hint">활성 워크스페이스는 항상 표시됩니다.</span>
+                    )}
+                  </div>
+                )}
                 <div className="workspace-actions">
                   <button onClick={() => void addWorkspace()} disabled={blockUi || modalOpen}>추가</button>
                   <button onClick={() => void removeActiveWorkspace()} disabled={blockUi || modalOpen || !activeWorkspace}>삭제</button>
@@ -1736,8 +2055,8 @@ export function App() {
                     ✕ 전체 보기
                   </button>
                 )}
-                <div className="group-card-list">
-                  {getSideGroups(groupSideTab).map((group) => (
+                    <div className="group-card-list">
+                  {getSideGroups(groupSideTab).map((group, index) => (
                     <div
                       key={group.id}
                       className={`group-card ${getActiveGroupIds(groupSideTab).includes(group.id) ? "active" : ""}`}
@@ -1750,8 +2069,11 @@ export function App() {
                         disabled={blockUi || modalOpen}
                         title="클릭하면 이 그룹 파일만 트리에 표시됩니다. 여러 그룹을 겹쳐 선택할 수 있습니다."
                       >
-                        <span className="group-card-title">{group.name}</span>
-                        <span className="group-card-meta">{groupTargetSummary(group.targets)}</span>
+                        <div className="group-card-main">
+                          <span className="group-card-index">{String(index + 1).padStart(2, "0")}</span>
+                          <span className="group-card-title">{group.name}</span>
+                          <span className="group-card-meta">{groupTargetSummary(group.targets)}</span>
+                        </div>
                       </button>
                       <div className="group-card-actions">
                         <button
@@ -1759,9 +2081,7 @@ export function App() {
                           onClick={() => void runSavedGroup(groupSideTab, group.id)}
                           disabled={blockUi || modalOpen}
                           title={groupSideTab === "workspace" ? "중앙 저장소로 전송" : "작업 폴더로 가져오기"}
-                        >
-                          {groupSideTab === "workspace" ? "↑ 올리기" : "↓ 가져오기"}
-                        </button>
+                        >{groupSideTab === "workspace" ? "↑" : "↓"}</button>
                         <button
                           className="group-action-btn danger"
                           onClick={() => deleteGroup(groupSideTab, group.id)}
@@ -1816,6 +2136,8 @@ export function App() {
               onCrud={runCrud}
               onSaveGroupFromNode={saveGroupFromNode}
               onSaveCurrentGroup={saveCurrentSelectionGroup}
+              onAssignSelectionToGroup={addCurrentSelectionToExistingGroup}
+              onUnassignSelectionFromGroup={removeCurrentSelectionFromGroups}
               onOpenRootPath={() => {
                 const targetPath = activeWorkspace?.path;
                 if (!targetPath) return;
@@ -1836,84 +2158,112 @@ export function App() {
               />
             )}
             <section className="context-pane">
-              <div className="tab-row">
-                <button className={`tab-btn ${detailTab === "editor" ? "active" : ""}`} onClick={() => setDetailTab("editor")} title="텍스트 편집기">편집</button>
-                <button className={`tab-btn ${detailTab === "central" ? "active" : ""}`} onClick={() => setDetailTab("central")} title="중앙 저장소">저장소</button>
-                <button className={`tab-btn ${detailTab === "diff" ? "active" : ""}`} onClick={() => setDetailTab("diff")} title="파일 변경 비교">Diff</button>
-                <button className={`tab-btn ${detailTab === "updates" ? "active" : ""}`} onClick={() => setDetailTab("updates")} title="업데이트 후보">업데이트</button>
-                <button className={`tab-btn ${detailTab === "git" ? "active" : ""}`} onClick={() => setDetailTab("git")} title="Git 동기화">Git</button>
+              <div className="context-section-controls">
+                <button
+                  className="icon-btn"
+                  onClick={() => setCentralPaneCollapsed((prev) => !prev)}
+                  disabled={blockUi || modalOpen}
+                  title={centralPaneCollapsed ? "중앙 저장소 펼치기" : "중앙 저장소 접기"}
+                >
+                  {centralPaneCollapsed ? "중앙 저장소 펼치기" : "중앙 저장소 접기"}
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={() => setDetailPaneCollapsed((prev) => !prev)}
+                  disabled={blockUi || modalOpen}
+                  title={detailPaneCollapsed ? "하단 패널 펼치기" : "하단 패널 접기"}
+                >
+                  {detailPaneCollapsed ? "하단 패널 펼치기" : "하단 패널 접기"}
+                </button>
               </div>
 
-              {detailTab === "central" && (
-                <TreeSection
-                  title="중앙 저장소"
-                  selectionLabel={centralSelectionLabel}
-                  side="central"
-                  roots={focusedCentralTree}
-                  expanded={centralExpanded}
-                  checked={centralChecked}
-                  activeKey={centralActiveKey}
-                  multi={centralMulti}
-                  statuses={toolOrder.map((tool) => ({
-                    tool,
-                    workspaceDir: "",
-                    exists: centralTree.some((node) => node.tool === tool)
-                  }))}
-                  fileDiffMap={centralDiffMap}
-                  toolFocus={centralToolFocus}
-                  onToolFocusChange={setCentralToolFocus}
-                  activeNode={activeCentralNode}
-                  filterQuery={centralFilter}
-                  onFilterChange={setCentralFilter}
-                  filterMode={treeFilterMode.central}
-                  onFilterModeChange={(mode) => setTreeFilterModeForSide("central", mode)}
-                  groupOptions={getSideGroups("central").map((group) => ({ id: group.id, name: group.name }))}
-                  groupSelection={groupSearchSelection.central}
-                  onGroupSelectionChange={(groupId) => toggleGroupSearchForSide("central", groupId)}
-                  onExpandAll={expandAll}
-                  onCollapseAll={collapseAll}
-                  activeGroupFilterCount={getActiveGroupIds("central").length}
-                  activeGroupNames={getActiveGroupNames("central")}
-                  transferActions={(
-                    <div className="transfer-inline-actions">
-                      <button
-                        className={`transfer-inline-btn promote ${workspaceTransferCount > 0 ? "has-items" : ""}`}
-                        onClick={() => void startTransfer("toCentral")}
-                        disabled={blockUi || modalOpen || workspaceTransferCount === 0}
-                        title="작업 폴더 선택 파일 → 중앙 저장소"
-                      >
-                        ↑ 올리기
-                        {workspaceTransferCount > 0 && <span className="ti-badge">{workspaceTransferCount}</span>}
-                      </button>
-                      <button
-                        className={`transfer-inline-btn import ${centralTransferCount > 0 ? "has-items" : ""}`}
-                        onClick={() => void startTransfer("toWorkspace")}
-                        disabled={blockUi || modalOpen || centralTransferCount === 0}
-                        title="중앙 저장소 선택 파일 → 작업 폴더"
-                      >
-                        ↓ 가져오기
-                        {centralTransferCount > 0 && <span className="ti-badge">{centralTransferCount}</span>}
-                      </button>
-                    </div>
-                  )}
-                  blockUi={blockUi}
-                  modalOpen={modalOpen}
-                  onCrud={runCrud}
-                  onSaveGroupFromNode={saveGroupFromNode}
-                  onSaveCurrentGroup={saveCurrentSelectionGroup}
-                  onOpenRootPath={() => {
-                    const targetPath = config?.centralRepo;
-                    if (!targetPath) return;
-                    void openPathInExplorer(targetPath, "중앙 저장소");
-                  }}
-                  onToggleExpand={toggleExpand}
-                  onToggleCheck={toggleFolderCheck}
-                  onClickNode={onNodeClick}
-                  onContextMenu={handleContextMenu}
-                />
+              {!centralPaneCollapsed ? (
+                <div className={`central-pane-tree ${detailPaneCollapsed ? "expanded" : ""}`}>
+                  <TreeSection
+                    title="중앙 저장소"
+                    selectionLabel={centralSelectionLabel}
+                    side="central"
+                    roots={focusedCentralTree}
+                    expanded={centralExpanded}
+                    checked={centralChecked}
+                    activeKey={centralActiveKey}
+                    multi={centralMulti}
+                    statuses={toolOrder.map((tool) => ({
+                      tool,
+                      workspaceDir: "",
+                      exists: centralTree.some((node) => node.tool === tool)
+                    }))}
+                    fileDiffMap={centralDiffMap}
+                    toolFocus={centralToolFocus}
+                    onToolFocusChange={setCentralToolFocus}
+                    activeNode={activeCentralNode}
+                    filterQuery={centralFilter}
+                    onFilterChange={setCentralFilter}
+                    filterMode={treeFilterMode.central}
+                    onFilterModeChange={(mode) => setTreeFilterModeForSide("central", mode)}
+                    groupOptions={getSideGroups("central").map((group) => ({ id: group.id, name: group.name }))}
+                    groupSelection={groupSearchSelection.central}
+                    onGroupSelectionChange={(groupId) => toggleGroupSearchForSide("central", groupId)}
+                    onExpandAll={expandAll}
+                    onCollapseAll={collapseAll}
+                    activeGroupFilterCount={getActiveGroupIds("central").length}
+                    activeGroupNames={getActiveGroupNames("central")}
+                    transferActions={(
+                      <div className="transfer-inline-actions">
+                        <button
+                          className={`transfer-inline-btn promote ${workspaceTransferCount > 0 ? "has-items" : ""}`}
+                          onClick={() => void startTransfer("toCentral")}
+                          disabled={blockUi || modalOpen || workspaceTransferCount === 0}
+                          title="작업 폴더 선택 파일 → 중앙 저장소"
+                        >
+                          ↑ 올리기
+                          {workspaceTransferCount > 0 && <span className="ti-badge">{workspaceTransferCount}</span>}
+                        </button>
+                        <button
+                          className={`transfer-inline-btn import ${centralTransferCount > 0 ? "has-items" : ""}`}
+                          onClick={() => void startTransfer("toWorkspace")}
+                          disabled={blockUi || modalOpen || centralTransferCount === 0}
+                          title="중앙 저장소 선택 파일 → 작업 폴더"
+                        >
+                          ↓ 가져오기
+                          {centralTransferCount > 0 && <span className="ti-badge">{centralTransferCount}</span>}
+                        </button>
+                      </div>
+                    )}
+                    blockUi={blockUi}
+                    modalOpen={modalOpen}
+                    onCrud={runCrud}
+                    onSaveGroupFromNode={saveGroupFromNode}
+                    onSaveCurrentGroup={saveCurrentSelectionGroup}
+                    onAssignSelectionToGroup={addCurrentSelectionToExistingGroup}
+                    onUnassignSelectionFromGroup={removeCurrentSelectionFromGroups}
+                    onOpenRootPath={() => {
+                      const targetPath = config?.centralRepo;
+                      if (!targetPath) return;
+                      void openPathInExplorer(targetPath, "중앙 저장소");
+                    }}
+                    onToggleExpand={toggleExpand}
+                    onToggleCheck={toggleFolderCheck}
+                    onClickNode={onNodeClick}
+                    onContextMenu={handleContextMenu}
+                  />
+                </div>
+              ) : (
+                <div className="context-collapsed-notice">
+                  중앙 저장소 패널이 접혀 있습니다.
+                </div>
               )}
 
-              {detailTab === "editor" && (
+              {!detailPaneCollapsed && (
+                <div className="tab-row">
+                  <button className={`tab-btn ${detailTab === "editor" ? "active" : ""}`} onClick={() => setDetailTab("editor")} title="텍스트 편집기">편집</button>
+                  <button className={`tab-btn ${detailTab === "diff" ? "active" : ""}`} onClick={() => setDetailTab("diff")} title="파일 변경 비교">Diff</button>
+                  <button className={`tab-btn ${detailTab === "updates" ? "active" : ""}`} onClick={() => setDetailTab("updates")} title="업데이트 후보">업데이트</button>
+                  <button className={`tab-btn ${detailTab === "git" ? "active" : ""}`} onClick={() => setDetailTab("git")} title="Git 동기화">Git</button>
+                </div>
+              )}
+
+              {!detailPaneCollapsed && detailTab === "editor" && (
                 <div className="pane">
                   <div className="pane-head">
                     <div className="editor-file-info">
@@ -1948,7 +2298,7 @@ export function App() {
                 </div>
               )}
 
-              {detailTab === "diff" && (
+              {!detailPaneCollapsed && detailTab === "diff" && (
                 <div className="pane">
                   <div className="pane-head">
                     <h2>Diff</h2>
@@ -1975,7 +2325,7 @@ export function App() {
                 </div>
               )}
 
-              {detailTab === "updates" && (
+              {!detailPaneCollapsed && detailTab === "updates" && (
                 <div className="pane">
                   <div className="pane-head">
                     <div className="panel-head-left">
@@ -2039,7 +2389,7 @@ export function App() {
                 </div>
               )}
 
-              {detailTab === "git" && (
+              {!detailPaneCollapsed && detailTab === "git" && (
                 <div className="pane">
                   <div className="pane-head">
                     <h2>Git 동기화</h2>
@@ -2055,6 +2405,11 @@ export function App() {
                     <button className="primary" onClick={() => void runSync(false)} disabled={blockUi || !syncCommitMessage.trim()}>commit만</button>
                     <button className="primary secondary" onClick={() => void runSync(true)} disabled={blockUi || !syncCommitMessage.trim()}>commit + push</button>
                   </div>
+                </div>
+              )}
+              {detailPaneCollapsed && (
+                <div className="context-collapsed-notice">
+                  하단 상세 패널이 접혀 있습니다. 펼치면 편집/Diff/업데이트/Git을 확인할 수 있습니다.
                 </div>
               )}
             </section>
@@ -2142,7 +2497,31 @@ export function App() {
                     <option value="gemini">gemini</option>
                     <option value="cursor">cursor</option>
                     <option value="antigravity">antigravity</option>
+                    <option value="agents">agents</option>
                   </select>
+                </label>
+                <label className="admin-field">
+                  <span>
+                    현재 workspace 자동 새로고침(초)
+                    <em className="field-hint">0이면 비활성화</em>
+                  </span>
+                  <div className="admin-inline">
+                    <input
+                      type="number"
+                      min={0}
+                      max={3600}
+                      step={1}
+                      value={settingsDraft.workspaceAutoRefreshSeconds}
+                      onChange={(event) => {
+                        const value = normalizeAutoRefreshSeconds(event.target.value);
+                        setSettingsDraft((prev) => ({ ...prev, workspaceAutoRefreshSeconds: value }));
+                      }}
+                    />
+                    <span style={{ minWidth: 36, textAlign: "right" }}>초</span>
+                  </div>
+                  <small className="admin-inline-hint">
+                    적용 대상: {activeWorkspace ? activeWorkspace.name : "-"}
+                  </small>
                 </label>
                 <label className="admin-field">
                   <span>글자 크기 ({settingsDraft.fontSize}px)</span>
@@ -2156,12 +2535,32 @@ export function App() {
                       onChange={(event) => {
                         const size = Number(event.target.value);
                         setSettingsDraft((prev) => ({ ...prev, fontSize: size }));
-                        document.documentElement.style.setProperty("--app-font-size", `${size}px`);
+                        applyTypographySettings(size, settingsDraft.treeFontScale);
                       }}
                       style={{ flex: 1 }}
                     />
                     <span style={{ minWidth: 36, textAlign: "right" }}>{settingsDraft.fontSize}px</span>
                   </div>
+                </label>
+                <label className="admin-field">
+                  <span>트리 글자 배율 ({Math.round(settingsDraft.treeFontScale * 100)}%)</span>
+                  <div className="admin-inline">
+                    <input
+                      type="range"
+                      min={85}
+                      max={120}
+                      step={1}
+                      value={Math.round(settingsDraft.treeFontScale * 100)}
+                      onChange={(event) => {
+                        const scale = normalizeTreeFontScale(Number(event.target.value) / 100);
+                        setSettingsDraft((prev) => ({ ...prev, treeFontScale: scale }));
+                        applyTypographySettings(settingsDraft.fontSize, scale);
+                      }}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: 42, textAlign: "right" }}>{Math.round(settingsDraft.treeFontScale * 100)}%</span>
+                  </div>
+                  <small className="admin-inline-hint">폴더/파일 목록 글자만 조절합니다.</small>
                 </label>
                 <div className="button-row">
                   <button onClick={() => void initializeCentralInSettings()} disabled={blockUi || gitBusy}>Git 초기화</button>
@@ -2307,10 +2706,10 @@ export function App() {
               {preview.mode === "toCentral" ? "작업 폴더 → 중앙 저장소" : "중앙 저장소 → 작업 폴더"}
             </div>
             <div className="summary-grid">
-              <div>총 선택: {preview.selections.length}개</div>
-              <div>변경 파일: {preview.existingChanged.length}개</div>
-              <div>새 파일: {preview.newFiles}개</div>
-              <div>동일 파일: {preview.unchanged}개</div>
+              <div>총 선택 스킬: {preview.skillSummary.totalSkills}개</div>
+              <div>변경 스킬: {preview.skillSummary.changedSkills}개</div>
+              <div>신규 스킬: {preview.skillSummary.newSkills}개</div>
+              <div>동일 스킬: {preview.skillSummary.sameSkills}개</div>
             </div>
             {warnings.length > 0 && (
               <div className="warning-box">
@@ -2351,6 +2750,8 @@ export function App() {
           <div className="context-sep" />
           <button onClick={() => { saveGroupFromNode(contextMenu.side, contextMenu.node); setContextMenu(null); }}>이 항목으로 그룹 저장</button>
           <button onClick={() => { saveCurrentSelectionGroup(contextMenu.side); setContextMenu(null); }}>현재 선택으로 그룹 저장</button>
+          <button onClick={() => { void addCurrentSelectionToExistingGroup(contextMenu.side); setContextMenu(null); }}>현재 선택을 기존 그룹에 추가</button>
+          <button onClick={() => { void removeCurrentSelectionFromGroups(contextMenu.side); setContextMenu(null); }}>현재 선택을 그룹에서 해제</button>
           <div className="context-sep" />
           {contextMenu.side === "workspace" ? (
             <button
@@ -2521,6 +2922,8 @@ type TreeSectionProps = {
   onCrud: (side: TreeSide, action: CrudAction, node?: TreeNode) => Promise<void>;
   onSaveGroupFromNode: (side: TreeSide, node: TreeNode) => Promise<void>;
   onSaveCurrentGroup: (side: TreeSide) => Promise<void>;
+  onAssignSelectionToGroup: (side: TreeSide) => Promise<void>;
+  onUnassignSelectionFromGroup: (side: TreeSide) => Promise<void>;
   onOpenRootPath: () => void;
   onToggleExpand: (side: TreeSide, key: string) => void;
   onToggleCheck: (side: TreeSide, key: string, value: boolean) => void;
@@ -2528,8 +2931,91 @@ type TreeSectionProps = {
   onContextMenu: (side: TreeSide, node: TreeNode, event: MouseEvent) => void;
 };
 
+type UiIconName =
+  | "folderOpen"
+  | "expandAll"
+  | "collapseAll"
+  | "filePlus"
+  | "folderPlus"
+  | "groupTag"
+  | "assign"
+  | "search"
+  | "close";
+
+function UiIcon({ name }: { name: UiIconName }) {
+  switch (name) {
+    case "folderOpen":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 4.5h3l1.5 2h7v5.5c0 .83-.67 1.5-1.5 1.5H3.5C2.67 13.5 2 12.83 2 12V6c0-.83.67-1.5 1.5-1.5Z" />
+        </svg>
+      );
+    case "expandAll":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 3.5h10M3 8h10" />
+          <path d="M5 5.5l3 3 3-3" />
+          <path d="M5 10l3 3 3-3" />
+        </svg>
+      );
+    case "collapseAll":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 3.5h10M3 8h10" />
+          <path d="M5 8.5l3-3 3 3" />
+          <path d="M5 13l3-3 3 3" />
+        </svg>
+      );
+    case "filePlus":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 2.5h5l3 3v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13V4A1.5 1.5 0 0 1 4 2.5Z" />
+          <path d="M9 2.5V6h3" />
+          <path d="M6.5 10.5h3M8 9v3" />
+        </svg>
+      );
+    case "folderPlus":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 4.5h3l1.2 1.5h6.8c.83 0 1.5.67 1.5 1.5v4.5c0 .83-.67 1.5-1.5 1.5H3.5C2.67 13.5 2 12.83 2 12V6c0-.83.67-1.5 1.5-1.5Z" />
+          <path d="M8 7.5v4M6 9.5h4" />
+        </svg>
+      );
+    case "groupTag":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 6.5V3.5h3l6.5 6.5-3 3-6.5-6.5Z" />
+          <circle cx="4.8" cy="5" r="0.8" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "assign":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M9.5 4.5h4v4" />
+          <path d="M13.5 4.5 7 11" />
+          <path d="M2.5 11.5h4M2.5 9.5V12.5" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="4" />
+          <path d="m10.5 10.5 3 3" />
+        </svg>
+      );
+    case "close":
+      return (
+        <svg className="icon-glyph" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4 12 12M12 4 4 12" />
+        </svg>
+      );
+  }
+}
+
 function TreeSection(props: TreeSectionProps) {
   const { activeNode, blockUi, modalOpen, onCrud, side } = props;
+  const [textSearchOpen, setTextSearchOpen] = useState(Boolean(props.filterQuery));
+  const textSearchRef = useRef<HTMLInputElement | null>(null);
   const visibleRoots = useMemo(() => {
     if (!props.toolFocus) return props.roots;
     if (props.roots.length !== 1) return props.roots;
@@ -2538,26 +3024,77 @@ function TreeSection(props: TreeSectionProps) {
     if (root.relativePath !== "") return props.roots;
     return root.children;
   }, [props.roots, props.toolFocus]);
+  const visibleToolStatuses = useMemo(() => {
+    const statuses = props.statuses ?? [];
+    const existing = statuses.filter((status) => status.exists);
+    return existing.length > 0 ? existing : statuses;
+  }, [props.statuses]);
+  const groupFilterSummary = useMemo(() => {
+    if (props.activeGroupFilterCount <= 0) {
+      return "전체";
+    }
+    if (props.activeGroupNames.length <= 0) {
+      return `${props.activeGroupFilterCount}개`;
+    }
+    if (props.activeGroupNames.length === 1) {
+      return props.activeGroupNames[0] ?? "전체";
+    }
+    return `${props.activeGroupNames[0]} 외 ${props.activeGroupNames.length - 1}`;
+  }, [props.activeGroupFilterCount, props.activeGroupNames]);
+  const groupFilterTooltip =
+    props.activeGroupFilterCount > 0 && props.activeGroupNames.length > 0
+      ? props.activeGroupNames.join(", ")
+      : "현재 그룹 필터 없음";
+
+  useEffect(() => {
+    if (props.filterMode === "group") {
+      setTextSearchOpen(false);
+      return;
+    }
+    if (props.filterQuery.trim()) {
+      setTextSearchOpen(true);
+    }
+  }, [props.filterMode, props.filterQuery]);
+
+  useEffect(() => {
+    if (props.filterMode !== "text" || !textSearchOpen) return;
+    textSearchRef.current?.focus();
+  }, [props.filterMode, textSearchOpen]);
+
+  const toggleTextSearch = () => {
+    if (props.filterMode !== "text") {
+      props.onFilterModeChange("text");
+      setTextSearchOpen(true);
+      return;
+    }
+    if (textSearchOpen) {
+      if (props.filterQuery) {
+        props.onFilterChange("");
+      }
+      setTextSearchOpen(false);
+      return;
+    }
+    setTextSearchOpen(true);
+  };
+
   return (
     <article className="tree-panel">
       <div className="panel-head">
         <div className="panel-head-left">
           <h2>{props.title}</h2>
-          <strong>{props.selectionLabel}</strong>
+          <div className="panel-subline">
+            <strong>{props.selectionLabel}</strong>
+            <span
+              className={`group-filter-inline ${props.activeGroupFilterCount > 0 ? "active" : "inactive"}`}
+              title={groupFilterTooltip}
+            >
+              그룹 {groupFilterSummary}
+            </span>
+          </div>
         </div>
         {props.transferActions}
       </div>
-      {props.activeGroupFilterCount > 0 && (
-        <div className="group-filter-badge">
-          <strong>그룹 필터 {props.activeGroupFilterCount}개</strong>
-          <div className="group-filter-name-list">
-            {props.activeGroupNames.map((name) => (
-              <span key={name} className="group-filter-name-chip">{name}</span>
-            ))}
-          </div>
-        </div>
-      )}
-      {(props.statuses?.length ?? 0) > 0 && (
+      {visibleToolStatuses.length > 0 && (
         <div className="tool-badges">
           <button
             className={`badge filter-btn ${props.toolFocus === null ? "active" : ""}`}
@@ -2566,24 +3103,31 @@ function TreeSection(props: TreeSectionProps) {
           >
             전체
           </button>
-          {props.statuses?.map((s) => (
+          {visibleToolStatuses.map((s) => (
             <button
               key={`${side}-${s.tool}`}
-              className={`badge filter-btn ${s.exists ? `tool-${s.tool}` : "missing"} ${props.toolFocus === s.tool ? "active" : ""}`}
+              className={`badge filter-btn tool-${s.tool} ${props.toolFocus === s.tool ? "active" : ""}`}
               onClick={() => props.onToolFocusChange?.(props.toolFocus === s.tool ? null : s.tool)}
               disabled={blockUi || modalOpen}
-              title={s.exists ? `${s.tool}만 보기` : `${s.tool} 없음`}
+              title={`${s.tool}만 보기`}
             >
-              {s.tool} {s.exists ? "있음" : "없음"}
+              {s.tool}
             </button>
           ))}
         </div>
       )}
-      <div className="tree-toolbar">
+      <div className="tree-toolbar compact-toolbar">
         <select
           className="tree-filter-mode"
           value={props.filterMode}
-          onChange={(event) => props.onFilterModeChange(event.target.value as "text" | "group")}
+          onChange={(event) => {
+            const mode = event.target.value as "text" | "group";
+            props.onFilterModeChange(mode);
+            setTextSearchOpen(mode === "text");
+            if (mode === "group" && props.filterQuery) {
+              props.onFilterChange("");
+            }
+          }}
           disabled={blockUi || modalOpen}
           title="검색 모드"
         >
@@ -2591,12 +3135,45 @@ function TreeSection(props: TreeSectionProps) {
           <option value="group">그룹</option>
         </select>
         {props.filterMode === "text" ? (
-          <input
-            className="tree-search"
-            placeholder="검색..."
-            value={props.filterQuery}
-            onChange={(event) => props.onFilterChange(event.target.value)}
-          />
+          textSearchOpen ? (
+            <div className="tree-search-shell">
+              <input
+                ref={textSearchRef}
+                className="tree-search"
+                placeholder="검색..."
+                value={props.filterQuery}
+                onChange={(event) => props.onFilterChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  props.onFilterChange("");
+                  setTextSearchOpen(false);
+                }}
+              />
+              <button
+                className="icon-btn icon-only tree-search-close"
+                onClick={() => {
+                  props.onFilterChange("");
+                  setTextSearchOpen(false);
+                }}
+                disabled={blockUi || modalOpen}
+                title="검색 닫기"
+                aria-label="검색 닫기"
+              >
+                <UiIcon name="close" />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="icon-btn tree-search-toggle"
+              onClick={toggleTextSearch}
+              disabled={blockUi || modalOpen}
+              title="검색 열기"
+              aria-label="검색 열기"
+            >
+              <UiIcon name="search" />
+              <span>검색</span>
+            </button>
+          )
         ) : (
           <div className="tree-group-picker" title="그룹 선택으로 필터">
             {props.groupOptions.length === 0 ? (
@@ -2616,19 +3193,48 @@ function TreeSection(props: TreeSectionProps) {
             )}
           </div>
         )}
-        <button className="icon-btn" onClick={props.onOpenRootPath} disabled={blockUi || modalOpen} title="현재 패널의 루트 폴더 열기">폴더 열기</button>
-        <button className="icon-btn" onClick={() => props.onExpandAll(side)} disabled={blockUi || modalOpen} title="전체 펼치기">펼치기</button>
-        <button className="icon-btn" onClick={() => props.onCollapseAll(side)} disabled={blockUi || modalOpen} title="전체 접기">접기</button>
+        <div className="tree-toolbar-actions">
+          <button
+            className="icon-btn icon-only"
+            onClick={props.onOpenRootPath}
+            disabled={blockUi || modalOpen}
+            title="폴더 열기"
+            aria-label="폴더 열기"
+          >
+            <UiIcon name="folderOpen" />
+          </button>
+          <button
+            className="icon-btn icon-only"
+            onClick={() => props.onExpandAll(side)}
+            disabled={blockUi || modalOpen}
+            title="전체 펼치기"
+            aria-label="전체 펼치기"
+          >
+            <UiIcon name="expandAll" />
+          </button>
+          <button
+            className="icon-btn icon-only"
+            onClick={() => props.onCollapseAll(side)}
+            disabled={blockUi || modalOpen}
+            title="전체 접기"
+            aria-label="전체 접기"
+          >
+            <UiIcon name="collapseAll" />
+          </button>
+          <CrudActionBar
+            side={side}
+            activeNode={activeNode}
+            blockUi={blockUi}
+            modalOpen={modalOpen}
+            onCrud={onCrud}
+            onSaveGroupFromNode={props.onSaveGroupFromNode}
+            onSaveCurrentGroup={props.onSaveCurrentGroup}
+            onAssignSelectionToGroup={props.onAssignSelectionToGroup}
+            onUnassignSelectionFromGroup={props.onUnassignSelectionFromGroup}
+            compact
+          />
+        </div>
       </div>
-      <CrudActionBar
-        side={side}
-        activeNode={activeNode}
-        blockUi={blockUi}
-        modalOpen={modalOpen}
-        onCrud={onCrud}
-        onSaveGroupFromNode={props.onSaveGroupFromNode}
-        onSaveCurrentGroup={props.onSaveCurrentGroup}
-      />
       <TreeView
         side={props.side}
         roots={visibleRoots}
@@ -2651,29 +3257,180 @@ type CrudActionBarProps = {
   activeNode: TreeNode | null;
   blockUi: boolean;
   modalOpen: boolean;
+  compact?: boolean;
   onCrud: (side: TreeSide, action: CrudAction, node?: TreeNode) => Promise<void>;
   onSaveGroupFromNode: (side: TreeSide, node: TreeNode) => Promise<void>;
   onSaveCurrentGroup: (side: TreeSide) => Promise<void>;
+  onAssignSelectionToGroup: (side: TreeSide) => Promise<void>;
+  onUnassignSelectionFromGroup: (side: TreeSide) => Promise<void>;
 };
 
 function CrudActionBar(props: CrudActionBarProps) {
   const disabled = props.blockUi || props.modalOpen;
   const target = props.activeNode ?? undefined;
+  const compact = props.compact ?? false;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [moreMenuPos, setMoreMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDocMouseDown = (event: globalThis.MouseEvent) => {
+      const node = event.target as Node | null;
+      if (!node) return;
+      const insideMenu = moreMenuRef.current?.contains(node) ?? false;
+      const insideButton = moreButtonRef.current?.contains(node) ?? false;
+      if (!insideMenu && !insideButton) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const closeMenu = () => setMoreOpen(false);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [moreOpen]);
+
+  const closeMenu = () => {
+    setMoreOpen(false);
+    setMoreMenuPos(null);
+  };
+
+  const toggleMoreMenu = () => {
+    if (moreOpen) {
+      closeMenu();
+      return;
+    }
+    const rect = moreButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = 176;
+      const menuHeight = 170;
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+      const openBelowTop = rect.bottom + 6;
+      const openAboveTop = rect.top - menuHeight - 6;
+      const top =
+        openBelowTop + menuHeight <= window.innerHeight - 8
+          ? openBelowTop
+          : Math.max(8, openAboveTop);
+      setMoreMenuPos({ top, left });
+    } else {
+      setMoreMenuPos({ top: 56, left: Math.max(8, window.innerWidth - 136) });
+    }
+    setMoreOpen(true);
+  };
+
   return (
-    <div className="crud-row">
-      <button className="icon-btn" onClick={() => void props.onCrud(props.side, "createFile", target)} disabled={disabled} title="새 파일">+ 파일</button>
-      <button className="icon-btn" onClick={() => void props.onCrud(props.side, "createFolder", target)} disabled={disabled} title="새 폴더">+ 폴더</button>
+    <div className={`crud-row ${compact ? "compact" : ""}`}>
       <button
-        className="icon-btn"
+        className={`icon-btn ${compact ? "icon-only" : ""}`}
+        onClick={() => void props.onCrud(props.side, "createFile", target)}
+        disabled={disabled}
+        title="새 파일"
+        aria-label="새 파일"
+      >
+        {compact ? <UiIcon name="filePlus" /> : "+파일"}
+      </button>
+      <button
+        className={`icon-btn ${compact ? "icon-only" : ""}`}
+        onClick={() => void props.onCrud(props.side, "createFolder", target)}
+        disabled={disabled}
+        title="새 폴더"
+        aria-label="새 폴더"
+      >
+        {compact ? <UiIcon name="folderPlus" /> : "+폴더"}
+      </button>
+      <button
+        className={`icon-btn ${compact ? "icon-only" : ""}`}
         onClick={() => void props.onSaveCurrentGroup(props.side)}
         disabled={disabled}
         title="체크/선택한 항목으로 그룹 저장"
+        aria-label="새 그룹"
       >
-        + 그룹
+        {compact ? <UiIcon name="groupTag" /> : "+그룹"}
       </button>
-      <button className="icon-btn" onClick={() => void props.onCrud(props.side, "rename", target)} disabled={disabled || !target} title="이름 변경">수정</button>
-      <button className="icon-btn" onClick={() => void props.onCrud(props.side, "duplicate", target)} disabled={disabled || !target} title="복제">복제</button>
-      <button className="icon-btn" onClick={() => void props.onCrud(props.side, "delete", target)} disabled={disabled || !target} title="삭제">삭제</button>
+      <button
+        className={`icon-btn ${compact ? "icon-only" : ""}`}
+        onClick={() => void props.onAssignSelectionToGroup(props.side)}
+        disabled={disabled}
+        title="현재 선택을 기존 그룹에 추가"
+        aria-label="기존 그룹 할당"
+      >
+        {compact ? <UiIcon name="assign" /> : "할당"}
+      </button>
+      <div className="crud-more-wrap">
+        <button
+          ref={moreButtonRef}
+          className={`icon-btn crud-more-toggle ${compact ? "icon-only" : ""}`}
+          onClick={toggleMoreMenu}
+          disabled={disabled}
+          title="추가 작업"
+          aria-label="추가 작업"
+          aria-expanded={moreOpen}
+        >
+          ⋯
+        </button>
+      </div>
+      {moreOpen && moreMenuPos && (
+        <div
+          ref={moreMenuRef}
+          className="crud-more-menu"
+          style={{ top: `${moreMenuPos.top}px`, left: `${moreMenuPos.left}px` }}
+        >
+          <button
+            className="icon-btn"
+            onClick={() => {
+              closeMenu();
+              void props.onUnassignSelectionFromGroup(props.side);
+            }}
+            disabled={disabled}
+            title="현재 선택을 그룹에서 해제"
+          >
+            그룹 해제
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => {
+              closeMenu();
+              void props.onCrud(props.side, "rename", target);
+            }}
+            disabled={disabled || !target}
+            title="이름 변경"
+          >
+            수정
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => {
+              closeMenu();
+              void props.onCrud(props.side, "duplicate", target);
+            }}
+            disabled={disabled || !target}
+            title="복제"
+          >
+            복제
+          </button>
+          <button
+            className="icon-btn danger"
+            onClick={() => {
+              closeMenu();
+              void props.onCrud(props.side, "delete", target);
+            }}
+            disabled={disabled || !target}
+            title="삭제"
+          >
+            삭제
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2687,29 +3444,260 @@ function isSkillsRelativePath(relativePath: string): boolean {
   return normalized === "skills" || normalized.startsWith("skills/");
 }
 
+function normalizeGroupNameKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function buildSuggestedGroupName(
+  groups: SelectionGroup[],
+  side: TreeSide,
+  tool: ToolType,
+  baseName: string
+): string {
+  const normalizedBase = normalizeGroupNameKey(baseName);
+  const used = new Set(
+    groups
+      .filter((group) => group.side === side && group.targets[0]?.tool === tool)
+      .map((group) => normalizeGroupNameKey(group.name))
+  );
+  if (!used.has(normalizedBase)) return baseName;
+  let index = 2;
+  let candidate = `${baseName}-${index}`;
+  while (used.has(normalizeGroupNameKey(candidate))) {
+    index += 1;
+    candidate = `${baseName}-${index}`;
+  }
+  return candidate;
+}
+
+function getSkillFolderRelativePath(relativePath: string): string | null {
+  const normalized = normalizeSkillsPath(relativePath);
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  if ((parts[0] ?? "").toLowerCase() !== "skills") return null;
+  if (!parts[1]) return null;
+  return `skills/${parts[1]}`;
+}
+
+function toSkillFolderKey(tool: ToolType, relativePath: string): string | null {
+  const folder = getSkillFolderRelativePath(relativePath);
+  if (!folder) return null;
+  return `${tool}:${folder}`;
+}
+
+function buildSkillFolderKeySet(skills: Skill[]): Set<string> {
+  const set = new Set<string>();
+  for (const item of skills) {
+    const key = toSkillFolderKey(item.tool, item.relativePath);
+    if (key) set.add(key);
+  }
+  return set;
+}
+
+function countSkillFoldersFromSelections(selections: Selection[]): number {
+  const set = new Set<string>();
+  for (const item of selections) {
+    const key = toSkillFolderKey(item.tool, item.relativePath);
+    if (key) set.add(key);
+  }
+  return set.size;
+}
+
+function normalizeTargetsToSkillFolders(
+  side: TreeSide,
+  targets: GroupTarget[],
+  validSkillFolders?: Record<TreeSide, Set<string>>
+): GroupTarget[] {
+  const unique = new Map<string, GroupTarget>();
+  for (const target of targets) {
+    const normalized = normalizeSkillsPath(target.relativePath);
+    if (!isSkillsRelativePath(normalized)) continue;
+    const skillFolder = getSkillFolderRelativePath(normalized);
+    if (!skillFolder) continue;
+    const key = `${target.tool}:${skillFolder}`;
+    if (validSkillFolders?.[side] && !validSkillFolders[side].has(key)) continue;
+    unique.set(key, { kind: "folder", tool: target.tool, relativePath: skillFolder });
+  }
+  return [...unique.values()].sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
+}
+
 function sanitizeSelectionGroups(
-  groups: SelectionGroup[]
-): { groups: SelectionGroup[]; removedTargets: number; removedGroups: number } {
+  groups: SelectionGroup[],
+  validSkillFolders?: Record<TreeSide, Set<string>>
+): SelectionGroupNormalizedResult {
   const sanitized: SelectionGroup[] = [];
   let removedTargets = 0;
   let removedGroups = 0;
+  let splitGroups = 0;
+  let duplicateMerged = 0;
 
-  for (const group of groups) {
-    const filteredTargets = (group.targets ?? []).filter((target) => {
-      const keep = isSkillsRelativePath(target.relativePath);
-      if (!keep) removedTargets += 1;
-      return keep;
-    });
-
-    if (filteredTargets.length === 0) {
+  const mergedByNameKey = new Map<string, SelectionGroup>();
+  for (const sourceGroup of groups) {
+    const normalizedTargets = normalizeTargetsToSkillFolders(sourceGroup.side, sourceGroup.targets ?? [], validSkillFolders);
+    removedTargets += Math.max(0, (sourceGroup.targets?.length ?? 0) - normalizedTargets.length);
+    if (normalizedTargets.length === 0) {
       removedGroups += 1;
       continue;
     }
 
-    sanitized.push({ ...group, targets: filteredTargets });
+    const byTool = new Map<ToolType, GroupTarget[]>();
+    for (const target of normalizedTargets) {
+      const bucket = byTool.get(target.tool) ?? [];
+      bucket.push(target);
+      byTool.set(target.tool, bucket);
+    }
+
+    if (byTool.size > 1) {
+      splitGroups += byTool.size - 1;
+    }
+
+    for (const [tool, toolTargets] of byTool.entries()) {
+      const key = `${sourceGroup.side}:${tool}:${normalizeGroupNameKey(sourceGroup.name)}`;
+      const existing = mergedByNameKey.get(key);
+      if (!existing) {
+        mergedByNameKey.set(key, {
+          ...sourceGroup,
+          id: byTool.size > 1 ? `${sourceGroup.id}:${tool}` : sourceGroup.id,
+          side: sourceGroup.side,
+          targets: toolTargets
+        });
+        continue;
+      }
+
+      duplicateMerged += 1;
+      existing.targets = normalizeTargetsToSkillFolders(
+        existing.side,
+        [...existing.targets, ...toolTargets],
+        validSkillFolders
+      );
+    }
   }
 
-  return { groups: sanitized, removedTargets, removedGroups };
+  for (const group of mergedByNameKey.values()) {
+    if (group.targets.length === 0) {
+      removedGroups += 1;
+      continue;
+    }
+    sanitized.push(group);
+  }
+
+  sanitized.sort((a, b) => (
+    a.side.localeCompare(b.side)
+    || (a.targets[0]?.tool ?? "").localeCompare(b.targets[0]?.tool ?? "")
+    || a.name.localeCompare(b.name)
+  ));
+  return { groups: sanitized, removedTargets, removedGroups, splitGroups, duplicateMerged };
+}
+
+function areSelectionGroupsEqual(a: SelectionGroup[], b: SelectionGroup[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (!left || !right) return false;
+    if (left.id !== right.id || left.name !== right.name || left.side !== right.side) return false;
+    if (left.targets.length !== right.targets.length) return false;
+    for (let j = 0; j < left.targets.length; j += 1) {
+      const lt = left.targets[j];
+      const rt = right.targets[j];
+      if (!lt || !rt) return false;
+      if (lt.tool !== rt.tool || normalizeSkillsPath(lt.relativePath) !== normalizeSkillsPath(rt.relativePath)) return false;
+    }
+  }
+  return true;
+}
+
+function expandSelectionsToSkillFiles(
+  side: TreeSide,
+  selections: Selection[],
+  workspaceSkills: Skill[],
+  centralSkills: Skill[]
+): Selection[] {
+  const sourceSkills = side === "workspace" ? workspaceSkills : centralSkills;
+  const byFolder = new Set<string>();
+  for (const selection of selections) {
+    const key = toSkillFolderKey(selection.tool, selection.relativePath);
+    if (key) byFolder.add(key);
+  }
+  const resolved = new Map<string, Selection>();
+  for (const item of sourceSkills) {
+    const folderKey = toSkillFolderKey(item.tool, item.relativePath);
+    if (!folderKey || !byFolder.has(folderKey)) continue;
+    resolved.set(`${item.tool}:${item.relativePath}`, { tool: item.tool, relativePath: item.relativePath });
+  }
+  return [...resolved.values()].sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
+}
+
+function summarizeSkillTransfer(
+  allSelections: Selection[],
+  changed: Array<{ tool: ToolType; relativePath: string; diff: DiffData }>
+): TransferPreview["skillSummary"] {
+  const all = new Set<string>();
+  const changedSkills = new Set<string>();
+  const newSkills = new Set<string>();
+
+  for (const item of allSelections) {
+    const key = toSkillFolderKey(item.tool, item.relativePath);
+    if (key) all.add(key);
+  }
+  for (const item of changed) {
+    const key = toSkillFolderKey(item.tool, item.relativePath);
+    if (!key) continue;
+    changedSkills.add(key);
+    if (!item.diff.oldText && item.relativePath.toLowerCase().endsWith("/skill.md")) {
+      newSkills.add(key);
+    }
+  }
+
+  return {
+    totalSkills: all.size,
+    changedSkills: changedSkills.size,
+    newSkills: newSkills.size,
+    sameSkills: Math.max(0, all.size - changedSkills.size)
+  };
+}
+
+function mirrorTransferredGroup(
+  groups: SelectionGroup[],
+  groupTransfer: NonNullable<TransferPreview["groupTransfer"]>,
+  transferredSelections: Selection[]
+): SelectionGroup[] {
+  const source = groups.find((group) => group.id === groupTransfer.groupId && group.side === groupTransfer.sourceSide);
+  if (!source) return groups;
+
+  const targetSide: TreeSide = groupTransfer.sourceSide === "workspace" ? "central" : "workspace";
+  const transferredTargets = normalizeTargetsToSkillFolders(
+    targetSide,
+    transferredSelections.map((item) => ({ kind: "file", tool: item.tool, relativePath: item.relativePath })),
+    undefined
+  );
+  if (transferredTargets.length === 0) return groups;
+
+  const tool = transferredTargets[0]?.tool;
+  if (!tool) return groups;
+  const nameKey = normalizeGroupNameKey(source.name);
+  let updated = false;
+  const next = groups.map((group) => {
+    if (group.side !== targetSide) return group;
+    if (group.targets[0]?.tool !== tool) return group;
+    if (normalizeGroupNameKey(group.name) !== nameKey) return group;
+    updated = true;
+    return {
+      ...group,
+      targets: normalizeTargetsToSkillFolders(targetSide, [...group.targets, ...transferredTargets], undefined)
+    };
+  });
+
+  if (!updated) {
+    next.push({
+      id: `${targetSide}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: source.name,
+      side: targetSide,
+      targets: transferredTargets
+    });
+  }
+
+  return sanitizeSelectionGroups(next).groups;
 }
 
 function normalizePathForCompare(value: string): string {
@@ -2784,18 +3772,6 @@ function buildGroupTargetsFromNames(items: Skill[], folderNames: string[]): Grou
   return targets;
 }
 
-function uniqueGroupName(groups: SelectionGroup[], side: TreeSide, baseName: string): string {
-  const used = new Set(groups.filter((group) => group.side === side).map((group) => group.name));
-  if (!used.has(baseName)) return baseName;
-  let index = 2;
-  let candidate = `${baseName} (${index})`;
-  while (used.has(candidate)) {
-    index += 1;
-    candidate = `${baseName} (${index})`;
-  }
-  return candidate;
-}
-
 type TreeViewProps = {
   side: TreeSide;
   roots: TreeNode[];
@@ -2857,6 +3833,7 @@ function TreeNodeItem(props: TreeNodeItemProps) {
   const fileKey = `${node.tool}:${node.relativePath}`;
   const diffHint = node.type === "file" ? props.fileDiffMap[fileKey] : undefined;
   const isFolder = node.type === "folder";
+  const isSkillManifest = !isFolder && node.name.toLowerCase() === "skill.md";
   const folderIcon = isExpanded ? "▾ " : "▸ ";
   const fileExt = node.name.split(".").pop()?.toLowerCase();
   const fileIcon = fileExt === "md" ? "M" : fileExt === "json" ? "J" : "·";
@@ -2864,7 +3841,7 @@ function TreeNodeItem(props: TreeNodeItemProps) {
   return (
     <li>
       <div
-        className={`tree-item ${isActive ? "active" : ""} ${isMulti ? "multi" : ""}`}
+        className={`tree-item node-${node.type} ${isActive ? "active" : ""} ${isMulti ? "multi" : ""}`}
         style={{ paddingLeft: `${depth * 16}px` }}
         onContextMenu={(event) => props.onContextMenu(side, node, event)}
         onDoubleClick={() => { if (isFolder) props.onToggleExpand(side, node.key); }}
@@ -2881,12 +3858,15 @@ function TreeNodeItem(props: TreeNodeItemProps) {
           <span className="folder-check placeholder" />
         )}
 
-        <span className="tree-node-icon" onClick={() => { if (isFolder) props.onToggleExpand(side, node.key); }}>
+        <span
+          className={`tree-node-icon ${isFolder ? "folder" : "file"}`}
+          onClick={() => { if (isFolder) props.onToggleExpand(side, node.key); }}
+        >
           {isFolder ? folderIcon : fileIcon}
         </span>
 
         <button
-          className="tree-label"
+          className={`tree-label ${isFolder ? "folder-label" : "file-label"} ${isSkillManifest ? "skill-manifest" : ""}`}
           onClick={(event) => props.onClickNode(side, node, event)}
           onDoubleClick={(event) => {
             event.stopPropagation();
@@ -3172,6 +4152,45 @@ function workspaceShortLabel(item: WorkspaceEntry): string {
   const compact = base.replace(/[^a-zA-Z0-9]/g, "");
   if (compact.length >= 2) return compact.slice(0, 2).toUpperCase();
   return compact.toUpperCase() || "WS";
+}
+
+function normalizeTreeFontScale(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 1;
+  if (raw < 0.85) return 0.85;
+  if (raw > 1.2) return 1.2;
+  return Math.round(raw * 100) / 100;
+}
+
+function applyTypographySettings(fontSize: number, treeFontScale: number): void {
+  const root = document.documentElement;
+  root.style.setProperty("--app-font-size", `${Math.max(11, Math.min(22, Math.round(fontSize)))}px`);
+  root.style.setProperty("--tree-font-scale", String(normalizeTreeFontScale(treeFontScale)));
+}
+
+function getVisibleWorkspaceEntries(
+  entries: WorkspaceEntry[],
+  activeWorkspaceId: string | null,
+  expanded: boolean,
+  limit: number
+): WorkspaceEntry[] {
+  if (expanded || entries.length <= limit) return entries;
+  const sliced = entries.slice(0, limit);
+  if (!activeWorkspaceId) return sliced;
+  if (sliced.some((item) => item.id === activeWorkspaceId)) return sliced;
+  const active = entries.find((item) => item.id === activeWorkspaceId);
+  if (!active) return sliced;
+  if (limit <= 1) return [active];
+  return [...sliced.slice(0, limit - 1), active];
+}
+
+function normalizeAutoRefreshSeconds(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  const integer = Math.floor(raw);
+  if (integer < 0) return 0;
+  if (integer > 3600) return 3600;
+  return integer;
 }
 
 function groupTargetSummary(targets: GroupTarget[]): string {
