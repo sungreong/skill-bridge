@@ -16,3 +16,6 @@ AGENTS.md
 GUIDE.md
 IMPROVEMENT.md
 PLAN.md
+
+# VSCode extension build output
+*.vsix

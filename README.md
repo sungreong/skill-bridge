@@ -1,6 +1,6 @@
 # Skill Bridge
 
-A lightweight desktop tool and VSCode extension for managing AI agent skills (Claude, Codex, Gemini, Cursor, etc.) across local workspaces and a central Git repository.
+A lightweight desktop tool and VSCode extension for managing AI agent skills (Claude, Codex, Gemini, Cursor, Antigravity, `.agents`, etc.) across local workspaces and a central Git repository.
 
 ## What is this?
 
@@ -10,9 +10,18 @@ When you build useful skills (prompts/commands) in a project's `.claude`, `.code
 - **Promote** a good local skill to a central Git repository
 - **Pull** skills from the central repo into any workspace
 - **Diff** workspace vs. central versions before syncing
+- **Review** skill assets for missing `SKILL.md`, sensitive-looking content, scripts, broken links, and workspace-specific paths
+- **Hydrate** a project from reusable personal skill packs
 - **Track** skill versions without touching the CLI or Git directly
 
 This is not a skill runner, not an auto-sync daemon, and not a Git replacement. It's a **skill asset bridge** for everyday users.
+
+## Current Highlights
+
+- Desktop asset inventory shows workspace and central skill folders, warnings, file counts, and modified state.
+- Desktop workspace management includes per-workspace auto-refresh, denser tree controls, group cleanup, and adjustable tree typography.
+- VSCode adds Personal Skill Home, project hydration, personal packs, Add/Move Wizard, tree filters, Transfer Manager review prompts, and Problems-view quality diagnostics.
+- Existing overwrite flows still go through diff review; Skill Bridge does not auto-merge or auto-push without user intent.
 
 ## Project Structure
 
@@ -37,6 +46,7 @@ skill-bridge/
 | Gemini | `.gemini/` |
 | Cursor | `.cursor/rules/` |
 | Antigravity | `.antigravity/` |
+| Agents | `.agents/` |
 
 ## Getting Started
 
