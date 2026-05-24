@@ -50,6 +50,11 @@
     "onCommand:skillBridge.viewSkillHistory",
     "onCommand:skillBridge.openTransferExplorer",
     "onCommand:skillBridge.openLibraryManager",
+    "onCommand:skillBridge.openAddMoveWizard",
+    "onCommand:skillBridge.hydrateProject",
+    "onCommand:skillBridge.createCentralPack",
+    "onCommand:skillBridge.setPersonalHome",
+    "onCommand:skillBridge.switchTreeFilter",
     "onCommand:skillBridge.renameCentralNode",
     "onCommand:skillBridge.deleteCentralNode",
     "onCommand:skillBridge.duplicateCentralNode"
@@ -60,15 +65,15 @@
       "properties": {
         "skillBridge.centralRepoPath": {
           "type": "string",
-          "default": "",
-          "description": "현재 workspace 기준 중앙 스킬 저장소 경로"
+          "default": "${userHome}/skill-bridge-repo",
+          "description": "개인 중앙 스킬 저장소 경로. ${userHome}, ${workspaceFolder}, ${workspaceRoot}, ${env:NAME} 변수를 사용할 수 있습니다."
         },
         "skillBridge.defaultAgents": {
           "type": "array",
-          "default": ["claude", "codex", "gemini", "cursor", "antigravity"],
+          "default": ["claude", "codex", "gemini", "cursor", "antigravity", "agents"],
           "items": {
             "type": "string",
-            "enum": ["claude", "codex", "gemini", "cursor", "antigravity"]
+            "enum": ["claude", "codex", "gemini", "cursor", "antigravity", "agents"]
           },
           "description": "관리 대상 에이전트"
         }
@@ -90,8 +95,8 @@
       ]
     },
     "commands": [
-      { "command": "skillBridge.refresh", "title": "Refresh", "category": "Skill Bridge" },
-      { "command": "skillBridge.switchTab", "title": "Switch Source Tab", "category": "Skill Bridge" },
+      { "command": "skillBridge.refresh", "title": "Refresh", "category": "Skill Bridge", "icon": "$(refresh)" },
+      { "command": "skillBridge.switchTab", "title": "Switch Source Tab", "category": "Skill Bridge", "icon": "$(list-tree)" },
       { "command": "skillBridge.promoteSelected", "title": "Copy To Central", "category": "Skill Bridge" },
       { "command": "skillBridge.importSelected", "title": "Copy To Workspace", "category": "Skill Bridge" },
       { "command": "skillBridge.createWorkspaceGroup", "title": "Create Workspace Group", "category": "Skill Bridge" },
@@ -125,8 +130,13 @@
       { "command": "skillBridge.pasteCentralNode", "title": "Paste", "category": "Skill Bridge" },
       { "command": "skillBridge.installSkills", "title": "Install Skills via npx", "category": "Skill Bridge" },
       { "command": "skillBridge.viewSkillHistory", "title": "View Skill History", "category": "Skill Bridge" },
-      { "command": "skillBridge.openTransferExplorer", "title": "Open Transfer Explorer (Workspace ↔ Central)", "category": "Skill Bridge" },
-      { "command": "skillBridge.openLibraryManager", "title": "Open Skill Library Manager", "category": "Skill Bridge" },
+      { "command": "skillBridge.openTransferExplorer", "title": "Open Transfer Explorer (Workspace ↔ Central)", "category": "Skill Bridge", "icon": "$(arrow-swap)" },
+      { "command": "skillBridge.openLibraryManager", "title": "Open Skill Library Manager", "category": "Skill Bridge", "icon": "$(library)" },
+      { "command": "skillBridge.openAddMoveWizard", "title": "Open Add/Move Wizard", "category": "Skill Bridge", "icon": "$(add)" },
+      { "command": "skillBridge.hydrateProject", "title": "Hydrate Current Project", "category": "Skill Bridge", "icon": "$(repo-pull)" },
+      { "command": "skillBridge.createCentralPack", "title": "Create Personal Skill Pack", "category": "Skill Bridge", "icon": "$(package)" },
+      { "command": "skillBridge.setPersonalHome", "title": "Set Personal Skill Home", "category": "Skill Bridge", "icon": "$(home)" },
+      { "command": "skillBridge.switchTreeFilter", "title": "Switch Tree Filter", "category": "Skill Bridge", "icon": "$(filter)" },
       { "command": "skillBridge.renameCentralNode", "title": "Rename", "category": "Skill Bridge" },
       { "command": "skillBridge.deleteCentralNode", "title": "Delete", "category": "Skill Bridge" },
       { "command": "skillBridge.duplicateCentralNode", "title": "Duplicate", "category": "Skill Bridge" },
@@ -144,6 +154,41 @@
           "command": "skillBridge.switchTab",
           "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
           "group": "navigation@2.5"
+        },
+        {
+          "command": "skillBridge.switchTreeFilter",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@2.6"
+        },
+        {
+          "command": "skillBridge.openLibraryManager",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@2.7"
+        },
+        {
+          "command": "skillBridge.openTransferExplorer",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@2.8"
+        },
+        {
+          "command": "skillBridge.openAddMoveWizard",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@3"
+        },
+        {
+          "command": "skillBridge.hydrateProject",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@3.1"
+        },
+        {
+          "command": "skillBridge.createCentralPack",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@3.2"
+        },
+        {
+          "command": "skillBridge.setPersonalHome",
+          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "group": "navigation@3.3"
         }
       ],
       "view/item/context": [
@@ -333,6 +378,7 @@
         { "command": "skillBridge.pasteCentralNode", "when": "false" },
         { "command": "skillBridge.installSkills", "when": "false" },
         { "command": "skillBridge.viewSkillHistory", "when": "false" },
+        { "command": "skillBridge.switchTreeFilter", "when": "false" },
         { "command": "skillBridge.renameCentralNode", "when": "false" },
         { "command": "skillBridge.deleteCentralNode", "when": "false" },
         { "command": "skillBridge.duplicateCentralNode", "when": "false" }
@@ -398,6 +444,32 @@
         "command": "skillBridge.pasteCentralNode",
         "key": "ctrl+v",
         "when": "listFocus && view == skillBridge.centralSkills"
+      },
+      {
+        "command": "skillBridge.openLibraryManager",
+        "key": "ctrl+alt+l"
+      },
+      {
+        "command": "skillBridge.openAddMoveWizard",
+        "key": "ctrl+alt+a"
+      },
+      {
+        "command": "skillBridge.openTransferExplorer",
+        "key": "ctrl+alt+x"
+      },
+      {
+        "command": "skillBridge.hydrateProject",
+        "key": "ctrl+alt+h"
+      },
+      {
+        "command": "skillBridge.switchTreeFilter",
+        "key": "ctrl+alt+f",
+        "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills"
+      },
+      {
+        "command": "skillBridge.switchTab",
+        "key": "ctrl+alt+t",
+        "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills"
       }
     ]
   },

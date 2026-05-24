@@ -1,5 +1,14 @@
 import * as vscode from "vscode";
-import type { GroupTreeNode, SelectionGroup, SkillFile, SkillSelection, SkillTreeNode, ToolType } from "../types";
+import type {
+  GroupTreeNode,
+  SelectionGroup,
+  SkillAssetTreeMeta,
+  SkillFile,
+  SkillSelection,
+  SkillTreeFilterMode,
+  SkillTreeNode,
+  ToolType
+} from "../types";
 
 type SourceTab = "all" | ToolType;
 
@@ -67,6 +76,21 @@ function resolveDescription(node: SkillTreeNode): string | undefined {
   if (node.relativePath === "") {
     return `${countFiles(node)}개`;
   }
+  if (node.assetStatus) {
+    const labels: Record<string, string> = {
+      same: "동일",
+      new: "새 스킬",
+      changed: "변경",
+      missingSkillMd: "SKILL.md 없음",
+      risk: "주의",
+      recent: "최근"
+    };
+    const count = node.assetFileCount ?? countFiles(node);
+    const warningCount = node.assetWarnings?.length ?? 0;
+    return warningCount > 0
+      ? `${labels[node.assetStatus] ?? node.assetStatus} · ${warningCount}개 경고 · ${count}개`
+      : `${labels[node.assetStatus] ?? node.assetStatus} · ${count}개`;
+  }
   return undefined;
 }
 
@@ -82,7 +106,10 @@ function resolveTooltip(node: SkillTreeNode): string {
   }
   const tool = node.tool;
   const rel = node.relativePath;
-  return `${tool}/${rel}`;
+  const warnings = node.assetWarnings && node.assetWarnings.length > 0
+    ? `\n\n${node.assetWarnings.map((warning) => `- ${warning.message}`).join("\n")}`
+    : "";
+  return `${tool}/${rel}${warnings}`;
 }
 
 function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined): vscode.ThemeIcon {
@@ -93,9 +120,22 @@ function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined):
   if (node.kind === "group") {
     return new vscode.ThemeIcon("tag", node.selected ? new vscode.ThemeColor("charts.green") : undefined);
   }
-  return node.kind === "folder"
-    ? new vscode.ThemeIcon("folder", color)
-    : new vscode.ThemeIcon("file", color);
+  if (node.kind === "folder") {
+    if (node.assetStatus === "missingSkillMd" || node.assetStatus === "risk") {
+      return new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.orange"));
+    }
+    if (node.assetStatus === "new") {
+      return new vscode.ThemeIcon("add", new vscode.ThemeColor("charts.green"));
+    }
+    if (node.assetStatus === "changed") {
+      return new vscode.ThemeIcon("diff-modified", new vscode.ThemeColor("charts.yellow"));
+    }
+    if (node.assetStatus === "recent") {
+      return new vscode.ThemeIcon("history", new vscode.ThemeColor("charts.blue"));
+    }
+    return new vscode.ThemeIcon("folder", color);
+  }
+  return new vscode.ThemeIcon("file", color);
 }
 
 function shortParentPath(relativePath: string): string {
@@ -124,6 +164,9 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   private groups: SelectionGroup[] = [];
   private selectedGroupId: string | null = null;
   private activeTab: SourceTab = "all";
+  private assetMeta = new Map<string, SkillAssetTreeMeta>();
+  private missingSkillFolders: Array<{ tool: ToolType; relativePath: string }> = [];
+  private filterMode: SkillTreeFilterMode = "all";
 
   readonly onDidChangeTreeData = this.emitter.event;
 
@@ -139,6 +182,21 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
 
   setGroups(groups: SelectionGroup[]): void {
     this.groups = groups.filter((group) => group.side === this.side);
+    this.rebuild();
+  }
+
+  setAssetMeta(meta: Map<string, SkillAssetTreeMeta>): void {
+    this.assetMeta = meta;
+    this.rebuild();
+  }
+
+  setMissingSkillFolders(folders: Array<{ tool: ToolType; relativePath: string }>): void {
+    this.missingSkillFolders = folders;
+    this.rebuild();
+  }
+
+  setFilterMode(filterMode: SkillTreeFilterMode): void {
+    this.filterMode = filterMode;
     this.rebuild();
   }
 
@@ -211,10 +269,13 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
     const visibleSkills = this.activeTab === "all"
       ? this.skills
       : this.skills.filter((item) => item.tool === this.activeTab);
+    const visibleMissing = this.activeTab === "all"
+      ? this.missingSkillFolders
+      : this.missingSkillFolders.filter((item) => item.tool === this.activeTab);
     const visibleGroups = this.activeTab === "all"
       ? this.groups
       : this.groups.filter((group) => group.targets.some((target) => target.tool === this.activeTab));
-    const skillRoots = buildSkillTree(visibleSkills);
+    const skillRoots = buildSkillTree(visibleSkills, visibleMissing, this.assetMeta, this.filterMode);
     const groupRoot = buildGroupRoot(visibleGroups, this.side, this.selectedGroupId);
     this.roots = groupRoot ? [...skillRoots, groupRoot] : skillRoots;
     applyHighlight(this.roots, this.highlight);
@@ -222,10 +283,18 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   }
 }
 
-function buildSkillTree(skills: SkillFile[]): SkillTreeNode[] {
+function buildSkillTree(
+  skills: SkillFile[],
+  missingSkillFolders: Array<{ tool: ToolType; relativePath: string }>,
+  assetMeta: Map<string, SkillAssetTreeMeta>,
+  filterMode: SkillTreeFilterMode
+): SkillTreeNode[] {
   const roots = new Map<string, SkillTreeNode>();
 
   for (const skill of skills) {
+    const skillFolder = getSkillFolderRelativePath(skill.relativePath);
+    const meta = skillFolder ? assetMeta.get(`${skill.tool}:${skillFolder}`) : undefined;
+    if (skillFolder && !assetMatchesFilter(meta, filterMode)) continue;
     let root = roots.get(skill.tool);
     if (!root) {
       root = {
@@ -254,19 +323,109 @@ function buildSkillTree(skills: SkillFile[]): SkillTreeNode[] {
           key: `${skill.tool}:${soFar}`,
           kind: isLast ? "file" : "folder",
           tool: skill.tool,
-          relativePath: soFar,
-          label: part,
-          children: []
-        };
+        relativePath: soFar,
+        label: part,
+        children: []
+      };
+        if (!isLast) {
+          const folderMeta = assetMeta.get(`${skill.tool}:${soFar}`);
+          if (folderMeta) {
+            child.assetStatus = folderMeta.status;
+            child.assetWarnings = folderMeta.warnings;
+            child.assetFileCount = folderMeta.fileCount;
+            child.assetUpdatedAt = folderMeta.updatedAt;
+          }
+        }
         cursor.children.push(child);
       }
       cursor = child;
     }
   }
 
+  for (const missing of missingSkillFolders) {
+    const normalized = missing.relativePath.replace(/\\/g, "/");
+    const meta = assetMeta.get(`${missing.tool}:${normalized}`) ?? {
+      status: "missingSkillMd" as const,
+      warnings: [{
+        code: "missing-skill-md" as const,
+        severity: "danger" as const,
+        message: "SKILL.md가 없습니다.",
+        relativePath: normalized
+      }],
+      fileCount: 0,
+      updatedAt: null
+    };
+    if (!assetMatchesFilter(meta, filterMode)) continue;
+    let root = roots.get(missing.tool);
+    if (!root) {
+      root = {
+        key: `${missing.tool}:`,
+        kind: "folder",
+        tool: missing.tool,
+        relativePath: "",
+        label: missing.tool,
+        children: []
+      };
+      roots.set(missing.tool, root);
+    }
+    ensureFolderNode(root, missing.tool, normalized, meta);
+  }
+
   const list = [...roots.values()];
   sortNodes(list);
   return list;
+}
+
+function ensureFolderNode(
+  root: SkillTreeNode,
+  tool: ToolType,
+  relativePath: string,
+  meta: SkillAssetTreeMeta
+): SkillTreeNode {
+  const parts = relativePath.split("/").filter(Boolean);
+  let cursor = root;
+  let soFar = "";
+  for (const part of parts) {
+    soFar = soFar ? `${soFar}/${part}` : part;
+    let child = cursor.children.find((item) => item.label === part && item.kind === "folder");
+    if (!child) {
+      child = {
+        key: `${tool}:${soFar}`,
+        kind: "folder",
+        tool,
+        relativePath: soFar,
+        label: part,
+        children: []
+      };
+      cursor.children.push(child);
+    }
+    const childMeta = soFar === relativePath ? meta : undefined;
+    if (childMeta) {
+      child.assetStatus = childMeta.status;
+      child.assetWarnings = childMeta.warnings;
+      child.assetFileCount = childMeta.fileCount;
+      child.assetUpdatedAt = childMeta.updatedAt;
+    }
+    cursor = child;
+  }
+  return cursor;
+}
+
+function assetMatchesFilter(meta: SkillAssetTreeMeta | undefined, filterMode: SkillTreeFilterMode): boolean {
+  if (filterMode === "all") return true;
+  if (!meta) return false;
+  if (filterMode === "changed") return meta.status === "changed";
+  if (filterMode === "new") return meta.status === "new";
+  if (filterMode === "risk") return meta.status === "risk" || meta.warnings.length > 0;
+  if (filterMode === "missingSkillMd") return meta.status === "missingSkillMd";
+  if (filterMode === "recent") return meta.status === "recent";
+  return true;
+}
+
+function getSkillFolderRelativePath(relativePath: string): string | null {
+  const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts[0] !== "skills" || !parts[1]) return null;
+  return `skills/${parts[1]}`;
 }
 
 function buildGroupRoot(

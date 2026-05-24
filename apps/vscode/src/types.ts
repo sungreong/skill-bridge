@@ -8,6 +8,33 @@ export type SkillFile = {
   absolutePath: string;
 };
 
+export type SkillAssetWarningSeverity = "info" | "warning" | "danger";
+
+export type SkillAssetWarning = {
+  code:
+    | "missing-skill-md"
+    | "duplicate-name"
+    | "broken-reference"
+    | "sensitive-content"
+    | "workspace-specific-path"
+    | "script-file"
+    | "target-newer";
+  severity: SkillAssetWarningSeverity;
+  message: string;
+  relativePath?: string;
+};
+
+export type SkillAssetTreeStatus = "same" | "new" | "changed" | "missingSkillMd" | "risk" | "recent";
+
+export type SkillAssetTreeMeta = {
+  status: SkillAssetTreeStatus;
+  warnings: SkillAssetWarning[];
+  fileCount: number;
+  updatedAt: string | null;
+};
+
+export type SkillTreeFilterMode = "all" | "changed" | "new" | "risk" | "missingSkillMd" | "recent";
+
 export type SkillTreeNode = {
   key: string;
   kind: "file" | "folder" | "groupRoot" | "groupTool" | "group";
@@ -16,6 +43,10 @@ export type SkillTreeNode = {
   label: string;
   children: SkillTreeNode[];
   highlighted?: boolean;
+  assetStatus?: SkillAssetTreeStatus;
+  assetWarnings?: SkillAssetWarning[];
+  assetFileCount?: number;
+  assetUpdatedAt?: string | null;
   side?: "workspace" | "central";
   groupId?: string;
   count?: number;
@@ -50,6 +81,22 @@ export type SelectionGroup = {
 export type WorkspaceGroupFile = {
   version: 1 | 2;
   groups: SelectionGroup[];
+};
+
+export type PersonalSkillPack = {
+  id: string;
+  name: string;
+  description: string;
+  targets: GroupTarget[];
+  createdAt: string;
+  updatedAt: string;
+  lastHydratedAt?: string;
+};
+
+export type CentralPacksFile = {
+  version: 1;
+  updatedAt: string;
+  packs: PersonalSkillPack[];
 };
 
 export type TransferStatus = "added" | "removed" | "modified" | "same" | "typeChanged";
