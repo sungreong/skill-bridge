@@ -3,19 +3,30 @@ import path from "node:path";
 import os from "node:os";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { createPatch, diffLines } from "diff";
 
 const execFileAsync = promisify(execFile);
 const GLOBAL_WORKSPACE_ID = "ws-global-default";
 const GLOBAL_WORKSPACE_NAME = "Global (Home)";
 
-export type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity";
+export type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 export type SkillSource = "workspace" | "central";
 export type SkillNodeType = "file" | "folder";
+export type SkillAssetWarningCode =
+  | "missing-skill-md"
+  | "duplicate-name"
+  | "broken-reference"
+  | "sensitive-content"
+  | "workspace-specific-path"
+  | "script-file"
+  | "target-newer";
+export type SkillAssetWarningSeverity = "info" | "warning" | "danger";
 
 export interface WorkspaceEntry {
   id: string;
   name: string;
   path: string;
+  autoRefreshSeconds: number;
 }
 
 export interface AppConfig {
@@ -23,6 +34,7 @@ export interface AppConfig {
   autoPush: boolean;
   defaultTool: ToolType;
   fontSize: number;
+  treeFontScale: number;
   workspaces: WorkspaceEntry[];
   activeWorkspaceId: string | null;
 }
@@ -39,10 +51,36 @@ export interface SkillFile {
   absolutePath: string;
 }
 
+export interface SkillAssetWarning {
+  code: SkillAssetWarningCode;
+  severity: SkillAssetWarningSeverity;
+  message: string;
+  relativePath?: string;
+}
+
+export interface SkillAsset {
+  source: SkillSource;
+  tool: ToolType;
+  skillName: string;
+  rootRelativePath: string;
+  hasManifest: boolean;
+  fileCount: number;
+  totalBytes: number;
+  updatedAt: string | null;
+  files: SkillFile[];
+  warnings: SkillAssetWarning[];
+}
+
+export interface SkillAssetInventory {
+  workspace: SkillAsset[];
+  central: SkillAsset[];
+}
+
 export interface WorkspaceInspection {
   workspacePath: string;
   statuses: DirectoryStatus[];
   workspaceSkills: SkillFile[];
+  invalidSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
 }
 
 export interface DiffResult {
@@ -175,7 +213,8 @@ const TOOL_PATHS: Record<ToolType, { workspace: string; central: string }> = {
   codex: { workspace: ".codex", central: "codex" },
   gemini: { workspace: ".gemini", central: "gemini" },
   cursor: { workspace: ".cursor", central: "cursor" },
-  antigravity: { workspace: ".antigravity", central: "antigravity" }
+  antigravity: { workspace: ".antigravity", central: "antigravity" },
+  agents: { workspace: ".agents", central: "agents" }
 };
 
 const EDITABLE_EXTENSIONS = new Set([
@@ -214,12 +253,6 @@ const SENSITIVE_RULES: Array<{ rule: string; description: string; regex: RegExp 
 
 const SKILLS_ONLY_ERROR = "skills 폴더 하위만 관리할 수 있습니다.";
 
-type LocalDiffPart = {
-  added?: boolean;
-  removed?: boolean;
-  value: string;
-};
-
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.replace(/\\/g, "/").replace(/^\/+/, "").trim();
 }
@@ -227,6 +260,50 @@ function normalizeRelativePath(relativePath: string): string {
 function isManagedSkillRelativePath(relativePath: string): boolean {
   const normalized = normalizeRelativePath(relativePath).toLowerCase();
   return normalized === "skills" || normalized.startsWith("skills/");
+}
+
+function toSkillFolderRelativePath(relativePath: string): string | null {
+  const normalized = normalizeRelativePath(relativePath);
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  if (parts[0]?.toLowerCase() !== "skills") return null;
+  if (!parts[1]) return null;
+  return `skills/${parts[1]}`;
+}
+
+function collectValidSkillFiles(relativePaths: string[]): {
+  validFiles: string[];
+  invalidSkillFolders: string[];
+} {
+  const bySkillFolder = new Map<string, string[]>();
+  const hasSkillMd = new Set<string>();
+
+  for (const rel of relativePaths) {
+    if (!isManagedSkillRelativePath(rel)) continue;
+    const skillFolder = toSkillFolderRelativePath(rel);
+    if (!skillFolder) continue;
+    const normalized = normalizeRelativePath(rel);
+    const bucket = bySkillFolder.get(skillFolder) ?? [];
+    bucket.push(normalized);
+    bySkillFolder.set(skillFolder, bucket);
+    if (normalized.toLowerCase() === `${skillFolder.toLowerCase()}/skill.md`) {
+      hasSkillMd.add(skillFolder);
+    }
+  }
+
+  const validFiles: string[] = [];
+  const invalidSkillFolders: string[] = [];
+  for (const [folder, files] of bySkillFolder.entries()) {
+    if (!hasSkillMd.has(folder)) {
+      invalidSkillFolders.push(folder);
+      continue;
+    }
+    validFiles.push(...files);
+  }
+
+  validFiles.sort((a, b) => a.localeCompare(b));
+  invalidSkillFolders.sort((a, b) => a.localeCompare(b));
+  return { validFiles, invalidSkillFolders };
 }
 
 function assertManagedSkillRelativePath(relativePath: string): void {
@@ -262,7 +339,8 @@ function normalizeConfig(input: Partial<AppConfig>): AppConfig {
     .map((item) => ({
       id: item.id,
       name: item.name || path.basename(item.path),
-      path: item.path
+      path: item.path,
+      autoRefreshSeconds: normalizeAutoRefreshSeconds(item.autoRefreshSeconds)
     }));
 
   const hasGlobal = hasGlobalSkillWorkspace();
@@ -272,7 +350,7 @@ function normalizeConfig(input: Partial<AppConfig>): AppConfig {
     : userWorkspaces;
 
   const workspaces = hasGlobal
-    ? [{ id: GLOBAL_WORKSPACE_ID, name: GLOBAL_WORKSPACE_NAME, path: homePath }, ...dedupedUser]
+    ? [{ id: GLOBAL_WORKSPACE_ID, name: GLOBAL_WORKSPACE_NAME, path: homePath, autoRefreshSeconds: 0 }, ...dedupedUser]
     : dedupedUser;
 
   const activeWorkspaceId = workspaces.some((item) => item.id === input.activeWorkspaceId)
@@ -284,9 +362,27 @@ function normalizeConfig(input: Partial<AppConfig>): AppConfig {
     autoPush: input.autoPush ?? true,
     defaultTool: input.defaultTool ?? "claude",
     fontSize: Math.max(11, Math.min(22, input.fontSize ?? 15)),
+    treeFontScale: normalizeTreeFontScale(input.treeFontScale),
     workspaces,
     activeWorkspaceId
   };
+}
+
+function normalizeAutoRefreshSeconds(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  const integer = Math.floor(raw);
+  if (integer < 0) return 0;
+  if (integer > 3600) return 3600;
+  return integer;
+}
+
+function normalizeTreeFontScale(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 1;
+  if (raw < 0.85) return 0.85;
+  if (raw > 1.2) return 1.2;
+  return Math.round(raw * 100) / 100;
 }
 
 function hasGlobalSkillWorkspace(): boolean {
@@ -302,6 +398,7 @@ function hasGlobalSkillWorkspace(): boolean {
 export async function inspectWorkspace(workspacePath: string): Promise<WorkspaceInspection> {
   const statuses: DirectoryStatus[] = [];
   const workspaceSkills: SkillFile[] = [];
+  const invalidSkillFolders: Array<{ tool: ToolType; relativePath: string }> = [];
   const isGlobalWorkspace = path.resolve(workspacePath) === path.resolve(os.homedir());
 
   for (const tool of Object.keys(TOOL_PATHS) as ToolType[]) {
@@ -313,15 +410,19 @@ export async function inspectWorkspace(workspacePath: string): Promise<Workspace
       const files = await collectFiles(dir, {
         skipDirNames: isGlobalWorkspace ? GLOBAL_IGNORED_DIR_NAMES : undefined
       });
-      for (const relativePath of files) {
-        if (!isManagedSkillRelativePath(relativePath)) continue;
+      const valid = collectValidSkillFiles(files);
+      for (const relativePath of valid.validFiles) {
         workspaceSkills.push({ tool, relativePath, absolutePath: path.join(dir, relativePath) });
+      }
+      for (const relativePath of valid.invalidSkillFolders) {
+        invalidSkillFolders.push({ tool, relativePath });
       }
     }
   }
 
   workspaceSkills.sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
-  return { workspacePath, statuses, workspaceSkills };
+  invalidSkillFolders.sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
+  return { workspacePath, statuses, workspaceSkills, invalidSkillFolders };
 }
 
 export async function listCentralSkills(centralRepoPath: string): Promise<SkillFile[]> {
@@ -331,14 +432,256 @@ export async function listCentralSkills(centralRepoPath: string): Promise<SkillF
     const dir = path.join(centralRepoPath, TOOL_PATHS[tool].central);
     if (!(await existsPath(dir))) continue;
     const files = await collectFiles(dir);
-    for (const relativePath of files) {
-      if (!isManagedSkillRelativePath(relativePath)) continue;
+    const valid = collectValidSkillFiles(files);
+    for (const relativePath of valid.validFiles) {
       output.push({ tool, relativePath, absolutePath: path.join(dir, relativePath) });
     }
   }
 
   output.sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
   return output;
+}
+
+export async function listWorkspaceSkillAssets(workspacePath: string): Promise<SkillAsset[]> {
+  return collectSkillAssets(workspacePath, "workspace");
+}
+
+export async function listCentralSkillAssets(centralRepoPath: string): Promise<SkillAsset[]> {
+  return collectSkillAssets(centralRepoPath, "central");
+}
+
+export async function buildSkillAssetInventory(workspacePath: string, centralRepoPath: string): Promise<SkillAssetInventory> {
+  const [workspace, central] = await Promise.all([
+    listWorkspaceSkillAssets(workspacePath),
+    listCentralSkillAssets(centralRepoPath)
+  ]);
+  addCrossInventoryWarnings(workspace, central);
+  return { workspace, central };
+}
+
+async function collectSkillAssets(basePath: string, source: SkillSource): Promise<SkillAsset[]> {
+  const assets: SkillAsset[] = [];
+  const isGlobalWorkspace = source === "workspace" && path.resolve(basePath) === path.resolve(os.homedir());
+
+  for (const tool of Object.keys(TOOL_PATHS) as ToolType[]) {
+    const rootName = source === "workspace" ? TOOL_PATHS[tool].workspace : TOOL_PATHS[tool].central;
+    const root = path.join(basePath, rootName);
+    if (!(await existsPath(root))) continue;
+
+    const files = await collectFiles(root, {
+      skipDirNames: isGlobalWorkspace ? GLOBAL_IGNORED_DIR_NAMES : undefined
+    });
+    const byFolder = new Map<string, string[]>();
+    for (const relativePath of files) {
+      const folder = toSkillFolderRelativePath(relativePath);
+      if (!folder) continue;
+      const bucket = byFolder.get(folder) ?? [];
+      bucket.push(normalizeRelativePath(relativePath));
+      byFolder.set(folder, bucket);
+    }
+
+    for (const [folder, folderFiles] of byFolder.entries()) {
+      assets.push(await buildSkillAsset(basePath, source, tool, folder, folderFiles));
+    }
+  }
+
+  addDuplicateNameWarnings(assets);
+  return assets.sort((a, b) => (
+    a.tool.localeCompare(b.tool) || a.rootRelativePath.localeCompare(b.rootRelativePath)
+  ));
+}
+
+async function buildSkillAsset(
+  basePath: string,
+  source: SkillSource,
+  tool: ToolType,
+  rootRelativePath: string,
+  relativePaths: string[]
+): Promise<SkillAsset> {
+  let totalBytes = 0;
+  let latestMtime = 0;
+  const files: SkillFile[] = [];
+  const warnings: SkillAssetWarning[] = [];
+  const sorted = [...relativePaths].sort((a, b) => a.localeCompare(b));
+  const hasManifest = sorted.some((rel) => normalizeRelativePath(rel).toLowerCase() === `${rootRelativePath.toLowerCase()}/skill.md`);
+
+  if (!hasManifest) {
+    warnings.push({
+      code: "missing-skill-md",
+      severity: "danger",
+      message: "SKILL.md가 없어 Skill Bridge 전송 대상에서 제외될 수 있습니다.",
+      relativePath: rootRelativePath
+    });
+  }
+
+  for (const relativePath of sorted) {
+    const absolutePath = resolveSkillPath(basePath, tool, relativePath, source);
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat?.isFile()) continue;
+    totalBytes += stat.size;
+    latestMtime = Math.max(latestMtime, stat.mtimeMs);
+    files.push({ tool, relativePath, absolutePath });
+    warnings.push(...await analyzeSkillAssetFile(absolutePath, relativePath, rootRelativePath, sorted));
+  }
+
+  return {
+    source,
+    tool,
+    skillName: rootRelativePath.split("/")[1] ?? rootRelativePath,
+    rootRelativePath,
+    hasManifest,
+    fileCount: files.length,
+    totalBytes,
+    updatedAt: latestMtime > 0 ? new Date(latestMtime).toISOString() : null,
+    files,
+    warnings: dedupeAssetWarnings(warnings)
+  };
+}
+
+async function analyzeSkillAssetFile(
+  absolutePath: string,
+  relativePath: string,
+  rootRelativePath: string,
+  allRelativePaths: string[]
+): Promise<SkillAssetWarning[]> {
+  const warnings: SkillAssetWarning[] = [];
+  const normalized = normalizeRelativePath(relativePath);
+  const ext = path.extname(normalized).toLowerCase();
+
+  if (isScriptLikePath(normalized)) {
+    warnings.push({
+      code: "script-file",
+      severity: "warning",
+      message: "실행 스크립트가 포함되어 전송 전 의도 확인이 필요합니다.",
+      relativePath: normalized
+    });
+  }
+
+  if (!isEditableTextFile(normalized)) return warnings;
+
+  const text = await readIfExists(absolutePath);
+  if (text === undefined) return warnings;
+
+  if (scanSensitiveContent(text).length > 0) {
+    warnings.push({
+      code: "sensitive-content",
+      severity: "danger",
+      message: "민감정보로 보일 수 있는 문자열이 포함되어 있습니다.",
+      relativePath: normalized
+    });
+  }
+  if (containsWorkspaceSpecificPath(text)) {
+    warnings.push({
+      code: "workspace-specific-path",
+      severity: "warning",
+      message: "로컬 절대경로로 보이는 문자열이 포함되어 다른 workspace에서 깨질 수 있습니다.",
+      relativePath: normalized
+    });
+  }
+  if (ext === ".md") {
+    warnings.push(...findBrokenMarkdownReferenceWarnings(text, normalized, rootRelativePath, allRelativePaths));
+  }
+
+  return warnings;
+}
+
+function findBrokenMarkdownReferenceWarnings(
+  text: string,
+  fileRelativePath: string,
+  rootRelativePath: string,
+  allRelativePaths: string[]
+): SkillAssetWarning[] {
+  const warnings: SkillAssetWarning[] = [];
+  const known = new Set(allRelativePaths.map((item) => normalizeRelativePath(item).toLowerCase()));
+  const parent = path.posix.dirname(fileRelativePath);
+  const regex = /\[[^\]]+\]\(([^)]+)\)/g;
+  let match = regex.exec(text);
+  while (match) {
+    const raw = (match[1] ?? "").trim().replace(/^['"]|['"]$/g, "");
+    const target = raw.split("#")[0]?.trim() ?? "";
+    if (target && !/^(https?:|mailto:|#|data:)/i.test(target) && !target.includes("://")) {
+      const normalizedTarget = normalizeRelativePath(path.posix.normalize(path.posix.join(parent, target)));
+      if (normalizedTarget.startsWith(`${rootRelativePath}/`) && !known.has(normalizedTarget.toLowerCase())) {
+        warnings.push({
+          code: "broken-reference",
+          severity: "warning",
+          message: `상대 링크 대상이 스킬 폴더 안에 없습니다: ${target}`,
+          relativePath: fileRelativePath
+        });
+      }
+    }
+    match = regex.exec(text);
+  }
+  return warnings;
+}
+
+function addDuplicateNameWarnings(assets: SkillAsset[]): void {
+  const byName = new Map<string, SkillAsset[]>();
+  for (const asset of assets) {
+    const key = asset.skillName.toLowerCase();
+    const bucket = byName.get(key) ?? [];
+    bucket.push(asset);
+    byName.set(key, bucket);
+  }
+  for (const bucket of byName.values()) {
+    const tools = [...new Set(bucket.map((asset) => asset.tool))];
+    if (tools.length < 2) continue;
+    for (const asset of bucket) {
+      asset.warnings = dedupeAssetWarnings([
+        ...asset.warnings,
+        {
+          code: "duplicate-name",
+          severity: "info",
+          message: `같은 이름의 스킬이 여러 에이전트에 있습니다: ${tools.join(", ")}`,
+          relativePath: asset.rootRelativePath
+        }
+      ]);
+    }
+  }
+}
+
+function addCrossInventoryWarnings(workspace: SkillAsset[], central: SkillAsset[]): void {
+  const centralByKey = new Map(central.map((asset) => [`${asset.tool}:${asset.rootRelativePath}`, asset] as const));
+  const workspaceByKey = new Map(workspace.map((asset) => [`${asset.tool}:${asset.rootRelativePath}`, asset] as const));
+  for (const asset of workspace) {
+    addTargetNewerWarning(asset, centralByKey.get(`${asset.tool}:${asset.rootRelativePath}`), "central");
+  }
+  for (const asset of central) {
+    addTargetNewerWarning(asset, workspaceByKey.get(`${asset.tool}:${asset.rootRelativePath}`), "workspace");
+  }
+}
+
+function addTargetNewerWarning(asset: SkillAsset, counterpart: SkillAsset | undefined, counterpartLabel: SkillSource): void {
+  if (!asset.updatedAt || !counterpart?.updatedAt) return;
+  const assetTime = Date.parse(asset.updatedAt);
+  const counterpartTime = Date.parse(counterpart.updatedAt);
+  if (!Number.isFinite(assetTime) || !Number.isFinite(counterpartTime)) return;
+  if (counterpartTime <= assetTime) return;
+  asset.warnings = dedupeAssetWarnings([
+    ...asset.warnings,
+    {
+      code: "target-newer",
+      severity: "warning",
+      message: `반대편 ${counterpartLabel} 스킬이 더 최신입니다.`,
+      relativePath: asset.rootRelativePath
+    }
+  ]);
+}
+
+function dedupeAssetWarnings(warnings: SkillAssetWarning[]): SkillAssetWarning[] {
+  const unique = new Map<string, SkillAssetWarning>();
+  for (const warning of warnings) {
+    unique.set(`${warning.code}:${warning.relativePath ?? ""}:${warning.message}`, warning);
+  }
+  return [...unique.values()];
+}
+
+function isScriptLikePath(relativePath: string): boolean {
+  return /\.(ps1|bat|cmd|sh|bash|zsh|fish|js|mjs|cjs|ts|tsx|py|rb|pl)$/i.test(relativePath);
+}
+
+function containsWorkspaceSpecificPath(text: string): boolean {
+  return /(?:[A-Za-z]:\\Users\\|[A-Za-z]:\\[^ \n\r\t]+|\/Users\/|\/home\/)/.test(text);
 }
 
 export async function checkCentralRepo(centralRepoPath: string): Promise<CentralRepoStatus> {
@@ -366,7 +709,7 @@ export async function buildDiff(oldText: string, newText: string, label = "skill
     hasChanges,
     oldText,
     newText,
-    unifiedDiff: hasChanges ? createUnifiedPatch(label, oldNormalized, newNormalized) : ""
+    unifiedDiff: hasChanges ? createPatch(label, oldNormalized, newNormalized, "before", "after", { context: 3 }) : ""
   };
 }
 
@@ -387,6 +730,13 @@ export async function compareSkill(
   mode: "promote" | "import"
 ): Promise<DiffResult> {
   assertManagedSkillRelativePath(relativePath);
+  if (mode === "promote") {
+    await assertSkillFolderHasSkillMd(workspacePath, tool, relativePath, "workspace");
+    await assertSkillFolderHasSkillMd(centralRepoPath, tool, relativePath, "central", true);
+  } else {
+    await assertSkillFolderHasSkillMd(centralRepoPath, tool, relativePath, "central");
+    await assertSkillFolderHasSkillMd(workspacePath, tool, relativePath, "workspace", true);
+  }
   const workspaceFile = resolveSkillPath(workspacePath, tool, relativePath, "workspace");
   const centralFile = resolveSkillPath(centralRepoPath, tool, relativePath, "central");
 
@@ -497,7 +847,7 @@ export async function compareWorkspaceCentralOverview(workspacePath: string, cen
 
     const ws = workspaceText ?? "";
     const ce = centralText ?? "";
-    const lines = diffLinesLocal(ce, ws);
+    const lines = diffLines(ce, ws);
     let addedLines = 0;
     let removedLines = 0;
     for (const part of lines) {
@@ -534,32 +884,6 @@ export async function compareWorkspaceCentralOverview(workspacePath: string, cen
     sameCount,
     items
   };
-}
-
-function createUnifiedPatch(label: string, oldText: string, newText: string): string {
-  const oldLines = oldText.split("\n");
-  const newLines = newText.split("\n");
-  const out: string[] = [];
-  out.push(`--- before/${label}`);
-  out.push(`+++ after/${label}`);
-  out.push(`@@ -1,${oldLines.length} +1,${newLines.length} @@`);
-  for (const line of oldLines) {
-    out.push(`-${line}`);
-  }
-  for (const line of newLines) {
-    out.push(`+${line}`);
-  }
-  return out.join("\n");
-}
-
-function diffLinesLocal(oldText: string, newText: string): LocalDiffPart[] {
-  if (oldText === newText) {
-    return [{ value: oldText }];
-  }
-  const out: LocalDiffPart[] = [];
-  if (oldText.length > 0) out.push({ removed: true, value: oldText });
-  if (newText.length > 0) out.push({ added: true, value: newText });
-  return out;
 }
 
 export function isEditableTextFile(relativePath: string): boolean {
@@ -920,13 +1244,15 @@ async function mirrorInstalledSkillsIfCentralLayout(cwd: string): Promise<string
   const centralRoots = ["claude", "codex", "gemini", "cursor", "antigravity"];
   const centralReady = await Promise.all(centralRoots.map(async (name) => existsPath(path.join(cwd, name))));
   if (!centralReady.every(Boolean)) return "";
+  await fs.mkdir(path.join(cwd, "agents"), { recursive: true });
 
   const mappings: Array<{ from: string; to: string }> = [
     { from: path.join(cwd, ".claude", "skills"), to: path.join(cwd, "claude", "skills") },
     { from: path.join(cwd, ".codex", "skills"), to: path.join(cwd, "codex", "skills") },
     { from: path.join(cwd, ".gemini", "skills"), to: path.join(cwd, "gemini", "skills") },
     { from: path.join(cwd, ".cursor", "skills"), to: path.join(cwd, "cursor", "skills") },
-    { from: path.join(cwd, ".antigravity", "skills"), to: path.join(cwd, "antigravity", "skills") }
+    { from: path.join(cwd, ".antigravity", "skills"), to: path.join(cwd, "antigravity", "skills") },
+    { from: path.join(cwd, ".agents", "skills"), to: path.join(cwd, "agents", "skills") }
   ];
 
   let copiedCount = 0;
@@ -960,6 +1286,7 @@ async function copyWorkspaceToCentral(
 ): Promise<string[]> {
   const changedFiles: string[] = [];
   for (const selection of selections) {
+    await assertSkillFolderHasSkillMd(workspacePath, selection.tool, selection.relativePath, "workspace");
     const src = resolveSkillPath(workspacePath, selection.tool, selection.relativePath, "workspace");
     const dest = resolveSkillPath(centralRepoPath, selection.tool, selection.relativePath, "central");
 
@@ -981,6 +1308,7 @@ async function copyCentralToWorkspace(
 ): Promise<string[]> {
   const changedFiles: string[] = [];
   for (const selection of selections) {
+    await assertSkillFolderHasSkillMd(centralRepoPath, selection.tool, selection.relativePath, "central");
     const src = resolveSkillPath(centralRepoPath, selection.tool, selection.relativePath, "central");
     const dest = resolveSkillPath(workspacePath, selection.tool, selection.relativePath, "workspace");
 
@@ -1001,6 +1329,27 @@ function resolveSkillPath(basePath: string, tool: ToolType, relativePath: string
   assertManagedSkillRelativePath(normalized);
   if (normalized.includes("..")) throw new Error("상대 경로에 '..'은 허용되지 않습니다.");
   return path.join(basePath, root, normalized);
+}
+
+async function assertSkillFolderHasSkillMd(
+  basePath: string,
+  tool: ToolType,
+  relativePath: string,
+  source: SkillSource,
+  allowMissingFolder = false
+): Promise<void> {
+  const skillFolder = toSkillFolderRelativePath(relativePath);
+  if (!skillFolder) {
+    throw new Error("유효 스킬 경로만 처리할 수 있습니다. (skills/<skill>/...)");
+  }
+  const skillMdPath = resolveSkillPath(basePath, tool, `${skillFolder}/SKILL.md`, source);
+  const exists = await existsPath(skillMdPath);
+  if (exists) return;
+  if (allowMissingFolder) {
+    const skillFolderPath = resolveSkillPath(basePath, tool, skillFolder, source);
+    if (!(await existsPath(skillFolderPath))) return;
+  }
+  throw new Error(`SKILL.md가 없는 스킬은 처리할 수 없습니다: ${tool}/${skillFolder}`);
 }
 
 async function listGitChangedFiles(repoPath: string): Promise<string[]> {
