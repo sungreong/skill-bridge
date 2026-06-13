@@ -37,7 +37,7 @@ export type SkillTreeFilterMode = "all" | "changed" | "new" | "risk" | "missingS
 
 export type SkillTreeNode = {
   key: string;
-  kind: "file" | "folder" | "groupRoot" | "groupTool" | "group";
+  kind: "file" | "folder" | "groupRoot" | "groupTool" | "group" | "skillGroup";
   tool: ToolType;
   relativePath: string;
   label: string;

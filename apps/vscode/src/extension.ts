@@ -28,6 +28,7 @@ import { buildAgentReviewPrompt, buildTransferReviewMeta } from "./reviewPrompt"
 import { SkillTreeProvider } from "./views/skillTreeProvider";
 
 const SETTINGS_SECTION = "skillBridge";
+const DEFAULT_CENTRAL_REPO_PATH = "${userHome}/skill-bridge-repo";
 const CONFIGURABLE_TOOLS: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
 type SourceTab = "all" | ToolType;
 const execFileAsync = promisify(execFile);
@@ -56,6 +57,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     version: 1;
     updatedAt: string;
     records: Record<string, SkillHistoryRecord>;
+  };
+  type RefreshResult = {
+    workspaceSkillCount: number;
+    centralSkillCount: number;
+    workspaceGroupCount: number;
+    centralGroupCount: number;
+    centralRepoPath: string;
+    groupNormalization: {
+      changed: boolean;
+      splitCount: number;
+      removedTargetCount: number;
+      removedGroupCount: number;
+    };
   };
 
   const workspaceProvider = new SkillTreeProvider("skillBridge.selectWorkspaceNode", "workspace");
@@ -109,6 +123,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let refreshTimer: NodeJS.Timeout | null = null;
   let watchers: vscode.FileSystemWatcher[] = [];
 
+  const updateStatusChrome = (): void => {
+    const groupCounts = countGroups(filterGroupsByTab(state.groups, state.activeTab));
+    const centralName = path.basename(state.centralRepoPath) || state.centralRepoPath;
+    statusBar.text = `$(repo) Skill Bridge: ${centralName} [${tabLabel(state.activeTab)}] (G W:${groupCounts.workspace} C:${groupCounts.central})`;
+    statusBar.tooltip = [
+      `Central Skill Home: ${state.centralRepoPath || "미설정"}`,
+      `Workspace: ${state.workspacePath || "미설정"}`,
+      `Agent tab: ${tabLabel(state.activeTab)}`,
+      `Groups: Workspace ${groupCounts.workspace}, Central ${groupCounts.central}`
+    ].join("\n");
+    workspaceView.description = state.workspacePath ? compactPathForDisplay(state.workspacePath) : undefined;
+    centralView.description = state.centralRepoPath ? compactPathForDisplay(state.centralRepoPath) : undefined;
+  };
+
   const scheduleRefresh = (): void => {
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
@@ -116,7 +144,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 400);
   };
 
-  const refresh = async (): Promise<void> => {
+  const refresh = async (): Promise<RefreshResult> => {
     const ctx = resolveContext();
     state.workspacePath = ctx.workspacePath;
     state.centralRepoPath = ctx.centralRepoPath;
@@ -157,12 +185,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       output.appendLine(`[SkillValidation] SKILL.md 누락 - workspace ${summarize(workspaceInventory.missingFolders)} / central ${summarize(centralInventory.missingFolders)}`);
     }
 
-    const loadedGroups = await loadWorkspaceGroups(ctx.workspacePath);
-    const normalizedGroupResult = normalizeGroupsForCurrentSkills(loadedGroups);
+    const loadedGroupResult = await loadSelectionGroups(ctx.workspacePath, ctx.centralRepoPath);
+    const normalizedGroupResult = normalizeGroupsForCurrentSkills(loadedGroupResult.groups);
     state.groups = normalizedGroupResult.groups;
-    if (normalizedGroupResult.changed) {
-      await saveWorkspaceGroups(ctx.workspacePath, state.groups);
-      output.appendLine(`[GroupNormalize] 그룹 정규화 적용 - split=${normalizedGroupResult.splitCount}, removedTargets=${normalizedGroupResult.removedTargetCount}, removedGroups=${normalizedGroupResult.removedGroupCount}`);
+    if (normalizedGroupResult.changed || loadedGroupResult.needsSave) {
+      await saveSelectionGroups(ctx.workspacePath, ctx.centralRepoPath, state.groups);
+      if (normalizedGroupResult.changed) {
+        output.appendLine(`[GroupNormalize] 그룹 정규화 적용 - split=${normalizedGroupResult.splitCount}, removedTargets=${normalizedGroupResult.removedTargetCount}, removedGroups=${normalizedGroupResult.removedGroupCount}`);
+      }
+      if (loadedGroupResult.needsSave) {
+        output.appendLine("[GroupStore] Workspace 그룹과 Central 그룹 저장 위치를 분리했습니다.");
+      }
+    }
+    if (loadedGroupResult.migratedCentralGroupCount > 0) {
+      output.appendLine(`[GroupStore] legacy central groups migrated to central home: ${loadedGroupResult.migratedCentralGroupCount}`);
     }
     if (state.selectedGroupId && !state.groups.some((item) => item.id === state.selectedGroupId)) {
       state.selectedGroupId = null;
@@ -181,8 +217,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       centralProvider.setHighlight(new Set());
     }
     applyTabFilter(state, workspaceProvider, centralProvider);
-    const groupCounts = countGroups(filterGroupsByTab(state.groups, state.activeTab));
-    statusBar.text = `$(repo) Skill Bridge: ${path.basename(ctx.centralRepoPath)} [${tabLabel(state.activeTab)}] (G W:${groupCounts.workspace} C:${groupCounts.central})`;
+    updateStatusChrome();
     if (diagnosticCounts.errors + diagnosticCounts.warnings > 0) {
       qualityStatusBar.text = `$(shield) ${diagnosticCounts.errors}E/${diagnosticCounts.warnings}W`;
       qualityStatusBar.tooltip = `Skill Bridge workspace quality issues: ${diagnosticCounts.errors} errors, ${diagnosticCounts.warnings} warnings. Click to open Problems.`;
@@ -198,6 +233,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       watcher.onDidChange(scheduleRefresh);
       watcher.onDidDelete(scheduleRefresh);
     }
+
+    const groupCounts = countGroups(filterGroupsByTab(state.groups, state.activeTab));
+    return {
+      workspaceSkillCount: state.workspaceSkills.length,
+      centralSkillCount: state.centralSkills.length,
+      workspaceGroupCount: groupCounts.workspace,
+      centralGroupCount: groupCounts.central,
+      centralRepoPath: ctx.centralRepoPath,
+      groupNormalization: {
+        changed: normalizedGroupResult.changed,
+        splitCount: normalizedGroupResult.splitCount,
+        removedTargetCount: normalizedGroupResult.removedTargetCount,
+        removedGroupCount: normalizedGroupResult.removedGroupCount
+      }
+    };
   };
 
   const register = <TArgs extends unknown[]>(id: string, callback: (...args: TArgs) => unknown): void => {
@@ -234,6 +284,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     centralProvider.setSelected(node);
     workspaceProvider.setSelected(null);
     void openNodeIfFile(state.centralRepoPath, node, "central");
+  });
+
+  register("skillBridge.openWorkspaceFolder", async (node?: SkillTreeNode) => {
+    await openFolderInOs("workspace", unwrapSkillNode(node));
+  });
+
+  register("skillBridge.openCentralFolder", async (node?: SkillTreeNode) => {
+    await openFolderInOs("central", unwrapSkillNode(node));
   });
 
   register("skillBridge.selectGroup", async (node: GroupTreeNode) => {
@@ -283,7 +341,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       if (ok !== "삭제") return;
       state.groups = state.groups.filter((item) => item.id !== targetId);
-      await saveWorkspaceGroups(state.workspacePath, state.groups);
+      await saveSelectionGroups(state.workspacePath, state.centralRepoPath, state.groups);
       if (state.selectedGroupId === targetId) state.selectedGroupId = null;
       workspaceProvider.setGroups(state.groups);
       centralProvider.setGroups(state.groups);
@@ -424,6 +482,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await setPersonalSkillHome();
   });
 
+  register("skillBridge.resetPersonalHome", async () => {
+    await resetPersonalSkillHome();
+  });
+
   register("skillBridge.refresh", async () => {
     try {
       await refresh();
@@ -448,8 +510,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!pick) return;
     state.activeTab = pick.value;
     applyTabFilter(state, workspaceProvider, centralProvider);
-    const groupCounts = countGroups(filterGroupsByTab(state.groups, state.activeTab));
-    statusBar.text = `$(repo) Skill Bridge: ${path.basename(state.centralRepoPath)} [${tabLabel(state.activeTab)}] (G W:${groupCounts.workspace} C:${groupCounts.central})`;
+    updateStatusChrome();
   });
 
   register("skillBridge.switchTreeFilter", async () => {
@@ -918,111 +979,86 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return { groups: mergedGroups, changed, splitCount, removedTargetCount, removedGroupCount };
   }
 
-  function buildTransferExplorerPayload(): {
+  type TransferExplorerSkillStatus = "same" | "modified" | "onlyWorkspace" | "onlyCentral";
+  type TransferExplorerSkill = {
+    key: string;
+    tool: ToolType;
+    folder: string;
+    skillName: string;
+    status: TransferExplorerSkillStatus;
+    workspaceExists: boolean;
+    centralExists: boolean;
+    workspaceFileCount: number;
+    centralFileCount: number;
+    modifiedFileCount: number;
+    workspaceOnlyFileCount: number;
+    centralOnlyFileCount: number;
+    workspaceGroupNames: string[];
+    centralGroupNames: string[];
+  };
+  type TransferExplorerGroupStatus = "same" | "modified" | "onlyWorkspace" | "onlyCentral";
+  type TransferExplorerGroupDiff = {
+    key: string;
+    tool: ToolType;
+    name: string;
+    status: TransferExplorerGroupStatus;
+    workspaceGroupId: string | null;
+    centralGroupId: string | null;
+    workspaceTargetCount: number;
+    centralTargetCount: number;
+    workspaceTargets: string[];
+    centralTargets: string[];
+  };
+  type TransferExplorerGroupView = { id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] };
+  type TransferExplorerFolderView = {
+    tool: ToolType;
+    folder: string;
+    fileCount: number;
+    groupNames: string[];
+    files: string[];
+    subfolders: Array<{ path: string; fileCount: number }>;
+  };
+  type TransferExplorerSideView = {
+    folders: TransferExplorerFolderView[];
+    groups: TransferExplorerGroupView[];
+  };
+  type TransferExplorerPayload = {
     tools: ToolType[];
-    workspace: {
-      folders: Array<{
-        tool: ToolType;
-        folder: string;
-        fileCount: number;
-        groupNames: string[];
-        files: string[];
-        subfolders: Array<{ path: string; fileCount: number }>;
-      }>;
-      groups: Array<{ id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] }>;
+    skills: TransferExplorerSkill[];
+    groupDiffs: TransferExplorerGroupDiff[];
+    groups: {
+      workspace: TransferExplorerGroupView[];
+      central: TransferExplorerGroupView[];
     };
-    central: {
-      folders: Array<{
-        tool: ToolType;
-        folder: string;
-        fileCount: number;
-        groupNames: string[];
-        files: string[];
-        subfolders: Array<{ path: string; fileCount: number }>;
-      }>;
-      groups: Array<{ id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] }>;
+    workspace: TransferExplorerSideView;
+    central: TransferExplorerSideView;
+    summary: {
+      total: number;
+      modified: number;
+      onlyWorkspace: number;
+      onlyCentral: number;
+      same: number;
     };
-  } {
-    const buildSide = (side: "workspace" | "central"): {
-      folders: Array<{
-        tool: ToolType;
-        folder: string;
-        fileCount: number;
-        groupNames: string[];
-        files: string[];
-        subfolders: Array<{ path: string; fileCount: number }>;
-      }>;
-      groups: Array<{ id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] }>;
-    } => {
-      const files = side === "workspace" ? state.workspaceSkills : state.centralSkills;
-      const sideGroups = state.groups.filter((group) => group.side === side);
-      const folderMap = new Map<string, {
-        tool: ToolType;
-        folder: string;
-        fileCount: number;
-        groupNames: Set<string>;
-        files: Set<string>;
-        subfolderCounts: Map<string, number>;
-      }>();
+    groupSummary: {
+      total: number;
+      modified: number;
+      onlyWorkspace: number;
+      onlyCentral: number;
+      same: number;
+    };
+  };
 
-      for (const file of files) {
-        const folder = getTopSkillFolder(file.relativePath);
-        if (!folder) continue;
-        const key = `${file.tool}:${folder}`;
-        const prev = folderMap.get(key) ?? {
-          tool: file.tool,
-          folder,
-          fileCount: 0,
-          groupNames: new Set<string>(),
-          files: new Set<string>(),
-          subfolderCounts: new Map<string, number>()
-        };
-        prev.fileCount += 1;
-        const inner = getSkillInnerPath(file.relativePath, folder);
-        if (inner) {
-          prev.files.add(inner);
-          const parts = inner.split("/").filter(Boolean);
-          let prefix = "";
-          for (let i = 0; i < parts.length - 1; i += 1) {
-            prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
-            const count = prev.subfolderCounts.get(prefix) ?? 0;
-            prev.subfolderCounts.set(prefix, count + 1);
-          }
-        }
-        folderMap.set(key, prev);
-      }
+  async function buildTransferExplorerPayload(): Promise<TransferExplorerPayload> {
+    type SkillFolderDraft = {
+      tool: ToolType;
+      folder: string;
+      files: SkillFile[];
+      groupNames: Set<string>;
+    };
 
-      for (const group of sideGroups) {
-        for (const target of group.targets) {
-          const folder = getTopSkillFolder(target.relativePath);
-          if (!folder) continue;
-          const key = `${target.tool}:${folder}`;
-          const prev = folderMap.get(key) ?? {
-            tool: target.tool,
-            folder,
-            fileCount: 0,
-            groupNames: new Set<string>(),
-            files: new Set<string>(),
-            subfolderCounts: new Map<string, number>()
-          };
-          prev.groupNames.add(group.name);
-          folderMap.set(key, prev);
-        }
-      }
-
-      const folders = [...folderMap.values()]
-        .map((entry) => ({
-          tool: entry.tool,
-          folder: entry.folder,
-          fileCount: entry.fileCount,
-          groupNames: [...entry.groupNames].sort((a, b) => a.localeCompare(b)),
-          files: [...entry.files].sort((a, b) => a.localeCompare(b)),
-          subfolders: [...entry.subfolderCounts.entries()]
-            .map(([path, fileCount]) => ({ path, fileCount }))
-            .sort((a, b) => a.path.localeCompare(b.path))
-        }))
-        .sort((a, b) => a.tool.localeCompare(b.tool) || a.folder.localeCompare(b.folder));
-      const groups = sideGroups
+    const buildGroupViews = (side: "workspace" | "central"): TransferExplorerGroupView[] =>
+      state.groups
+        .filter((group) => group.side === side)
         .map((group) => ({
           id: group.id,
           name: group.name,
@@ -1032,18 +1068,270 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
+    const buildDrafts = (side: "workspace" | "central"): Map<string, SkillFolderDraft> => {
+      const files = side === "workspace" ? state.workspaceSkills : state.centralSkills;
+      const sideGroups = state.groups.filter((group) => group.side === side);
+      const drafts = new Map<string, SkillFolderDraft>();
+
+      for (const file of files) {
+        const folder = getSkillFolderRelativePath(file.relativePath);
+        if (!folder) continue;
+        const key = `${file.tool}:${folder}`;
+        const draft = drafts.get(key) ?? {
+          tool: file.tool,
+          folder,
+          files: [],
+          groupNames: new Set<string>()
+        };
+        draft.files.push({ ...file, relativePath: normalizeRel(file.relativePath) });
+        drafts.set(key, draft);
+      }
+
+      for (const group of sideGroups) {
+        for (const target of group.targets) {
+          const folder = getSkillFolderRelativePath(target.relativePath);
+          if (!folder) continue;
+          const key = `${target.tool}:${folder}`;
+          const draft = drafts.get(key) ?? {
+            tool: target.tool,
+            folder,
+            files: [],
+            groupNames: new Set<string>()
+          };
+          draft.groupNames.add(group.name);
+          drafts.set(key, draft);
+        }
+      }
+
+      return drafts;
+    };
+
+    const buildSideView = (
+      drafts: Map<string, SkillFolderDraft>,
+      groups: TransferExplorerGroupView[]
+    ): TransferExplorerSideView => {
+      const folders = [...drafts.values()]
+        .map((draft) => {
+          const folder = draft.folder.split("/")[1] ?? draft.folder;
+          const files = new Set<string>();
+          const subfolderCounts = new Map<string, number>();
+          for (const file of draft.files) {
+            const inner = getSkillInnerRelativePath(file.relativePath);
+            if (!inner) continue;
+            files.add(inner);
+            const parts = inner.split("/").filter(Boolean);
+            let prefix = "";
+            for (let i = 0; i < parts.length - 1; i += 1) {
+              prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
+              subfolderCounts.set(prefix, (subfolderCounts.get(prefix) ?? 0) + 1);
+            }
+          }
+          return {
+            tool: draft.tool,
+            folder,
+            fileCount: draft.files.length,
+            groupNames: [...draft.groupNames].sort((a, b) => a.localeCompare(b)),
+            files: [...files].sort((a, b) => a.localeCompare(b)),
+            subfolders: [...subfolderCounts.entries()]
+              .map(([path, fileCount]) => ({ path, fileCount }))
+              .sort((a, b) => a.path.localeCompare(b.path))
+          };
+        })
+        .sort((a, b) => a.tool.localeCompare(b.tool) || a.folder.localeCompare(b.folder));
       return { folders, groups };
     };
 
-    const workspace = buildSide("workspace");
-    const central = buildSide("central");
+    const groupTargetKey = (target: GroupTarget): string =>
+      `${target.kind}:${target.tool}:${normalizeRel(target.relativePath)}`;
+    const groupTargetLabel = (target: GroupTarget): string =>
+      `${target.tool}/${normalizeRel(target.relativePath)}`;
+    const groupsEqual = (left: string[], right: string[]): boolean => {
+      if (left.length !== right.length) return false;
+      for (let i = 0; i < left.length; i += 1) {
+        if (left[i] !== right[i]) return false;
+      }
+      return true;
+    };
+    const buildGroupDiffs = (): TransferExplorerGroupDiff[] => {
+      type Draft = {
+        group: SelectionGroup;
+        tool: ToolType;
+        targets: string[];
+        labels: string[];
+      };
+      const build = (side: "workspace" | "central"): Map<string, Draft> => {
+        const map = new Map<string, Draft>();
+        for (const group of state.groups.filter((item) => item.side === side)) {
+          const tool = getGroupTool(group);
+          if (!tool) continue;
+          const targets = dedupeGroupTargets(group.targets)
+            .map(groupTargetKey)
+            .sort((a, b) => a.localeCompare(b));
+          const labels = dedupeGroupTargets(group.targets)
+            .map(groupTargetLabel)
+            .sort((a, b) => a.localeCompare(b));
+          const key = `${tool}:${normalizeGroupNameKey(group.name)}`;
+          map.set(key, { group, tool, targets, labels });
+        }
+        return map;
+      };
+
+      const workspace = build("workspace");
+      const central = build("central");
+      const keys = [...new Set([...workspace.keys(), ...central.keys()])].sort((a, b) => a.localeCompare(b));
+      return keys.map((key) => {
+        const workspaceDraft = workspace.get(key);
+        const centralDraft = central.get(key);
+        const draft = workspaceDraft ?? centralDraft;
+        const status: TransferExplorerGroupStatus = workspaceDraft && centralDraft
+          ? groupsEqual(workspaceDraft.targets, centralDraft.targets) ? "same" : "modified"
+          : workspaceDraft ? "onlyWorkspace" : "onlyCentral";
+        return {
+          key,
+          tool: draft?.tool ?? "agents",
+          name: draft?.group.name ?? key,
+          status,
+          workspaceGroupId: workspaceDraft?.group.id ?? null,
+          centralGroupId: centralDraft?.group.id ?? null,
+          workspaceTargetCount: workspaceDraft?.targets.length ?? 0,
+          centralTargetCount: centralDraft?.targets.length ?? 0,
+          workspaceTargets: workspaceDraft?.labels ?? [],
+          centralTargets: centralDraft?.labels ?? []
+        };
+      });
+    };
+
+    const compareDrafts = async (
+      workspaceDraft: SkillFolderDraft | undefined,
+      centralDraft: SkillFolderDraft | undefined
+    ): Promise<{
+      status: TransferExplorerSkillStatus;
+      modifiedFileCount: number;
+      workspaceOnlyFileCount: number;
+      centralOnlyFileCount: number;
+    }> => {
+      if (workspaceDraft && !centralDraft) {
+        return {
+          status: "onlyWorkspace",
+          modifiedFileCount: 0,
+          workspaceOnlyFileCount: workspaceDraft.files.length,
+          centralOnlyFileCount: 0
+        };
+      }
+      if (!workspaceDraft && centralDraft) {
+        return {
+          status: "onlyCentral",
+          modifiedFileCount: 0,
+          workspaceOnlyFileCount: 0,
+          centralOnlyFileCount: centralDraft.files.length
+        };
+      }
+      if (!workspaceDraft || !centralDraft) {
+        return { status: "same", modifiedFileCount: 0, workspaceOnlyFileCount: 0, centralOnlyFileCount: 0 };
+      }
+
+      const workspaceByInner = new Map(workspaceDraft.files.map((file) => [getSkillInnerRelativePath(file.relativePath), file] as const));
+      const centralByInner = new Map(centralDraft.files.map((file) => [getSkillInnerRelativePath(file.relativePath), file] as const));
+      const allInner = new Set<string>([...workspaceByInner.keys(), ...centralByInner.keys()]);
+      let modifiedFileCount = 0;
+      let workspaceOnlyFileCount = 0;
+      let centralOnlyFileCount = 0;
+
+      for (const inner of allInner) {
+        const workspaceFile = workspaceByInner.get(inner);
+        const centralFile = centralByInner.get(inner);
+        if (workspaceFile && !centralFile) {
+          workspaceOnlyFileCount += 1;
+          continue;
+        }
+        if (!workspaceFile && centralFile) {
+          centralOnlyFileCount += 1;
+          continue;
+        }
+        if (!workspaceFile || !centralFile) continue;
+        const [workspaceStat, centralStat] = await Promise.all([
+          fs.stat(workspaceFile.absolutePath).catch(() => null),
+          fs.stat(centralFile.absolutePath).catch(() => null)
+        ]);
+        if (!workspaceStat?.isFile() || !centralStat?.isFile()) {
+          modifiedFileCount += 1;
+          continue;
+        }
+        if (!(await isSameFileContent(workspaceFile.absolutePath, centralFile.absolutePath, workspaceStat.size, centralStat.size))) {
+          modifiedFileCount += 1;
+        }
+      }
+
+      return {
+        status: modifiedFileCount > 0 || workspaceOnlyFileCount > 0 || centralOnlyFileCount > 0 ? "modified" : "same",
+        modifiedFileCount,
+        workspaceOnlyFileCount,
+        centralOnlyFileCount
+      };
+    };
+
+    const workspaceDrafts = buildDrafts("workspace");
+    const centralDrafts = buildDrafts("central");
+    const workspaceGroups = buildGroupViews("workspace");
+    const centralGroups = buildGroupViews("central");
+    const groupDiffs = buildGroupDiffs();
+    const allKeys = [...new Set([...workspaceDrafts.keys(), ...centralDrafts.keys()])].sort((a, b) => a.localeCompare(b));
+    const skills: TransferExplorerSkill[] = [];
+
+    for (const key of allKeys) {
+      const workspaceDraft = workspaceDrafts.get(key);
+      const centralDraft = centralDrafts.get(key);
+      const draft = workspaceDraft ?? centralDraft;
+      if (!draft) continue;
+      const compared = await compareDrafts(workspaceDraft, centralDraft);
+      skills.push({
+        key,
+        tool: draft.tool,
+        folder: draft.folder,
+        skillName: draft.folder.split("/")[1] ?? draft.folder,
+        status: compared.status,
+        workspaceExists: !!workspaceDraft && workspaceDraft.files.length > 0,
+        centralExists: !!centralDraft && centralDraft.files.length > 0,
+        workspaceFileCount: workspaceDraft?.files.length ?? 0,
+        centralFileCount: centralDraft?.files.length ?? 0,
+        modifiedFileCount: compared.modifiedFileCount,
+        workspaceOnlyFileCount: compared.workspaceOnlyFileCount,
+        centralOnlyFileCount: compared.centralOnlyFileCount,
+        workspaceGroupNames: [...(workspaceDraft?.groupNames ?? new Set<string>())].sort((a, b) => a.localeCompare(b)),
+        centralGroupNames: [...(centralDraft?.groupNames ?? new Set<string>())].sort((a, b) => a.localeCompare(b))
+      });
+    }
+
     const tools = [...new Set<ToolType>([
-      ...workspace.folders.map((item) => item.tool),
-      ...central.folders.map((item) => item.tool),
-      ...workspace.groups.flatMap((item) => item.tools),
-      ...central.groups.flatMap((item) => item.tools)
+      ...skills.map((item) => item.tool),
+      ...state.groups.flatMap((group) => group.targets.map((target) => target.tool))
     ])].sort((a, b) => a.localeCompare(b));
-    return { tools, workspace, central };
+
+    return {
+      tools,
+      skills: skills.sort((a, b) => a.tool.localeCompare(b.tool) || a.folder.localeCompare(b.folder)),
+      groupDiffs,
+      groups: {
+        workspace: workspaceGroups,
+        central: centralGroups
+      },
+      workspace: buildSideView(workspaceDrafts, workspaceGroups),
+      central: buildSideView(centralDrafts, centralGroups),
+      summary: {
+        total: skills.length,
+        modified: skills.filter((item) => item.status === "modified").length,
+        onlyWorkspace: skills.filter((item) => item.status === "onlyWorkspace").length,
+        onlyCentral: skills.filter((item) => item.status === "onlyCentral").length,
+        same: skills.filter((item) => item.status === "same").length
+      },
+      groupSummary: {
+        total: groupDiffs.length,
+        modified: groupDiffs.filter((item) => item.status === "modified").length,
+        onlyWorkspace: groupDiffs.filter((item) => item.status === "onlyWorkspace").length,
+        onlyCentral: groupDiffs.filter((item) => item.status === "onlyCentral").length,
+        same: groupDiffs.filter((item) => item.status === "same").length
+      }
+    };
   }
 
   async function transferPathFromExplorer(
@@ -1154,6 +1442,187 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
   }
 
+  function normalizeTransferExplorerActionStatus(status: unknown): TransferStatus {
+    if (status === "added" || status === "removed" || status === "modified" || status === "typeChanged" || status === "same") {
+      return status;
+    }
+    return "modified";
+  }
+
+  function transferExplorerSelectedStatuses(status: TransferStatus): TransferStatus[] {
+    if (status === "same") return [];
+    if (status === "removed") return ["removed"];
+    if (status === "added") return ["added", "typeChanged"];
+    if (status === "typeChanged") return ["typeChanged"];
+    return ["added", "modified", "typeChanged"];
+  }
+
+  async function transferComparedTargetsFromExplorer(
+    sourceSide: "workspace" | "central",
+    targets: Array<{ tool: ToolType; relativePath: string; kind: "file" | "folder" }>,
+    selectedStatuses: TransferStatus[]
+  ): Promise<{ requested: number; processed: number; copied: number; deleted: number; unchanged: number; skipped: number; mirroredGroups: number }> {
+    const requested = targets.length;
+    const scopeHints = collapseLibraryTargets(
+      targets
+        .map((target) => ({
+          tool: target.tool,
+          relativePath: normalizeRel(target.relativePath),
+          kind: "folder" as const
+        }))
+        .filter((target) => !!getSkillFolderRelativePath(target.relativePath))
+    );
+    if (scopeHints.length === 0) {
+      throw new Error("반영 가능한 스킬 폴더를 찾지 못했습니다.");
+    }
+    const selectedStatusSet = new Set(selectedStatuses);
+    if (selectedStatusSet.size === 0) {
+      throw new Error("동일 영역은 반영할 변경사항이 없습니다.");
+    }
+
+    const buildPreselectedPlan = async (): Promise<TransferPlan> => {
+      const plan = await buildTransferPlan(sourceSide, [], { scopeHints });
+      return {
+        ...plan,
+        items: plan.items.map((item) => ({
+          ...item,
+          selected: selectedStatusSet.has(item.status)
+        }))
+      };
+    };
+
+    const plan = await buildPreselectedPlan();
+    const selectedCount = plan.items.filter((item) => item.selected).length;
+    if (selectedCount === 0) {
+      throw new Error("선택한 영역에 반영할 변경사항이 없습니다.");
+    }
+
+    const resolved = await openTransferManagerTab(plan, buildPreselectedPlan);
+    if (!resolved) {
+      return { requested, processed: 0, copied: 0, deleted: 0, unchanged: 0, skipped: requested, mirroredGroups: 0 };
+    }
+
+    const result = await applyTransferPlan(resolved.items, sourceSide === "workspace" ? state.workspacePath : null);
+    await refresh();
+    const mirroredGroups = await mirrorGroupsForTransferredTargets(sourceSide, scopeHints);
+    return {
+      requested,
+      processed: scopeHints.length,
+      copied: result.copied,
+      deleted: result.deleted,
+      unchanged: result.unchanged,
+      skipped: Math.max(0, requested - scopeHints.length),
+      mirroredGroups
+    };
+  }
+
+  function groupTargetsEqual(left: GroupTarget[], right: GroupTarget[]): boolean {
+    const normalize = (targets: GroupTarget[]): string[] =>
+      dedupeGroupTargets(targets)
+        .map((target) => `${target.kind}:${target.tool}:${normalizeRel(target.relativePath)}`)
+        .sort((a, b) => a.localeCompare(b));
+    const a = normalize(left);
+    const b = normalize(right);
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  async function mirrorComparedGroupsFromExplorer(
+    sourceSide: TreeSide,
+    groupIds: string[]
+  ): Promise<{ changed: number; skipped: number }> {
+    const idSet = new Set(groupIds);
+    const sourceGroups = state.groups.filter((group) => group.side === sourceSide && idSet.has(group.id));
+    if (sourceGroups.length === 0) {
+      return { changed: 0, skipped: groupIds.length };
+    }
+
+    const targetSide: TreeSide = sourceSide === "workspace" ? "central" : "workspace";
+    const nextGroups = [...state.groups];
+    let changed = 0;
+
+    for (const sourceGroup of sourceGroups) {
+      const sourceTool = getGroupTool(sourceGroup);
+      if (!sourceTool) continue;
+      const mirrorKey = `${sourceGroup.side}:${sourceGroup.id}`;
+      const existingIndex = nextGroups.findIndex((group) =>
+        group.side === targetSide
+        && (
+          group.meta?.mirroredFrom === mirrorKey
+          || (
+            group.name === sourceGroup.name
+            && getGroupTool(group) === sourceTool
+          )
+        )
+      );
+      const existing = existingIndex >= 0 ? nextGroups[existingIndex] : undefined;
+      const now = new Date().toISOString();
+      const normalizedTargets = dedupeGroupTargets(sourceGroup.targets.filter((target) => isManagedSkillPath(target.relativePath)));
+      const mirrored: SelectionGroup = {
+        ...sourceGroup,
+        id: existing?.id ?? `${targetSide}-${Date.now()}-${changed}`,
+        side: targetSide,
+        targets: normalizedTargets,
+        meta: {
+          ...sourceGroup.meta,
+          source: sourceGroup.meta?.source ?? "manual",
+          mirroredFrom: mirrorKey,
+          lastInstalledAt: sourceGroup.meta?.source === "npx" ? now : sourceGroup.meta?.lastInstalledAt
+        }
+      };
+
+      if (existing) {
+        if (
+          existing.name === mirrored.name
+          && groupTargetsEqual(existing.targets, mirrored.targets)
+          && existing.meta?.mirroredFrom === mirrored.meta?.mirroredFrom
+        ) {
+          continue;
+        }
+        nextGroups[existingIndex] = mirrored;
+        changed += 1;
+      } else {
+        nextGroups.push(mirrored);
+        changed += 1;
+      }
+    }
+
+    if (changed > 0) {
+      await persistGroups(nextGroups, state.selectedGroupId, { skipExistenceValidation: true });
+    }
+    return { changed, skipped: Math.max(0, groupIds.length - sourceGroups.length) };
+  }
+
+  async function deleteComparedGroupsFromExplorer(
+    targetSide: TreeSide,
+    groupIds: string[]
+  ): Promise<{ changed: number; skipped: number }> {
+    const idSet = new Set(groupIds);
+    const targetGroups = state.groups.filter((group) => group.side === targetSide && idSet.has(group.id));
+    if (targetGroups.length === 0) {
+      return { changed: 0, skipped: groupIds.length };
+    }
+
+    const sideLabel = targetSide === "workspace" ? "Workspace" : "Central";
+    const preview = targetGroups.slice(0, 5).map((group) => `${getGroupTool(group) ?? "-"} / ${group.name}`).join("\n");
+    const more = targetGroups.length > 5 ? `\n외 ${targetGroups.length - 5}개` : "";
+    const ok = await vscode.window.showWarningMessage(
+      `${sideLabel}에만 있는 그룹 ${targetGroups.length}개를 삭제할까요?\n\n${preview}${more}`,
+      { modal: true },
+      "삭제"
+    );
+    if (ok !== "삭제") {
+      return { changed: 0, skipped: groupIds.length };
+    }
+
+    const nextGroups = state.groups.filter((group) => !(group.side === targetSide && idSet.has(group.id)));
+    await persistGroups(nextGroups, state.selectedGroupId, { skipExistenceValidation: true });
+    return { changed: targetGroups.length, skipped: Math.max(0, groupIds.length - targetGroups.length) };
+  }
+
   function parseLibraryTargets(rawTargets: unknown): Array<{ tool: ToolType; relativePath: string; kind: "file" | "folder" }> {
     return (Array.isArray(rawTargets) ? rawTargets : [])
       .map((target) => {
@@ -1244,7 +1713,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!state.workspacePath || !state.centralRepoPath) await refresh();
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeAddMoveWizard",
-      "Skill Bridge Add/Move Wizard",
+      "스킬 추가/이동",
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -1314,19 +1783,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           return;
         }
         if (message.type === "hydrateProject") {
-          postUi("현재 프로젝트 Hydrate 흐름을 여는 중입니다...", "info", true, "hydrateProject");
+          postUi("현재 프로젝트에 스킬을 채우는 흐름을 여는 중입니다...", "info", true, "hydrateProject");
           await hydrateCurrentProject();
           await refresh();
           postState();
-          postUi("현재 프로젝트 Hydrate 흐름을 완료했습니다.");
+          postUi("현재 프로젝트에 스킬 채우기를 완료했습니다.");
           return;
         }
         if (message.type === "createPack") {
-          postUi("개인 Skill Pack 생성 흐름을 여는 중입니다...", "info", true, "createPack");
+          postUi("개인 스킬 묶음 생성 흐름을 여는 중입니다...", "info", true, "createPack");
           await createCentralPack();
           await refresh();
           postState();
-          postUi("개인 Skill Pack 생성 흐름을 완료했습니다.");
+          postUi("개인 스킬 묶음 생성을 완료했습니다.");
         }
       } catch (error) {
         const text = toUserError(error);
@@ -1395,7 +1864,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!name?.trim()) return;
 
     const basePath = side === "workspace" ? state.workspacePath : state.centralRepoPath;
-    const toolRoot = getSkillRoot(basePath, tool, side);
+    const toolRoot = getWritableSkillRoot(basePath, tool, side);
     const folderRel = normalizeRel(path.posix.join("skills", name.trim()));
     const folderAbs = path.join(toolRoot, folderRel);
     if (await exists(folderAbs)) {
@@ -1469,7 +1938,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const basePath = side === "workspace" ? state.workspacePath : state.centralRepoPath;
     const sourceRoot = getSkillRoot(basePath, asset.tool, side);
-    const targetRoot = getSkillRoot(basePath, targetTool.value, side);
+    const targetRoot = getWritableSkillRoot(basePath, targetTool.value, side);
     const sourceAbs = path.join(sourceRoot, asset.rootRelativePath);
     const targetRel = normalizeRel(path.posix.join("skills", targetName.trim()));
     const targetAbs = path.join(targetRoot, targetRel);
@@ -1508,19 +1977,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           actionKind: "pack" as const,
           label: `$(package) ${pack.name}`,
           description: `${pack.targets.length}개 스킬`,
-          detail: pack.description || "개인 Skill Pack",
+          detail: pack.description || "개인 스킬 묶음",
           pack
         })),
         {
           actionKind: "manual" as const,
           label: "$(list-selection) 중앙 스킬 직접 선택",
           description: `${centralAssets.length}개 스킬 중 선택`,
-          detail: "현재 프로젝트에 필요한 스킬만 골라 Transfer Manager에서 검토합니다."
+          detail: "현재 프로젝트에 필요한 스킬만 골라 전송 전 검토 화면에서 확인합니다."
         }
       ];
 
       const choice = await vscode.window.showQuickPick(picks, {
-        title: "Hydrate Current Project",
+        title: "현재 프로젝트에 스킬 채우기",
         placeHolder: "현재 프로젝트에 가져올 개인 스킬 팩 또는 스킬을 선택하세요.",
         matchOnDescription: true,
         matchOnDetail: true
@@ -1560,7 +2029,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await upsertHydratedWorkspaceGroup(selected.name, selected.id, availableTargets);
       await refresh();
       vscode.window.showInformationMessage(
-        `Hydrate 완료: 복사 ${result.copied}개 / 삭제 ${result.deleted}개 / 변경없음 ${result.unchanged}개`
+        `프로젝트 스킬 채우기 완료: 복사 ${result.copied}개 / 삭제 ${result.deleted}개 / 변경없음 ${result.unchanged}개`
       );
     } catch (error) {
       vscode.window.showErrorMessage(toUserError(error));
@@ -1617,7 +2086,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           value: asset
         })),
         {
-          title: "개인 Skill Pack에 넣을 중앙 스킬 선택",
+          title: "개인 스킬 묶음에 넣을 중앙 스킬 선택",
           canPickMany: true,
           matchOnDescription: true,
           matchOnDetail: true
@@ -1626,15 +2095,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!selected || selected.length === 0) return;
 
       const name = await vscode.window.showInputBox({
-        title: "개인 Skill Pack 이름",
+        title: "개인 스킬 묶음 이름",
         prompt: "예: personal-default, frontend-project, langgraph-project",
         validateInput: (value) => value.trim() ? null : "팩 이름을 입력하세요.",
         ignoreFocusOut: true
       });
       if (!name?.trim()) return;
       const description = await vscode.window.showInputBox({
-        title: "개인 Skill Pack 설명",
-        prompt: "선택 사항입니다. 어떤 프로젝트에 쓰는 팩인지 적어두면 Hydrate 때 찾기 쉽습니다.",
+        title: "개인 스킬 묶음 설명",
+        prompt: "선택 사항입니다. 어떤 프로젝트에 쓰는 팩인지 적어두면 프로젝트에 스킬을 채울 때 찾기 쉽습니다.",
         ignoreFocusOut: true
       });
 
@@ -1649,11 +2118,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const previous = packsFile.packs.find((item) => item.id === id);
       if (previous) {
         const ok = await vscode.window.showWarningMessage(
-          `이미 같은 이름의 개인 Skill Pack이 있습니다: ${previous.name}. 새 선택으로 업데이트할까요?`,
+          `이미 같은 이름의 개인 스킬 묶음이 있습니다: ${previous.name}. 새 선택으로 바꿀까요?`,
           { modal: true },
-          "업데이트"
+          "바꾸기"
         );
-        if (ok !== "업데이트") return;
+        if (ok !== "바꾸기") return;
       }
       const pack: PersonalSkillPack = {
         id,
@@ -1667,7 +2136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         .sort((a, b) => a.name.localeCompare(b.name));
       packsFile.updatedAt = now;
       await saveCentralPacks(packsFile);
-      vscode.window.showInformationMessage(`개인 Skill Pack 저장 완료: ${pack.name} (${pack.targets.length}개)`);
+      vscode.window.showInformationMessage(`개인 스킬 묶음 저장 완료: ${pack.name} (${pack.targets.length}개)`);
     } catch (error) {
       vscode.window.showErrorMessage(toUserError(error));
     }
@@ -1677,7 +2146,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       const current = state.centralRepoPath || resolveContext().centralRepoPath;
       const picked = await vscode.window.showOpenDialog({
-        title: "Personal Skill Home 선택",
+        title: "개인 중앙 스킬 폴더 선택",
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
@@ -1690,8 +2159,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.workspace
         .getConfiguration(SETTINGS_SECTION)
         .update("centralRepoPath", folder, vscode.ConfigurationTarget.Global);
+      await clearCentralRepoPathOverrides();
       await refresh();
-      vscode.window.showInformationMessage(`Personal Skill Home 설정 완료: ${folder}`);
+      vscode.window.showInformationMessage(`개인 중앙 스킬 폴더 설정 완료: ${folder}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(toUserError(error));
+    }
+  }
+
+  async function resetPersonalSkillHome(): Promise<void> {
+    try {
+      const workspacePath = state.workspacePath || getActiveWorkspacePath();
+      const beforePath = state.centralRepoPath || resolveContext().centralRepoPath;
+      const defaultPath = getDefaultCentralRepoPath(workspacePath);
+      await vscode.workspace
+        .getConfiguration(SETTINGS_SECTION)
+        .update("centralRepoPath", DEFAULT_CENTRAL_REPO_PATH, vscode.ConfigurationTarget.Global);
+      await clearCentralRepoPathOverrides();
+      await ensurePersonalSkillHome(defaultPath);
+      const result = await refresh();
+      const moved = path.normalize(beforePath) !== path.normalize(result.centralRepoPath);
+      const normalization = result.groupNormalization.changed
+        ? ` · 그룹 정리: 제거 ${result.groupNormalization.removedGroupCount}개, 대상 제거 ${result.groupNormalization.removedTargetCount}개`
+        : " · 그룹 변경 없음";
+      const message = moved
+        ? `개인 중앙 스킬 폴더 초기화: ${compactPathForDisplay(beforePath)} → ${compactPathForDisplay(result.centralRepoPath)}`
+        : `개인 중앙 스킬 폴더는 이미 기본 위치입니다: ${compactPathForDisplay(result.centralRepoPath)}`;
+      output.appendLine(`[PersonalHomeReset] before=${beforePath}`);
+      output.appendLine(`[PersonalHomeReset] after=${result.centralRepoPath}`);
+      output.appendLine(`[PersonalHomeReset] centralSkills=${result.centralSkillCount}, centralGroups=${result.centralGroupCount}, workspaceGroups=${result.workspaceGroupCount}, normalized=${JSON.stringify(result.groupNormalization)}`);
+      vscode.window.showInformationMessage(`${message} · Central 스킬 ${result.centralSkillCount}개 · Central 그룹 ${result.centralGroupCount}개${normalization}`);
     } catch (error) {
       vscode.window.showErrorMessage(toUserError(error));
     }
@@ -1700,7 +2197,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   async function ensurePersonalSkillHome(basePath: string): Promise<void> {
     await fs.mkdir(path.join(basePath, ".skill-bridge"), { recursive: true });
     await Promise.all(ALL_AGENTS.map(async (tool) => {
-      await fs.mkdir(path.join(getSkillRoot(basePath, tool, "central"), "skills"), { recursive: true });
+      await fs.mkdir(path.join(getWritableSkillRoot(basePath, tool, "central"), "skills"), { recursive: true });
     }));
   }
 
@@ -1728,7 +2225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ...state.groups.filter((group) => !(group.side === "workspace" && group.meta?.repoKey === key)),
       nextGroup
     ];
-    await saveWorkspaceGroups(state.workspacePath, state.groups);
+    await saveSelectionGroups(state.workspacePath, state.centralRepoPath, state.groups);
   }
 
   async function loadCentralPacks(): Promise<CentralPacksFile> {
@@ -1855,19 +2352,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!state.workspacePath || !state.centralRepoPath) await refresh();
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferExplorer",
-      "Transfer Explorer (Workspace ↔ Central)",
+      "변경 비교/반영 (Workspace ↔ Central)",
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    const postState = (): void => {
-      panel.webview.postMessage({ type: "state", payload: buildTransferExplorerPayload() });
+    const postState = async (): Promise<void> => {
+      panel.webview.postMessage({ type: "state", payload: await buildTransferExplorerPayload() });
     };
     const postUi = (payload: { busy?: boolean; message?: string; tone?: "info" | "warn" | "error" }): void => {
       panel.webview.postMessage({ type: "ui", payload });
     };
 
-    panel.webview.html = renderTransferExplorerHtml(panel.webview, buildTransferExplorerPayload());
+    panel.webview.html = renderComparedTransferExplorerHtml(panel.webview, await buildTransferExplorerPayload());
     panel.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== "object") return;
       const message = msg as { type?: string; payload?: unknown };
@@ -1875,7 +2372,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (message.type === "refresh") {
           postUi({ busy: true, message: "목록을 새로고침하는 중...", tone: "info" });
           await refresh();
-          postState();
+          await postState();
           postUi({ busy: false, message: "목록이 최신 상태로 갱신되었습니다.", tone: "info" });
           return;
         }
@@ -1888,7 +2385,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (!tool || !relativePath) return;
           postUi({ busy: true, message: `${kind === "file" ? "파일" : "폴더"} 전송 중: ${tool}/${relativePath}`, tone: "info" });
           await transferPathFromExplorer(sourceSide, tool, relativePath, kind);
-          postState();
+          await postState();
           postUi({ busy: false, message: `${kind === "file" ? "파일" : "폴더"} 전송 완료: ${tool}/${relativePath}`, tone: "info" });
           return;
         }
@@ -1904,8 +2401,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           }
           postUi({ busy: true, message: `그룹 전송 중: ${group.name}`, tone: "info" });
           await exportGroup(sourceSide, group);
-          postState();
+          await postState();
           postUi({ busy: false, message: `그룹 전송 완료: ${group.name}`, tone: "info" });
+          return;
+        }
+        if (message.type === "moveCompared") {
+          const payload = (message.payload as {
+            mode?: string;
+            status?: string;
+            targets?: Array<{ tool?: string; relativePath?: string; kind?: string }>;
+          } | undefined) ?? {};
+          const mode = payload.mode === "centralToWorkspace" ? "centralToWorkspace" : "workspaceToCentral";
+          const sourceSide: TreeSide = mode === "workspaceToCentral" ? "workspace" : "central";
+          const targets = parseLibraryTargets(payload.targets).map((target) => ({ ...target, kind: "folder" as const }));
+          if (targets.length === 0) throw new Error("반영할 스킬이 없습니다.");
+          const status = normalizeTransferExplorerActionStatus(payload.status);
+          const selectedStatuses = transferExplorerSelectedStatuses(status);
+          postUi({ busy: true, message: `비교 영역 반영 검토 중... (${targets.length}개 스킬)`, tone: "info" });
+          const summary = await transferComparedTargetsFromExplorer(sourceSide, targets, selectedStatuses);
+          await postState();
+          const groupSuffix = summary.mirroredGroups > 0 ? ` · 그룹 동기화 ${summary.mirroredGroups}` : "";
+          postUi({
+            busy: false,
+            message: `영역 반영 완료: 요청 ${summary.requested}개 · 검토 ${summary.processed}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 변경없음 ${summary.unchanged} · 제외 ${summary.skipped}${groupSuffix}`,
+            tone: summary.copied + summary.deleted > 0 ? "info" : "warn"
+          });
+          return;
+        }
+        if (message.type === "moveComparedGroups") {
+          const payload = (message.payload as {
+            mode?: string;
+            status?: string;
+            groupIds?: string[];
+          } | undefined) ?? {};
+          const mode = payload.mode === "centralToWorkspace" ? "centralToWorkspace" : "workspaceToCentral";
+          const sourceSide: TreeSide = mode === "workspaceToCentral" ? "workspace" : "central";
+          const targetSide: TreeSide = sourceSide === "workspace" ? "central" : "workspace";
+          const status = normalizeTransferExplorerActionStatus(payload.status);
+          const groupIds = (Array.isArray(payload.groupIds) ? payload.groupIds : []).map((id) => String(id)).filter(Boolean);
+          if (groupIds.length === 0) throw new Error("반영할 그룹이 없습니다.");
+
+          postUi({ busy: true, message: `그룹 차이 반영 중... (${groupIds.length}개)`, tone: "info" });
+          const result = status === "removed"
+            ? await deleteComparedGroupsFromExplorer(targetSide, groupIds)
+            : await mirrorComparedGroupsFromExplorer(sourceSide, groupIds);
+          await postState();
+          postUi({
+            busy: false,
+            message: `그룹 반영 완료: 요청 ${groupIds.length}개 · 반영 ${result.changed}개 · 제외 ${result.skipped}개`,
+            tone: result.changed > 0 ? "info" : "warn"
+          });
+          return;
+        }
+        if (message.type === "openComparedDiff") {
+          const payload = (message.payload as { mode?: string; tool?: string; relativePath?: string } | undefined) ?? {};
+          const mode = payload.mode === "centralToWorkspace" ? "centralToWorkspace" : "workspaceToCentral";
+          const sourceSide: TreeSide = mode === "workspaceToCentral" ? "workspace" : "central";
+          const tool = isToolType(String(payload.tool ?? "")) ? String(payload.tool ?? "") as ToolType : null;
+          const relativePath = normalizeRel(String(payload.relativePath ?? ""));
+          if (!tool || !relativePath) return;
+          await openLibraryDiff(sourceSide, tool, relativePath, "folder");
+          return;
         }
       } catch (error) {
         postUi({ busy: false, message: toUserError(error), tone: "error" });
@@ -2174,7 +2730,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const summaryPanel = vscode.window.createWebviewPanel(
       "skillBridgeFolderDiffSummaryFromLibrary",
-      `Diff Summary: ${tool}/${relativePath}`,
+      `폴더 Diff 요약: ${tool}/${relativePath}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: false }
     );
@@ -2357,7 +2913,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await refresh();
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeLibraryManager",
-      "Skill Library Manager",
+      "스킬 보관함",
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -2377,7 +2933,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const bootTimeout = setTimeout(() => {
       if (clientReady) return;
       output.appendLine("[LibraryManager] webview clientReady timeout (2s) - script init may have failed.");
-      vscode.window.setStatusBarMessage("Skill Bridge: Library Manager 화면 초기화 지연", 2500);
+      vscode.window.setStatusBarMessage("Skill Bridge: 스킬 보관함 화면 초기화 지연", 2500);
     }, 2000);
     panel.onDidDispose(() => {
       clearTimeout(bootTimeout);
@@ -2400,7 +2956,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const stack = String(payload.stack ?? "").trim();
           output.appendLine(`[LibraryManager] client error: ${errorMessage}`);
           if (stack) output.appendLine(stack);
-          vscode.window.showErrorMessage(`Library Manager 화면 오류: ${errorMessage}`);
+          vscode.window.showErrorMessage(`스킬 보관함 화면 오류: ${errorMessage}`);
           return;
         }
         if (message.type === "refresh") {
@@ -2469,10 +3025,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const relativePath = normalizeRel(String(payload.relativePath ?? ""));
           const kind = payload.kind === "file" ? "file" : "folder";
           if (!tool || !relativePath) return;
-          postUi({ busy: true, message: `${targetSide === "workspace" ? "Workspace" : "Central"} 업데이트 검토 중: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: true, message: `${targetSide === "workspace" ? "Workspace" : "Central"}로 변경 가져오기 검토 중: ${tool}/${relativePath}`, tone: "info" });
           await transferPathFromExplorer(sourceSide, tool, relativePath, kind);
           await postState();
-          postUi({ busy: false, message: `업데이트 검토 완료: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: false, message: `변경 가져오기 검토 완료: ${tool}/${relativePath}`, tone: "info" });
           return;
         }
         if (message.type === "updateSelected") {
@@ -2483,14 +3039,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const targetSide = payload.targetSide === "central" ? "central" : "workspace";
           const sourceSide = targetSide === "workspace" ? "central" : "workspace";
           const targets = parseLibraryTargets(payload.targets);
-          if (targets.length === 0) throw new Error("업데이트할 항목이 없습니다.");
-          postUi({ busy: true, message: `선택 항목 업데이트 검토 중... (${targets.length}개)`, tone: "info" });
+          if (targets.length === 0) throw new Error("가져올 변경 항목이 없습니다.");
+          postUi({ busy: true, message: `선택 항목 변경 가져오기 검토 중... (${targets.length}개)`, tone: "info" });
           const summary = await transferSelectedPathsFromLibrary(sourceSide, targets);
           await postState();
           const groupSuffix = summary.mirroredGroups > 0 ? ` · 그룹 동기화 ${summary.mirroredGroups}` : "";
           postUi({
             busy: false,
-            message: `선택 업데이트 완료: 요청 ${summary.requested}개 · 반영 ${summary.processed}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 제외 ${summary.skipped}${groupSuffix}`,
+            message: `선택 변경 가져오기 완료: 요청 ${summary.requested}개 · 반영 ${summary.processed}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 제외 ${summary.skipped}${groupSuffix}`,
             tone: "info"
           });
           return;
@@ -2772,7 +3328,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (normalized.changed) {
       output.appendLine(`[GroupNormalize] persist 시 정규화 적용 - split=${normalized.splitCount}, removedTargets=${normalized.removedTargetCount}, removedGroups=${normalized.removedGroupCount}`);
     }
-    await saveWorkspaceGroups(state.workspacePath, state.groups);
+    await saveSelectionGroups(state.workspacePath, state.centralRepoPath, state.groups);
     workspaceProvider.setGroups(state.groups);
     centralProvider.setGroups(state.groups);
     workspaceProvider.setSelectedGroup(state.selectedGroupId);
@@ -2977,7 +3533,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const nextGroups = state.groups.map((item) => item.id === group.id ? { ...item, targets: nextTargets } : item);
     await persistGroups(nextGroups, group.id);
-    vscode.window.showInformationMessage(`그룹 업데이트 완료: ${group.name} (${nextTargets.length}개)`);
+    vscode.window.showInformationMessage(`그룹 변경 완료: ${group.name} (${nextTargets.length}개)`);
   }
 
   async function showGroupActions(node?: GroupTreeNode): Promise<void> {
@@ -2995,7 +3551,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const action = await vscode.window.showQuickPick(
         [
-          { label: group.side === "workspace" ? "Promote 실행" : "Import 실행", value: "run" as const },
+          { label: group.side === "workspace" ? "Central로 보내기" : "Workspace로 가져오기", value: "run" as const },
           { label: "그룹 이름 변경", value: "rename" as const },
           { label: "현재 선택 항목 추가", value: "append" as const },
           { label: "현재 선택 항목으로 교체", value: "replace" as const },
@@ -3068,11 +3624,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const tool = baseNode?.tool ?? await pickTool();
       if (!tool) return;
 
-      const baseRelRaw = baseNode
+      const canUseBaseNode = !!baseNode && (baseNode.kind === "file" || baseNode.kind === "folder") && isManagedSkillPath(baseNode.relativePath);
+      const baseRelRaw = canUseBaseNode
         ? (baseNode.kind === "file" ? path.posix.dirname(baseNode.relativePath) : baseNode.relativePath)
         : "skills";
       const baseRel = normalizeRel(baseRelRaw) || "skills";
-      const toolRoot = getSkillRoot(basePath, tool, side);
+      const toolRoot = getWritableSkillRoot(basePath, tool, side);
 
       const name = await vscode.window.showInputBox({
         title: kind === "folder" ? "새 폴더 이름" : "새 파일 이름",
@@ -3104,6 +3661,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       await refresh();
       vscode.window.showInformationMessage(`${kind === "folder" ? "폴더" : "파일"} 생성 완료`);
+    } catch (error) {
+      vscode.window.showErrorMessage(toUserError(error));
+    }
+  }
+
+  async function openFolderInOs(side: TreeSide, node?: SkillTreeNode): Promise<void> {
+    try {
+      if (!state.workspacePath || !state.centralRepoPath) await refresh();
+      const basePath = side === "workspace" ? state.workspacePath : state.centralRepoPath;
+      const targetPath = resolveOpenFolderTarget(basePath, side, node);
+      if (!await exists(targetPath)) {
+        vscode.window.showWarningMessage(`열 폴더가 없습니다: ${targetPath}`);
+        return;
+      }
+      const stat = await fs.stat(targetPath);
+      const folderPath = stat.isDirectory() ? targetPath : path.dirname(targetPath);
+      await vscode.env.openExternal(vscode.Uri.file(folderPath));
+      vscode.window.setStatusBarMessage(
+        `Skill Bridge: ${side === "workspace" ? "Workspace" : "Central"} 폴더 열기 ${compactPathForDisplay(folderPath)}`,
+        2500
+      );
     } catch (error) {
       vscode.window.showErrorMessage(toUserError(error));
     }
@@ -3223,7 +3801,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       if (state.clipboard.side !== side) {
-        vscode.window.showWarningMessage("다른 패널로 붙여넣기는 지원하지 않습니다. Promote/Import를 사용하세요.");
+        vscode.window.showWarningMessage("다른 패널로 붙여넣기는 지원하지 않습니다. Central로 보내기/Workspace로 가져오기를 사용하세요.");
         return;
       }
 
@@ -3370,7 +3948,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const target = node ?? provider.getSelected();
       const skillRel = getSkillFolderRelativePathFromNode(target);
       const skillNode = target && skillRel ? makeFolderNode(target.tool, skillRel) : undefined;
-      const title = side === "workspace" ? "Workspace Quick Skill CRUD" : "Central Quick Skill CRUD";
+      const title = side === "workspace" ? "Workspace 스킬 파일 만들기/수정" : "Central 스킬 파일 만들기/수정";
 
       const actions: Array<{ label: string; value: string; description?: string }> = [
         { label: "새 스킬 생성", value: "createSkill", description: "skills/<name> + SKILL.md 생성" },
@@ -3389,6 +3967,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (target) {
         actions.push(
+          { label: "선택 항목 폴더 열기", value: "openFolder" },
           { label: "선택 항목 이름 변경", value: "renameNode" },
           { label: "선택 항목 복제", value: "duplicateNode" },
           { label: "선택 항목 삭제", value: "deleteNode" }
@@ -3415,6 +3994,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (pick.value === "openSkillMd") {
         await openSkillMarkdown(side, skillNode);
+        return;
+      }
+      if (pick.value === "openFolder") {
+        await openFolderInOs(side, target ?? undefined);
         return;
       }
       if (pick.value === "renameSkill") {
@@ -3462,7 +4045,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const actions: Array<{ label: string; value: string; description?: string }> = [
         {
-          label: side === "workspace" ? "선택 항목 Promote" : "선택 항목 Import",
+          label: side === "workspace" ? "선택 항목 Central로 보내기" : "선택 항목 Workspace로 가져오기",
           value: "transfer",
           description: `${selections.length}개 파일 대상`
         },
@@ -3472,9 +4055,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           description: "현재 선택 노드를 새 그룹으로 저장"
         },
         {
-          label: "Quick Skill CRUD 열기",
+          label: "스킬 파일 만들기/수정 열기",
           value: "crud",
           description: "생성/이름변경/복제/삭제"
+        },
+        {
+          label: baseNode ? "선택 위치 폴더 열기" : `${side === "workspace" ? "Workspace" : "Central"} 폴더 열기`,
+          value: "openFolder",
+          description: baseNode ? `${baseNode.tool}/${baseNode.relativePath || "."}` : "루트 폴더를 OS 탐색기로 열기"
         }
       ];
 
@@ -3514,7 +4102,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           scopeHints: buildTransferScopeHintsFromNodes(scopedNodes)
         });
         await refresh();
-        vscode.window.showInformationMessage(`${side === "workspace" ? "Copy To Central" : "Copy To Workspace"} 반영: 복사 ${result.copied}개 / 삭제 ${result.deleted}개 / 변경없음 ${result.unchanged}개`);
+        vscode.window.showInformationMessage(`${side === "workspace" ? "Central로 보내기" : "Workspace로 가져오기"} 완료: 복사 ${result.copied}개 / 삭제 ${result.deleted}개 / 변경없음 ${result.unchanged}개`);
         return;
       }
       if (pick.value === "createGroup") {
@@ -3523,6 +4111,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (pick.value === "crud") {
         await showQuickSkillCrud(side, baseNode);
+        return;
+      }
+      if (pick.value === "openFolder") {
+        await openFolderInOs(side, baseNode);
         return;
       }
       if (pick.value === "openSkillMd") {
@@ -4108,7 +4700,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const itemsMap = new Map<string, TransferPlanItem>();
     for (const [tool, scopes] of scopeByTool.entries()) {
       const sourceToolRoot = getSkillRoot(sourceBasePath, tool, sourceMode);
-      const targetToolRoot = getSkillRoot(targetBasePath, tool, targetMode);
+      const targetToolRoot = getWritableSkillRoot(targetBasePath, tool, targetMode);
       for (const [scope, scopeKind] of scopes.entries()) {
         const [sourceEntries, targetEntries] = await Promise.all([
           collectScopeEntries(sourceToolRoot, scope, scopeKind),
@@ -4155,9 +4747,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           }
 
           const srcPath = sourceEntry?.absolutePath
-            ?? resolveSkillPath(sourceBasePath, tool, relativePath, sourceMode);
+            ?? path.join(sourceToolRoot, relativePath);
           const dstPath = targetEntry?.absolutePath
-            ?? resolveSkillPath(targetBasePath, tool, relativePath, targetMode);
+            ?? path.join(targetToolRoot, relativePath);
           const key = `${tool}:${relativePath}`;
           itemsMap.set(key, {
             key,
@@ -4225,7 +4817,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     let currentPlan = plan;
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferManager",
-      plan.mode === "workspaceToCentral" ? "Copy To Central - Transfer Manager" : "Copy To Workspace - Transfer Manager",
+      plan.mode === "workspaceToCentral" ? "Central로 보내기 - 전송 전 검토" : "Workspace로 가져오기 - 전송 전 검토",
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -4261,7 +4853,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const keySet = new Set(Array.isArray(payload.itemKeys) ? payload.itemKeys : []);
           const targets = currentPlan.items.filter((entry) => keySet.has(entry.key));
           if (targets.length === 0) return;
-          const panelTitle = `Diff Summary: ${tool}/${relativePath}`;
+          const panelTitle = `폴더 Diff 요약: ${tool}/${relativePath}`;
           const summaryPanel = vscode.window.createWebviewPanel(
             "skillBridgeFolderDiffSummary",
             panelTitle,
@@ -4665,7 +5257,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const tool = baseNode?.tool ?? await pickTool();
       if (!tool) return;
 
-      const toolRoot = getSkillRoot(basePath, tool, side);
+      const toolRoot = getWritableSkillRoot(basePath, tool, side);
       const baseRel = "skills";
 
       const name = await vscode.window.showInputBox({
@@ -4829,31 +5421,31 @@ function renderAddMoveWizardHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Add/Move Wizard</title>
+  <title>스킬 추가/이동</title>
   <style>
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .wrap { padding: 16px; display: grid; gap: 14px; }
-    .head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-    h1 { margin: 0; font-size: 20px; font-weight: 700; }
+    .wrap { padding: 12px; display: grid; gap: 10px; }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    h1 { margin: 0; font-size: 18px; font-weight: 700; }
     .muted { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.5; }
-    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-    .action { text-align: left; border: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); border-radius: 6px; padding: 12px; display: grid; gap: 6px; cursor: pointer; min-height: 92px; transition: border-color 120ms ease, background 120ms ease, transform 120ms ease; }
+    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 7px; }
+    .action { text-align: left; border: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); border-radius: 6px; padding: 8px 10px; display: grid; gap: 3px; cursor: pointer; min-height: 0; transition: border-color 120ms ease, background 120ms ease, transform 120ms ease; }
     .action:hover { background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
     .action:focus-visible, button.ghost:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .action:active { transform: translateY(1px); }
     .action.pending { border-color: #60a5fa; background: color-mix(in oklab, var(--vscode-button-secondaryBackground) 78%, #60a5fa 22%); }
     button:disabled { opacity: .58; cursor: progress; }
     .action b { font-size: 13px; }
-    .action span { font-size: 12px; color: var(--vscode-descriptionForeground); line-height: 1.45; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .action span { font-size: 12px; color: var(--vscode-descriptionForeground); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
     .panel { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: hidden; }
-    .panel-head { padding: 10px 12px; background: var(--vscode-sideBar-background); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .panel-head { padding: 8px 10px; background: var(--vscode-sideBar-background); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
     .panel-head b { font-size: 13px; }
     .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--vscode-panel-border); }
-    .metric { background: var(--vscode-editor-background); padding: 9px 10px; }
+    .metric { background: var(--vscode-editor-background); padding: 6px 8px; }
     .metric .k { color: var(--vscode-descriptionForeground); font-size: 11px; }
-    .metric .v { font-size: 18px; font-weight: 700; }
-    .preview { padding: 8px 10px; display: grid; gap: 6px; }
+    .metric .v { font-size: 15px; font-weight: 700; }
+    .preview { padding: 6px 8px; display: grid; gap: 5px; max-height: 150px; overflow: auto; scrollbar-gutter: stable; }
     .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12px; }
     .row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chip { display: inline-flex; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
@@ -4863,7 +5455,7 @@ function renderAddMoveWizardHtml(
     .status-recent { color: #60a5fa; border-color: #3b82f6; }
     .foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
     button.ghost { border: 1px solid var(--vscode-input-border); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-radius: 4px; padding: 6px 9px; cursor: pointer; }
-    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 9px 10px; font-size: 12px; }
+    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
     .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
     .feedback.warn { border-color: #f59e0b; color: #fbbf24; }
     .feedback.error { border-color: #fb7185; color: #fb7185; }
@@ -4873,17 +5465,17 @@ function renderAddMoveWizardHtml(
   <div class="wrap">
     <div class="head">
       <div>
-        <h1>Skill Add/Move Wizard</h1>
+        <h1>스킬 추가/이동</h1>
         <div class="muted">스킬을 만들고, 중앙 저장소와 맞추고, 다른 에이전트로 복사하기 전에 위험 신호를 먼저 확인합니다.</div>
       </div>
       <button id="refresh" class="ghost">새로고침</button>
     </div>
     <div class="actions">
       <button class="action" data-action="newSkill"><b>새 스킬 만들기</b><span>대상 에이전트를 고르고 skills/&lt;name&gt;/SKILL.md를 생성합니다.</span></button>
-      <button class="action" data-action="promoteAsset"><b>Workspace → Central</b><span>작업공간의 스킬 하나를 Transfer Manager에서 검토한 뒤 중앙에 반영합니다.</span></button>
-      <button class="action" data-action="importAsset"><b>Central → Workspace</b><span>중앙 저장소의 스킬 하나를 Transfer Manager에서 검토한 뒤 가져옵니다.</span></button>
-      <button class="action" data-action="hydrateProject"><b>Hydrate Current Project</b><span>개인 Skill Pack이나 중앙 스킬 묶음을 현재 프로젝트에 빠르게 가져옵니다.</span></button>
-      <button class="action" data-action="createPack"><b>개인 Pack 만들기</b><span>중앙 스킬 여러 개를 프로젝트 유형별 묶음으로 저장합니다.</span></button>
+      <button class="action" data-action="promoteAsset"><b>Central로 보내기</b><span>작업공간의 스킬 하나를 전송 전 검토 화면에서 확인한 뒤 중앙에 반영합니다.</span></button>
+      <button class="action" data-action="importAsset"><b>Workspace로 가져오기</b><span>중앙 저장소의 스킬 하나를 전송 전 검토 화면에서 확인한 뒤 가져옵니다.</span></button>
+      <button class="action" data-action="hydrateProject"><b>프로젝트에 스킬 채우기</b><span>개인 스킬 묶음이나 중앙 스킬 묶음을 현재 프로젝트에 빠르게 가져옵니다.</span></button>
+      <button class="action" data-action="createPack"><b>개인 스킬 묶음 만들기</b><span>중앙 스킬 여러 개를 프로젝트 유형별 묶음으로 저장합니다.</span></button>
       <button class="action" data-action="copyAgent"><b>에이전트 간 복사</b><span>같은 side 안에서 Claude, Codex, .agents 등 다른 에이전트로 복사합니다.</span></button>
       <button class="action" data-action="installNpx"><b>npx skills add</b><span>기존 설치 흐름을 열고 설치 후 그룹/전송 검토로 이어갑니다.</span></button>
     </div>
@@ -4891,7 +5483,7 @@ function renderAddMoveWizardHtml(
       <div class="panel" id="workspacePanel"></div>
       <div class="panel" id="centralPanel"></div>
     </div>
-    <div id="feedback" class="feedback">작업을 선택하면 VS Code 입력창과 Transfer Manager가 이어서 열립니다.</div>
+    <div id="feedback" class="feedback">작업을 선택하면 VS Code 입력창과 전송 전 검토 화면이 이어서 열립니다.</div>
     <div class="foot">
       <div class="muted" id="filterLabel"></div>
     </div>
@@ -4909,10 +5501,10 @@ function renderAddMoveWizardHtml(
     const actionLabels = {
       refresh:"새로고침",
       newSkill:"새 스킬 만들기",
-      promoteAsset:"Workspace → Central",
-      importAsset:"Central → Workspace",
-      hydrateProject:"Hydrate Current Project",
-      createPack:"개인 Pack 만들기",
+      promoteAsset:"Central로 보내기",
+      importAsset:"Workspace로 가져오기",
+      hydrateProject:"프로젝트에 스킬 채우기",
+      createPack:"개인 스킬 묶음 만들기",
       copyAgent:"에이전트 간 복사",
       installNpx:"npx skills add"
     };
@@ -5004,26 +5596,31 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Transfer Manager</title>
+  <title>전송 전 검토</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
-    .wrap { padding: 12px; display: grid; gap: 10px; height: 100vh; box-sizing: border-box; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr) auto auto; }
+    .wrap { padding: 12px; display: grid; gap: 8px; height: 100vh; box-sizing: border-box; grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto; }
     .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     .meta { font-size: 12px; opacity: 0.9; display: flex; gap: 12px; flex-wrap: wrap; }
-    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); padding: 8px; border-radius: 6px; }
-    .card b { font-size: 18px; }
-    .review-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: color-mix(in oklab, var(--vscode-editor-background) 92%, var(--vscode-editor-foreground) 8%); }
+    .summary { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 8px; }
+    .card { border: 1px solid var(--vscode-panel-border); padding: 6px 8px; border-radius: 6px; }
+    .card b { font-size: 16px; }
+    .review-panel { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 7px 8px; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); display: grid; gap: 6px; }
+    .review-strip { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; min-width: 0; }
     .review-strip strong { margin-right: 2px; }
+    .review-note { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 180px; flex: 1 1 240px; }
     .risk-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; border: 1px solid var(--vscode-panel-border); padding: 2px 8px; font-size: 11px; white-space: nowrap; }
     .risk-high { border-color: #fb7185; color: #fb7185; }
     .risk-medium { border-color: #f59e0b; color: #fbbf24; }
     .risk-low { border-color: #22c55e; color: #4ade80; }
     .risk-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
-    .asset-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-    .asset-card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: var(--vscode-sideBar-background); display: grid; gap: 5px; min-width: 0; }
+    .asset-details { border-top: 1px solid var(--vscode-panel-border); padding-top: 5px; }
+    .asset-details summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 12px; user-select: none; }
+    .asset-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; margin-top: 6px; max-height: 116px; overflow: auto; }
+    .asset-card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px; background: var(--vscode-sideBar-background); display: grid; gap: 4px; min-width: 0; }
     .asset-card .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .asset-card .line { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
+    .asset-empty { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px 0; }
     .recommend-apply { color: #4ade80; border-color: #22c55e; }
     .recommend-inspect { color: #fbbf24; border-color: #f59e0b; }
     .recommend-skip { color: #fb7185; border-color: #fb7185; }
@@ -5031,6 +5628,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
     .toolbar input, .toolbar select, .toolbar button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 6px 8px; }
     .toolbar input { flex: 1 1 280px; min-width: 200px; }
     button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
     .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; min-height: 0; }
     table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
     thead { background: var(--vscode-sideBar-background); }
@@ -5044,7 +5642,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
     .change-code { font-weight: 800; font-size: 13px; }
     .relation-main { display: block; font-weight: 700; }
     .predict-box { border: 1px solid #f59e0b; color: #fbbf24; border-radius: 6px; padding: 8px; font-size: 12px; background: color-mix(in oklab, var(--vscode-editor-background) 88%, #f59e0b 12%); }
-    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; font-size: 12px; }
+    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
     .feedback.warn { border-color: #f59e0b; color: #fbbf24; }
     .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-foreground); }
     .path-main { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
@@ -5055,7 +5653,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
 <body>
   <div class="wrap">
     <div class="head">
-      <h2 style="margin:0;">Transfer Manager</h2>
+      <h2 style="margin:0;">전송 전 검토</h2>
       <div class="meta">
         <span id="modeLabel"></span>
         <span id="groupLabel"></span>
@@ -5067,11 +5665,16 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
       <div class="card">변경(수정+타입충돌) <b id="sumChanged">0</b></div>
       <div class="card">선택 반영 예정 <b id="sumSelectedApply">0</b></div>
     </div>
-    <div id="reviewStrip" class="review-strip">검토 요약을 계산하는 중...</div>
-    <div id="assetStrip" class="asset-strip"></div>
+    <div class="review-panel">
+      <div id="reviewStrip" class="review-strip">검토 요약을 계산하는 중...</div>
+      <details id="assetDetails" class="asset-details">
+        <summary id="assetSummary">스킬별 검토 힌트 보기</summary>
+        <div id="assetStrip" class="asset-strip"></div>
+      </details>
+    </div>
     <div id="feedback" class="feedback info">버튼을 누르면 여기에서 적용 결과를 안내합니다.</div>
     <div class="toolbar">
-      <input id="search" placeholder="경로 검색..." />
+      <input id="search" placeholder="스킬/파일 경로 검색..." />
       <select id="statusFilter">
         <option value="">전체 상태</option>
         <option value="added">신규</option>
@@ -5081,7 +5684,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
       </select>
       <button id="bulkSelectAll">전체 선택</button>
       <button id="bulkConflict">변경만 선택</button>
-      <button id="copyReviewPrompt">AI 검토 프롬프트 복사</button>
+      <button id="copyReviewPrompt">AI 검토 복사</button>
       <button id="refreshPlan">새로고침</button>
     </div>
     <div class="table-wrap">
@@ -5092,8 +5695,8 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
             <th>관계 (현재 → 적용 후)</th>
             <th>상태</th>
             <th>검토 힌트</th>
-            <th>소스 업데이트</th>
-            <th>대상 업데이트</th>
+            <th>보내는 쪽 수정일</th>
+            <th>받는 쪽 수정일</th>
             <th>액션</th>
           </tr>
         </thead>
@@ -5103,7 +5706,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
     <div class="predict-box" id="predictText">예상 결과: 생성 0 / 덮어쓰기 0 / 삭제 0</div>
     <div class="foot">
       <button id="cancelBtn">취소</button>
-      <button id="applyBtn">적용</button>
+      <button id="applyBtn">선택한 변경 반영</button>
     </div>
   </div>
   <script nonce="${nonce}">
@@ -5119,6 +5722,7 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
       sumChanged: document.getElementById("sumChanged"),
       sumSelectedApply: document.getElementById("sumSelectedApply"),
       reviewStrip: document.getElementById("reviewStrip"),
+      assetSummary: document.getElementById("assetSummary"),
       assetStrip: document.getElementById("assetStrip"),
       modeLabel: document.getElementById("modeLabel"),
       groupLabel: document.getElementById("groupLabel"),
@@ -5303,12 +5907,21 @@ function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan):
         + '<span class="risk-chip risk-high">높음 ' + riskCounts.high + '</span>'
         + '<span class="risk-chip risk-medium">중간 ' + riskCounts.medium + '</span>'
         + '<span class="risk-chip risk-low">낮음 ' + riskCounts.low + '</span>'
-        + '<span>선택 항목만 프롬프트에 담깁니다. 파일 내용과 절대경로는 포함하지 않습니다.</span>';
-      const assetSummaries = buildAssetSummaries(state.items).slice(0, 8);
-      ui.assetStrip.innerHTML = assetSummaries.map(asset => '<div class="asset-card"><div class="name" title="' + esc(asset.key) + '">' + esc(asset.tool) + ' / ' + esc(asset.folder) + '</div><div class="line"><span class="risk-chip">' + esc(asset.status) + '</span><span class="risk-chip risk-high">높음 ' + asset.highCount + '</span><span class="risk-chip risk-medium">중간 ' + asset.mediumCount + '</span></div><div class="line"><span class="risk-chip ' + esc(asset.recommendClass) + '">' + esc(asset.recommendation) + '</span><span class="risk-chip">변경 ' + asset.changedCount + '</span></div></div>').join("");
+        + '<span class="review-note">선택 항목만 프롬프트에 담깁니다. 파일 내용과 절대경로는 포함하지 않습니다.</span>';
+      const allAssetSummaries = buildAssetSummaries(selectedItems);
+      const assetSummaries = allAssetSummaries.slice(0, 8);
+      ui.assetSummary.textContent = "스킬별 검토 힌트 " + allAssetSummaries.length + "개" + (allAssetSummaries.length > 8 ? " (상위 8개 표시)" : "");
+      ui.assetStrip.innerHTML = assetSummaries.length
+        ? assetSummaries.map(asset => '<div class="asset-card"><div class="name" title="' + esc(asset.key) + '">' + esc(asset.tool) + ' / ' + esc(asset.folder) + '</div><div class="line"><span class="risk-chip">' + esc(asset.status) + '</span><span class="risk-chip risk-high">높음 ' + asset.highCount + '</span><span class="risk-chip risk-medium">중간 ' + asset.mediumCount + '</span></div><div class="line"><span class="risk-chip ' + esc(asset.recommendClass) + '">' + esc(asset.recommendation) + '</span><span class="risk-chip">변경 ' + asset.changedCount + '</span></div></div>').join("")
+        : '<div class="asset-empty">선택된 항목이 없습니다.</div>';
       ui.predictText.textContent = "예상 결과: 생성 " + predictedCreate + " / 덮어쓰기 " + predictedOverwrite + " / 삭제 " + predictedDelete + " (적용 후 되돌리기 어려움)";
       const promptButton = document.getElementById("copyReviewPrompt");
       if (promptButton instanceof HTMLButtonElement) promptButton.disabled = selectedCount === 0;
+      const applyButton = document.getElementById("applyBtn");
+      if (applyButton instanceof HTMLButtonElement) {
+        applyButton.disabled = selectedCount === 0;
+        applyButton.title = selectedCount === 0 ? "반영할 항목을 먼저 선택하세요." : "선택한 변경을 반영합니다.";
+      }
       const list = filtered();
       const summaryMap = buildFolderSummaryMap(state.items);
       ui.rows.innerHTML = list.map(it => {
@@ -5485,7 +6098,7 @@ function renderTransferExplorerHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Transfer Explorer</title>
+  <title>변경 비교/반영</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
@@ -5532,14 +6145,14 @@ function renderTransferExplorerHtml(
 <body>
   <div class="wrap">
     <div class="head">
-      <div class="title">Transfer Explorer</div>
+      <div class="title">변경 비교/반영</div>
       <div class="actions">
         <input id="searchInput" placeholder="폴더/그룹 검색..." />
         <button id="refreshBtn">새로고침</button>
       </div>
     </div>
     <div class="tabs" id="toolTabs"></div>
-    <div class="hint">All/에이전트 탭으로 범위를 좁히고, 폴더를 펼쳐 파일(SKILL.md 포함) 또는 하위 폴더 단위로 전송할 수 있습니다.</div>
+    <div class="hint">All/에이전트 탭으로 범위를 좁히고, 폴더를 펼쳐 파일(SKILL.md 포함) 또는 하위 폴더 단위로 보낼 수 있습니다.</div>
     <div id="statusLine" class="status">준비 완료</div>
     <div class="grid">
       <section class="pane">
@@ -5789,6 +6402,517 @@ function renderTransferExplorerHtml(
 </html>`;
 }
 
+function renderComparedTransferExplorerHtml(
+  webview: vscode.Webview,
+  data: {
+    tools: ToolType[];
+    skills: Array<{
+      key: string;
+      tool: ToolType;
+      folder: string;
+      skillName: string;
+      status: "same" | "modified" | "onlyWorkspace" | "onlyCentral";
+      workspaceExists: boolean;
+      centralExists: boolean;
+      workspaceFileCount: number;
+      centralFileCount: number;
+      modifiedFileCount: number;
+      workspaceOnlyFileCount: number;
+      centralOnlyFileCount: number;
+      workspaceGroupNames: string[];
+      centralGroupNames: string[];
+    }>;
+    groupDiffs: Array<{
+      key: string;
+      tool: ToolType;
+      name: string;
+      status: "same" | "modified" | "onlyWorkspace" | "onlyCentral";
+      workspaceGroupId: string | null;
+      centralGroupId: string | null;
+      workspaceTargetCount: number;
+      centralTargetCount: number;
+      workspaceTargets: string[];
+      centralTargets: string[];
+    }>;
+    groups: {
+      workspace: Array<{ id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] }>;
+      central: Array<{ id: string; name: string; targetSummary: string; targetCount: number; tools: ToolType[] }>;
+    };
+    summary: {
+      total: number;
+      modified: number;
+      onlyWorkspace: number;
+      onlyCentral: number;
+      same: number;
+    };
+    groupSummary: {
+      total: number;
+      modified: number;
+      onlyWorkspace: number;
+      onlyCentral: number;
+      same: number;
+    };
+  }
+): string {
+  void webview;
+  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const initial = JSON.stringify(data).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>변경 비교/반영</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
+    .wrap { height: 100vh; min-height: 0; padding: 10px; display: grid; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr); gap: 7px; }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .title { font-size: 15px; font-weight: 700; }
+    .controls, .tabs, .mode-switch, .section-actions, .chips, .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
+    input, button { max-width: 100%; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 5px 9px; font: inherit; }
+    input { min-width: min(340px, 48vw); }
+    button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .mode-btn, .tab { font-size: 12px; }
+    .mode-btn.active, .tab.active { border-color: #60a5fa; color: #bfdbfe; box-shadow: inset 0 0 0 1px rgba(96,165,250,.25); }
+    .hint { font-size: 12px; color: var(--vscode-descriptionForeground); }
+    .result-meta { font-size: 12px; color: var(--vscode-descriptionForeground); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-height: 18px; }
+    .summary { display: flex; gap: 6px; overflow-x: auto; scrollbar-gutter: stable; }
+    .metric { flex: 0 0 auto; min-width: 118px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 5px 8px; display: flex; align-items: center; gap: 6px; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
+    .metric-label { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .metric-label:last-child { display: none; }
+    .metric-value { font-size: 13px; font-weight: 800; }
+    .tabs { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 4px; }
+    .status { font-size: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 5px 8px; color: var(--vscode-descriptionForeground); }
+    .status.warn { border-color: #f59e0b; color: #f59e0b; }
+    .status.error { border-color: #ef4444; color: #ef4444; }
+    .sections { min-height: 0; overflow: auto; display: grid; gap: 10px; align-content: start; padding: 0 2px 4px 0; scrollbar-gutter: stable; }
+    .section { border: 1px solid var(--vscode-panel-border); border-radius: 9px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
+    .section-head { padding: 9px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-panel-border); }
+    .section.collapsed .section-head { border-bottom: 0; }
+    .section-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
+    .section-name { font-weight: 700; }
+    .section-desc { font-size: 12px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .section-body { padding: 8px; display: grid; gap: 8px; max-height: min(64vh, 680px); overflow: auto; scrollbar-gutter: stable; }
+    .subsection { display: grid; gap: 6px; }
+    .subsection-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .subsection-name { font-weight: 700; color: var(--vscode-foreground); }
+    .agent-block { border: 1px solid var(--vscode-panel-border); border-radius: 8px; overflow: hidden; }
+    .agent-head { padding: 7px 8px; display: flex; justify-content: space-between; gap: 8px; align-items: center; background: color-mix(in oklab, var(--vscode-editor-background) 92%, var(--vscode-editor-foreground) 8%); }
+    .agent-name { font-weight: 700; }
+    .agent-count, .meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
+    .rows { display: grid; gap: 4px; padding: 6px; }
+    .row { border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; background: var(--vscode-editor-background); content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 42px; }
+    .row-main { display: grid; gap: 3px; min-width: 0; }
+    .name { font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip, .badge { font-size: 11px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 1px 8px; }
+    .badge { font-weight: 700; }
+    .s-added { color: #34d399; border-color: #34d399; }
+    .s-modified { color: #fbbf24; border-color: #fbbf24; }
+    .s-removed { color: #fb7185; border-color: #fb7185; }
+    .s-same { color: #94a3b8; border-color: #94a3b8; }
+    .primary { border-color: #60a5fa; color: #bfdbfe; }
+    .danger { border-color: #fb7185; color: #fecdd3; }
+    .ghost { color: var(--vscode-descriptionForeground); }
+    .pager { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 2px 0; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .pager-actions { display: flex; gap: 6px; align-items: center; }
+    .pager button { font-size: 12px; padding: 3px 8px; }
+    .empty { border: 1px dashed var(--vscode-panel-border); border-radius: 8px; padding: 12px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .disabled { opacity: .6; pointer-events: none; }
+    @media (max-width: 860px) {
+      .summary { flex-wrap: wrap; overflow: visible; }
+      .row { grid-template-columns: minmax(0, 1fr); }
+      input { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="title">변경 비교/반영</div>
+      <div class="controls">
+        <div class="mode-switch" id="modeSwitch"></div>
+        <input id="searchInput" placeholder="스킬/에이전트/그룹 검색..." />
+        <button id="refreshBtn">새로고침</button>
+      </div>
+    </div>
+    <div id="summary" class="summary"></div>
+    <div class="tabs" id="toolTabs"></div>
+    <div id="resultMeta" class="result-meta"></div>
+    <div class="hint">동일한 항목은 접어서 따로 두고, 차이가 나는 스킬과 스킬 그룹만 수정/신규/삭제 영역에서 에이전트별로 검토합니다.</div>
+    <div id="statusLine" class="status">준비 완료</div>
+    <div id="sections" class="sections"></div>
+  </div>
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    let state = ${initial};
+    const STATUS_ORDER = ["modified", "added", "removed", "same"];
+    const PAGE_SIZE = 25;
+    const uiState = {
+      query: "",
+      busy: false,
+      selectedTool: "all",
+      mode: "workspaceToCentral",
+      collapsed: { modified: false, added: false, removed: false, same: true },
+      page: { modified: 1, added: 1, removed: 1, same: 1 }
+    };
+    let renderFrame = 0;
+    const statusInfo = {
+      modified: { label: "수정", cls: "s-modified", title: "수정 영역", desc: "양쪽에 있고 내용이 다른 항목" },
+      added: { label: "신규", cls: "s-added", title: "신규 영역", desc: "출발지에만 있어 목적지에 추가될 항목" },
+      removed: { label: "삭제", cls: "s-removed", title: "삭제 영역", desc: "목적지에만 있어 반영 시 삭제될 항목" },
+      same: { label: "동일", cls: "s-same", title: "동일 영역", desc: "양쪽 내용이 같은 항목" }
+    };
+    function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;"); }
+    function sourceSide(){ return uiState.mode === "workspaceToCentral" ? "workspace" : "central"; }
+    function targetSide(){ return uiState.mode === "workspaceToCentral" ? "central" : "workspace"; }
+    function sourceLabel(){ return sourceSide() === "workspace" ? "Workspace" : "Central"; }
+    function targetLabel(){ return targetSide() === "workspace" ? "Workspace" : "Central"; }
+    function directionText(){ return sourceLabel() + " → " + targetLabel(); }
+    function setStatus(message, tone){ const el = document.getElementById("statusLine"); el.textContent = message || "준비 완료"; el.className = "status " + (tone || ""); }
+    function normalizeStatus(status){ return Object.prototype.hasOwnProperty.call(statusInfo, status) ? status : "modified"; }
+    function resetPages(){ for (const status of STATUS_ORDER) uiState.page[status] = 1; }
+    function pageCount(total){ return Math.max(1, Math.ceil(total / PAGE_SIZE)); }
+    function clampPage(status, total){
+      const next = Math.min(Math.max(1, Number(uiState.page[status]) || 1), pageCount(total));
+      uiState.page[status] = next;
+      return next;
+    }
+    function pageSlice(status, rows, total){
+      const page = clampPage(status, total);
+      const start = (page - 1) * PAGE_SIZE;
+      return rows.slice(start, start + PAGE_SIZE);
+    }
+    function renderPager(status, total){
+      const pages = pageCount(total);
+      if (pages <= 1) return "";
+      const page = clampPage(status, total);
+      const from = ((page - 1) * PAGE_SIZE) + 1;
+      const to = Math.min(total, page * PAGE_SIZE);
+      return '<div class="pager"><span>' + esc(from) + '-' + esc(to) + ' / ' + esc(total) + '</span><div class="pager-actions">' +
+        '<button class="ghost" data-action="page-section" data-status="' + esc(status) + '" data-dir="-1" ' + (page <= 1 ? "disabled" : "") + '>이전</button>' +
+        '<span>' + esc(page) + ' / ' + esc(pages) + '</span>' +
+        '<button class="ghost" data-action="page-section" data-status="' + esc(status) + '" data-dir="1" ' + (page >= pages ? "disabled" : "") + '>다음</button>' +
+        '</div></div>';
+    }
+    function scheduleRender(){
+      if (renderFrame) cancelAnimationFrame(renderFrame);
+      renderFrame = requestAnimationFrame(()=>{
+        renderFrame = 0;
+        render();
+      });
+    }
+    function passesTool(tool){ return uiState.selectedTool === "all" || uiState.selectedTool === tool; }
+    function matchesQuery(value){ const q = uiState.query.trim().toLowerCase(); return !q || String(value || "").toLowerCase().includes(q); }
+    function displayStatus(skill){
+      if (!skill || skill.status === "same") return "same";
+      if (skill.status === "modified") return "modified";
+      if (uiState.mode === "workspaceToCentral") return skill.status === "onlyWorkspace" ? "added" : "removed";
+      return skill.status === "onlyCentral" ? "added" : "removed";
+    }
+    function displayGroupStatus(group){
+      if (!group || group.status === "same") return "same";
+      if (group.status === "modified") return "modified";
+      if (uiState.mode === "workspaceToCentral") return group.status === "onlyWorkspace" ? "added" : "removed";
+      return group.status === "onlyCentral" ? "added" : "removed";
+    }
+    function visibleSkills(){
+      const skills = Array.isArray(state.skills) ? state.skills : [];
+      return skills.filter((skill)=>passesTool(skill.tool) && matchesQuery(skill.tool + " " + skill.folder + " " + skill.skillName + " " + (skill.workspaceGroupNames || []).join(" ") + " " + (skill.centralGroupNames || []).join(" ")));
+    }
+    function skillsByStatus(status){ return visibleSkills().filter((skill)=>displayStatus(skill) === status); }
+    function visibleGroups(){
+      const groups = Array.isArray(state.groupDiffs) ? state.groupDiffs : [];
+      return groups.filter((group)=>passesTool(group.tool) && matchesQuery(group.tool + " " + group.name + " " + (group.workspaceTargets || []).join(" ") + " " + (group.centralTargets || []).join(" ")));
+    }
+    function groupsByStatus(status){ return visibleGroups().filter((group)=>displayGroupStatus(group) === status); }
+    function createStatusBuckets(){
+      const buckets = {};
+      for (const status of STATUS_ORDER) buckets[status] = { skills: [], groups: [] };
+      for (const skill of visibleSkills()) buckets[displayStatus(skill)].skills.push(skill);
+      for (const group of visibleGroups()) buckets[displayGroupStatus(group)].groups.push(group);
+      return buckets;
+    }
+    function groupByTool(skills){
+      const map = new Map();
+      for (const item of skills) {
+        const bucket = map.get(item.tool) || [];
+        bucket.push(item);
+        map.set(item.tool, bucket);
+      }
+      return Array.from(map.entries()).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+    }
+    function targetsFromSkills(skills){ return skills.map((skill)=>({ tool: skill.tool, relativePath: skill.folder, kind: "folder" })); }
+    function groupIdForAction(status, group){
+      if (status === "removed") {
+        return targetSide() === "workspace" ? group.workspaceGroupId : group.centralGroupId;
+      }
+      return sourceSide() === "workspace" ? group.workspaceGroupId : group.centralGroupId;
+    }
+    function groupIdsForAction(status, groups){
+      return groups.map((group)=>groupIdForAction(status, group)).filter((id)=>!!id);
+    }
+    function sourceFileCount(skill){ return sourceSide() === "workspace" ? skill.workspaceFileCount : skill.centralFileCount; }
+    function targetFileCount(skill){ return targetSide() === "workspace" ? skill.workspaceFileCount : skill.centralFileCount; }
+    function sourceOnlyFileCount(skill){ return sourceSide() === "workspace" ? skill.workspaceOnlyFileCount : skill.centralOnlyFileCount; }
+    function targetOnlyFileCount(skill){ return targetSide() === "workspace" ? skill.workspaceOnlyFileCount : skill.centralOnlyFileCount; }
+    function groupChips(skill){
+      const chips = [];
+      const w = Array.isArray(skill.workspaceGroupNames) ? skill.workspaceGroupNames : [];
+      const c = Array.isArray(skill.centralGroupNames) ? skill.centralGroupNames : [];
+      if (w.length) chips.push("W 그룹 " + w.slice(0,2).join(", ") + (w.length > 2 ? " +" + (w.length - 2) : ""));
+      if (c.length) chips.push("C 그룹 " + c.slice(0,2).join(", ") + (c.length > 2 ? " +" + (c.length - 2) : ""));
+      return chips.map((text)=>'<span class="chip">' + esc(text) + '</span>').join("");
+    }
+    function countForStatus(status, buckets){ return buckets && buckets[status] ? buckets[status].skills.length : skillsByStatus(status).length; }
+    function groupCountForStatus(status, buckets){ return buckets && buckets[status] ? buckets[status].groups.length : groupsByStatus(status).length; }
+    function renderSummary(buckets){
+      const rows = [
+        ["수정", countForStatus("modified", buckets) + " / " + groupCountForStatus("modified", buckets), "스킬 / 그룹"],
+        ["신규", countForStatus("added", buckets) + " / " + groupCountForStatus("added", buckets), targetLabel() + "에 추가"],
+        ["삭제", countForStatus("removed", buckets) + " / " + groupCountForStatus("removed", buckets), targetLabel() + " 삭제 후보"],
+        ["동일", countForStatus("same", buckets) + " / " + groupCountForStatus("same", buckets), "접어서 보관"]
+      ];
+      document.getElementById("summary").innerHTML = rows.map((item)=>'<div class="metric"><div class="metric-label">' + esc(item[0]) + '</div><div class="metric-value">' + esc(item[1]) + '</div><div class="metric-label">' + esc(item[2]) + '</div></div>').join("");
+    }
+    function renderResultMeta(buckets){
+      const skillTotal = STATUS_ORDER.reduce((sum, status)=>sum + buckets[status].skills.length, 0);
+      const groupTotal = STATUS_ORDER.reduce((sum, status)=>sum + buckets[status].groups.length, 0);
+      const q = uiState.query.trim();
+      const collapsedCount = STATUS_ORDER.filter((status)=>uiState.collapsed[status]).length;
+      document.getElementById("resultMeta").textContent =
+        (q ? "검색 결과" : "현재 보기") + " · 스킬 " + skillTotal + "개 · 그룹 " + groupTotal + "개 · " + directionText() + " · 접힌 섹션 " + collapsedCount + "개";
+    }
+    function renderModeSwitch(){
+      const root = document.getElementById("modeSwitch");
+      root.innerHTML = [
+        ["workspaceToCentral", "Workspace → Central"],
+        ["centralToWorkspace", "Central → Workspace"]
+      ].map((item)=>'<button class="mode-btn ' + (uiState.mode===item[0] ? "active" : "") + '" data-action="mode" data-mode="' + item[0] + '">' + item[1] + '</button>').join("");
+    }
+    function renderTabs(){
+      const root = document.getElementById("toolTabs");
+      const tools = Array.isArray(state.tools) ? state.tools : [];
+      root.innerHTML = ["all", ...tools].map((tool)=>'<button class="tab ' + (uiState.selectedTool===tool ? "active" : "") + '" data-action="tab" data-tool="' + esc(tool) + '">' + esc(tool === "all" ? "All" : tool) + '</button>').join("");
+    }
+    function postMove(status, skills){
+      if (uiState.busy) return;
+      const targets = targetsFromSkills(skills);
+      if (targets.length === 0) { setStatus("반영할 스킬이 없습니다.", "warn"); return; }
+      vscode.postMessage({ type: "moveCompared", payload: { mode: uiState.mode, status, targets } });
+      setStatus("반영 검토 요청: " + statusInfo[status].label + " " + targets.length + "개 · " + directionText(), "info");
+    }
+    function postMoveGroups(status, groups){
+      if (uiState.busy) return;
+      const groupIds = groupIdsForAction(status, groups);
+      if (groupIds.length === 0) { setStatus("반영할 그룹이 없습니다.", "warn"); return; }
+      vscode.postMessage({ type: "moveComparedGroups", payload: { mode: uiState.mode, status, groupIds } });
+      setStatus("그룹 반영 요청: " + statusInfo[status].label + " " + groupIds.length + "개 · " + directionText(), "info");
+    }
+    function findSkillByKey(key){ return (Array.isArray(state.skills) ? state.skills : []).find((skill)=>skill.key === key); }
+    function findGroupByKey(key){ return (Array.isArray(state.groupDiffs) ? state.groupDiffs : []).find((group)=>group.key === key); }
+    function openDiff(skill){
+      if (uiState.busy) return;
+      vscode.postMessage({ type: "openComparedDiff", payload: { mode: uiState.mode, tool: skill.tool, relativePath: skill.folder } });
+    }
+    function renderSkillRow(skill, status){
+      const info = statusInfo[status];
+      const isSame = status === "same";
+      const sourceOnly = sourceOnlyFileCount(skill);
+      const targetOnly = targetOnlyFileCount(skill);
+      const delta = status === "modified"
+        ? "변경 " + skill.modifiedFileCount + " · 출발지만 " + sourceOnly + " · 목적지만 " + targetOnly
+        : status === "added"
+          ? "추가 파일 " + sourceFileCount(skill)
+          : status === "removed"
+            ? "삭제 후보 파일 " + targetFileCount(skill)
+            : "동일 파일 " + sourceFileCount(skill);
+      const actionLabel = status === "removed" ? "삭제 검토" : status === "added" ? "추가" : "변경 반영";
+      const chips = groupChips(skill);
+      const rowActions = '<span class="badge ' + info.cls + '">' + info.label + '</span>' +
+        (isSame ? "" : '<button class="ghost" data-action="open-diff" data-key="' + esc(skill.key) + '" ' + (uiState.busy ? "disabled" : "") + '>Diff</button>' +
+          '<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-skill" data-status="' + esc(status) + '" data-key="' + esc(skill.key) + '" ' + (uiState.busy ? "disabled" : "") + '>' + esc(actionLabel) + '</button>');
+      return '<div class="row ' + (uiState.busy ? "disabled" : "") + '">' +
+        '<div class="row-main"><div class="name">' + esc(skill.tool + "/" + skill.folder) + '</div>' +
+        '<div class="meta">' + esc(sourceLabel()) + " " + esc(sourceFileCount(skill)) + "개 · " + esc(targetLabel()) + " " + esc(targetFileCount(skill)) + "개 · " + esc(delta) + '</div>' +
+        (chips ? '<div class="chips">' + chips + '</div>' : '') + '</div>' +
+        '<div class="row-actions">' + rowActions + '</div></div>';
+    }
+    function renderGroupRow(group, status){
+      const info = statusInfo[status];
+      const isSame = status === "same";
+      const sourceTargets = sourceSide() === "workspace" ? group.workspaceTargets : group.centralTargets;
+      const targetTargets = targetSide() === "workspace" ? group.workspaceTargets : group.centralTargets;
+      const sourceCount = sourceSide() === "workspace" ? group.workspaceTargetCount : group.centralTargetCount;
+      const targetCount = targetSide() === "workspace" ? group.workspaceTargetCount : group.centralTargetCount;
+      const actionLabel = status === "removed" ? "그룹 삭제" : status === "added" ? "그룹 추가" : "그룹 반영";
+      const preview = (status === "removed" ? targetTargets : sourceTargets).slice(0, 3).join(", ");
+      const more = (status === "removed" ? targetTargets : sourceTargets).length > 3 ? " +" + ((status === "removed" ? targetTargets : sourceTargets).length - 3) : "";
+      const rowActions = '<span class="badge ' + info.cls + '">' + info.label + '</span>' +
+        (isSame ? "" : '<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-group-diff" data-status="' + esc(status) + '" data-key="' + esc(group.key) + '" ' + (uiState.busy ? "disabled" : "") + '>' + esc(actionLabel) + '</button>');
+      return '<div class="row ' + (uiState.busy ? "disabled" : "") + '">' +
+        '<div class="row-main"><div class="name">' + esc(group.tool + " / " + group.name) + '</div>' +
+        '<div class="meta">' + esc(sourceLabel()) + " " + esc(sourceCount) + "개 · " + esc(targetLabel()) + " " + esc(targetCount) + "개" + (preview ? " · " + esc(preview + more) : "") + '</div></div>' +
+        '<div class="row-actions">' + rowActions + '</div></div>';
+    }
+    function renderAgentBlock(status, tool, skills){
+      const button = status === "same" || skills.length === 0 ? "" : '<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-agent" data-status="' + esc(status) + '" data-tool="' + esc(tool) + '" ' + (uiState.busy ? "disabled" : "") + '>이 에이전트 반영</button>';
+      return '<div class="agent-block"><div class="agent-head"><div><span class="agent-name">' + esc(tool) + '</span> <span class="agent-count">' + esc(skills.length) + '개</span></div>' + button + '</div><div class="rows">' + skills.map((skill)=>renderSkillRow(skill, status)).join("") + '</div></div>';
+    }
+    function renderGroupAgentBlock(status, tool, groups){
+      const button = status === "same" || groups.length === 0 ? "" : '<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-agent-groups" data-status="' + esc(status) + '" data-tool="' + esc(tool) + '" ' + (uiState.busy ? "disabled" : "") + '>이 에이전트 그룹 반영</button>';
+      return '<div class="agent-block"><div class="agent-head"><div><span class="agent-name">' + esc(tool) + '</span> <span class="agent-count">그룹 ' + esc(groups.length) + '개</span></div>' + button + '</div><div class="rows">' + groups.map((group)=>renderGroupRow(group, status)).join("") + '</div></div>';
+    }
+    function renderStatusSection(status, bucket){
+      const info = statusInfo[status];
+      const skills = bucket ? bucket.skills : skillsByStatus(status);
+      const groupDiffs = bucket ? bucket.groups : groupsByStatus(status);
+      const totalRows = Math.max(skills.length, groupDiffs.length);
+      const currentPage = clampPage(status, totalRows);
+      const currentPageSuffix = totalRows > PAGE_SIZE ? " · " + currentPage + "/" + pageCount(totalRows) + "쪽" : "";
+      const visibleSkillRows = pageSlice(status, skills, totalRows);
+      const visibleGroupRows = pageSlice(status, groupDiffs, totalRows);
+      const collapsed = !!uiState.collapsed[status];
+      const actions = [];
+      if (status !== "same" && skills.length > 0) {
+        actions.push('<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-status" data-status="' + esc(status) + '" ' + (uiState.busy ? "disabled" : "") + '>스킬 전체 반영</button>');
+      }
+      if (status !== "same" && groupDiffs.length > 0) {
+        actions.push('<button class="' + (status === "removed" ? "danger" : "primary") + '" data-action="move-status-groups" data-status="' + esc(status) + '" ' + (uiState.busy ? "disabled" : "") + '>그룹 전체 반영</button>');
+      }
+      actions.push('<button class="ghost section-toggle" data-action="toggle-section" data-status="' + esc(status) + '">' + (collapsed ? "펼치기" : "접기") + '</button>');
+      const action = actions.join("");
+      const skillBody = visibleSkillRows.length
+        ? '<div class="subsection"><div class="subsection-head"><span class="subsection-name">스킬</span><span>' + esc(skills.length) + '개' + esc(currentPageSuffix) + '</span></div>' + groupByTool(visibleSkillRows).map(([tool, rows])=>renderAgentBlock(status, tool, rows)).join("") + '</div>'
+        : "";
+      const groupBody = visibleGroupRows.length
+        ? '<div class="subsection"><div class="subsection-head"><span class="subsection-name">스킬 그룹</span><span>' + esc(groupDiffs.length) + '개' + esc(currentPageSuffix) + '</span></div>' + groupByTool(visibleGroupRows).map(([tool, rows])=>renderGroupAgentBlock(status, tool, rows)).join("") + '</div>'
+        : "";
+      const empty = !skillBody && !groupBody ? '<div class="empty">현재 필터에서 표시할 스킬 또는 그룹이 없습니다.</div>' : "";
+      const pager = renderPager(status, totalRows);
+      const body = collapsed ? "" : skillBody + groupBody + empty + pager;
+      return '<section class="section ' + (collapsed ? "collapsed" : "") + '"><div class="section-head"><div class="section-title"><span class="badge ' + info.cls + '">' + info.label + '</span><div><div class="section-name">' + esc(info.title) + ' · 스킬 ' + esc(skills.length) + '개 · 그룹 ' + esc(groupDiffs.length) + '개</div><div class="section-desc">' + esc(info.desc) + '</div></div></div><div class="section-actions">' + action + '</div></div>' + (body ? '<div class="section-body">' + body + '</div>' : '') + '</section>';
+    }
+    function render(){
+      if (renderFrame) {
+        cancelAnimationFrame(renderFrame);
+        renderFrame = 0;
+      }
+      const buckets = createStatusBuckets();
+      renderModeSwitch();
+      renderSummary(buckets);
+      renderResultMeta(buckets);
+      renderTabs();
+      document.getElementById("sections").innerHTML = STATUS_ORDER.map((status)=>renderStatusSection(status, buckets[status])).join("");
+    }
+    function bindActions(){
+      document.body.addEventListener("click",(ev)=>{
+        const target = ev.target;
+        const button = target instanceof Element ? target.closest("[data-action]") : null;
+        if (!(button instanceof HTMLElement) || !document.body.contains(button)) return;
+        const action = button.getAttribute("data-action") || "";
+        if (action === "mode") {
+          uiState.mode = button.getAttribute("data-mode") || "workspaceToCentral";
+          resetPages();
+          setStatus("방향 변경: " + directionText(), "info");
+          render();
+          return;
+        }
+        if (action === "tab") {
+          uiState.selectedTool = button.getAttribute("data-tool") || "all";
+          resetPages();
+          render();
+          return;
+        }
+        if (action === "move-status") {
+          const status = button.getAttribute("data-status") || "modified";
+          postMove(status, skillsByStatus(status));
+          return;
+        }
+        if (action === "move-status-groups") {
+          const status = button.getAttribute("data-status") || "modified";
+          postMoveGroups(status, groupsByStatus(status));
+          return;
+        }
+        if (action === "move-agent") {
+          const status = button.getAttribute("data-status") || "modified";
+          const tool = button.getAttribute("data-tool") || "";
+          postMove(status, skillsByStatus(status).filter((skill)=>skill.tool === tool));
+          return;
+        }
+        if (action === "move-agent-groups") {
+          const status = button.getAttribute("data-status") || "modified";
+          const tool = button.getAttribute("data-tool") || "";
+          postMoveGroups(status, groupsByStatus(status).filter((group)=>group.tool === tool));
+          return;
+        }
+        if (action === "move-skill") {
+          const status = button.getAttribute("data-status") || "modified";
+          const skill = findSkillByKey(button.getAttribute("data-key") || "");
+          if (skill) postMove(status, [skill]);
+          return;
+        }
+        if (action === "move-group-diff") {
+          const status = button.getAttribute("data-status") || "modified";
+          const group = findGroupByKey(button.getAttribute("data-key") || "");
+          if (group) postMoveGroups(status, [group]);
+          return;
+        }
+        if (action === "open-diff") {
+          const skill = findSkillByKey(button.getAttribute("data-key") || "");
+          if (skill) openDiff(skill);
+          return;
+        }
+        if (action === "toggle-section") {
+          const status = normalizeStatus(button.getAttribute("data-status") || "modified");
+          uiState.collapsed[status] = !uiState.collapsed[status];
+          render();
+          return;
+        }
+        if (action === "page-section") {
+          const status = normalizeStatus(button.getAttribute("data-status") || "modified");
+          const dir = Number(button.getAttribute("data-dir")) || 0;
+          uiState.page[status] = (Number(uiState.page[status]) || 1) + dir;
+          render();
+        }
+      });
+    }
+    window.addEventListener("message", (event)=>{
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "state") {
+        state = msg.payload || state;
+        resetPages();
+        render();
+      }
+      if (msg.type === "ui") {
+        const payload = msg.payload || {};
+        if (typeof payload.busy === "boolean") uiState.busy = payload.busy;
+        setStatus(payload.message || (uiState.busy ? "작업 중..." : "준비 완료"), payload.tone || "info");
+        render();
+      }
+    });
+    document.getElementById("searchInput").addEventListener("input", (ev)=>{
+      const target = ev.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      uiState.query = target.value || "";
+      resetPages();
+      scheduleRender();
+    });
+    document.getElementById("refreshBtn").addEventListener("click", ()=>{
+      if (uiState.busy) return;
+      vscode.postMessage({ type: "refresh" });
+    });
+    setStatus("준비 완료 · " + directionText(), "info");
+    bindActions();
+    render();
+  </script>
+</body>
+</html>`;
+}
+
 function renderLibraryManagerHtml(
   webview: vscode.Webview,
   data: {
@@ -5830,6 +6954,7 @@ function renderLibraryManagerHtml(
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const escHtml = (value: string): string =>
     value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  type RenderLibraryStatus = "added" | "removed" | "modified" | "typeChanged" | "same";
   const statusLabel = (status: "added" | "removed" | "modified" | "typeChanged" | "same"): string => {
     if (status === "added") return "신규";
     if (status === "removed") return "누락";
@@ -5891,28 +7016,89 @@ function renderLibraryManagerHtml(
   const centralStatus = countByStatus(centralSkills);
   const changedSkillTotal = workspaceSkills.filter((entry) => entry.status !== "same").length
     + centralSkills.filter((entry) => entry.status !== "same").length;
+  const decisionCounts = (() => {
+    const byKey = new Map<string, { workspace?: RenderLibraryStatus; central?: RenderLibraryStatus }>();
+    for (const entry of workspaceSkills) {
+      const prev = byKey.get(`${entry.tool}:${entry.relativePath}`) ?? {};
+      prev.workspace = entry.status;
+      byKey.set(`${entry.tool}:${entry.relativePath}`, prev);
+    }
+    for (const entry of centralSkills) {
+      const prev = byKey.get(`${entry.tool}:${entry.relativePath}`) ?? {};
+      prev.central = entry.status;
+      byKey.set(`${entry.tool}:${entry.relativePath}`, prev);
+    }
+    const counts = { all: byKey.size, attention: 0, modified: 0, workspaceOnly: 0, centralOnly: 0, same: 0 };
+    for (const item of byKey.values()) {
+      const workspaceOnly = item.workspace === "added" || item.central === "removed";
+      const centralOnly = item.central === "added" || item.workspace === "removed";
+      const modified = item.workspace === "modified" || item.central === "modified" || item.workspace === "typeChanged" || item.central === "typeChanged";
+      const same = item.workspace === "same" && item.central === "same";
+      if (workspaceOnly) counts.workspaceOnly += 1;
+      if (centralOnly) counts.centralOnly += 1;
+      if (modified) counts.modified += 1;
+      if (same) counts.same += 1;
+      if (!same) counts.attention += 1;
+    }
+    return counts;
+  })();
+  const defaultStatusFilter: DecisionFilterId = decisionCounts.attention > 0 ? "attention" : "all";
+  const decisionRecommendation = decisionCounts.modified > 0
+    ? `${decisionCounts.modified}개 스킬이 양쪽에서 다릅니다. Diff로 기준을 정하세요.`
+    : decisionCounts.workspaceOnly > 0
+      ? `${decisionCounts.workspaceOnly}개 스킬은 Workspace에만 있습니다. 보관할 스킬이면 Central로 올리세요.`
+      : decisionCounts.centralOnly > 0
+        ? `${decisionCounts.centralOnly}개 스킬은 Central에만 있습니다. 필요한 스킬이면 Workspace로 가져오세요.`
+        : decisionCounts.attention === 0
+          ? "양쪽 스킬이 정리되어 있습니다."
+          : "검토할 항목을 골라 확인하세요.";
   const missingSkillMdTotal = data.diagnostics.workspaceMissingSkillFolders.length + data.diagnostics.centralMissingSkillFolders.length;
   const initialStatus = "로딩 중... 새로고침을 눌러 조회하세요.";
   const workspaceStaticRows = buildStaticRows(workspaceSkills);
   const centralStaticRows = buildStaticRows(centralSkills);
+  type DecisionFilterId = keyof typeof decisionCounts;
+  const decisionOptions: Array<{ id: DecisionFilterId; label: string; helper: string; tone: string }> = [
+    { id: "all", label: "전체", helper: "모든 스킬", tone: "neutral" },
+    { id: "attention", label: "검토 필요", helper: "먼저 볼 항목", tone: "alert" },
+    { id: "modified", label: "내용 다름", helper: "Diff 확인", tone: "update" },
+    { id: "workspaceOnly", label: "Workspace만", helper: "올릴 후보", tone: "promote" },
+    { id: "centralOnly", label: "Central만", helper: "가져올 후보", tone: "import" },
+    { id: "same", label: "동일", helper: "조치 없음", tone: "quiet" }
+  ];
+  const initialDecisionChips = decisionOptions
+    .map((option) => `<button class="decision-chip t-${escHtml(option.tone)} ${option.id === defaultStatusFilter ? "active" : ""}" data-status-filter="${escHtml(option.id)}" type="button"><span>${escHtml(option.label)}</span><strong>${decisionCounts[option.id]}</strong><small>${escHtml(option.helper)}</small></button>`)
+    .join("");
   return `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Skill Library Manager</title>
+  <title>스킬 보관함</title>
   <style>
     body { margin: 0; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
-    .wrap { box-sizing: border-box; height: 100vh; padding: 12px; display: grid; gap: 8px; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); }
-    .head { display: flex; flex-direction: column; gap: 8px; }
+    .wrap { box-sizing: border-box; height: 100vh; padding: 10px; display: grid; gap: 6px; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr); }
+    .head { display: flex; flex-direction: column; gap: 6px; }
     .head-main { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
     .title { font-size: 15px; font-weight: 700; }
-    .quickbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 6px 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; background: color-mix(in oklab, var(--vscode-editor-background) 96%, var(--vscode-editor-foreground) 4%); }
+    .quickbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 5px 7px; display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; overflow-x: auto; background: color-mix(in oklab, var(--vscode-editor-background) 96%, var(--vscode-editor-foreground) 4%); scrollbar-gutter: stable; }
     .quickbar .spacer { flex: 1 1 auto; min-width: 12px; }
-    .quick-stats { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+    .quick-stats { display: flex; gap: 5px; flex-wrap: nowrap; align-items: center; }
     .quick-stat { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-    .summary-toggle { min-width: 82px; }
+    .summary-toggle { min-width: auto; white-space: nowrap; }
+    .decisionbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
+    .decision-copy { min-width: 180px; flex: 1 1 220px; display: flex; align-items: center; gap: 6px; padding-right: 0; border-right: 0; }
+    .decision-kicker { font-size: 11px; color: var(--vscode-descriptionForeground); font-weight: 700; }
+    .decision-title { min-width: 0; font-size: 12px; line-height: 1.35; font-weight: 700; color: var(--vscode-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .decision-chips { min-width: 0; flex: 2 1 420px; display: flex; gap: 5px; overflow-x: auto; scrollbar-gutter: stable; }
+    .decision-chip { flex: 0 0 auto; min-width: 0; min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-input-background); text-align: left; }
+    .decision-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
+    .decision-chip strong { font-size: 13px; line-height: 1; color: var(--vscode-foreground); }
+    .decision-chip small { display: none; }
+    .decision-chip.active { border-color: #60a5fa; box-shadow: inset 0 0 0 1px rgba(96,165,250,.45); }
+    .decision-chip.t-alert.active, .decision-chip.t-update.active { border-color: #fbbf24; box-shadow: inset 0 0 0 1px rgba(251,191,36,.45); }
+    .decision-chip.t-promote.active { border-color: #60a5fa; }
+    .decision-chip.t-import.active { border-color: #34d399; box-shadow: inset 0 0 0 1px rgba(52,211,153,.42); }
     .hero { border: 1px solid var(--vscode-panel-border); border-radius: 8px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
     body.summary-collapsed .summary-panel { display: none; }
     .hero-copy { padding: 10px 12px; display: grid; gap: 5px; align-content: center; }
@@ -5925,7 +7111,7 @@ function renderLibraryManagerHtml(
     .metric-value { font-size: 16px; font-weight: 800; }
     .shortcut-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .kbd { border: 1px solid var(--vscode-panel-border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .filter-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .filter-summary { min-height: 24px; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto; font-size: 11px; color: var(--vscode-descriptionForeground); scrollbar-gutter: stable; }
     .filter-chip { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 8px; color: var(--vscode-foreground); }
     .controls, .pane-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
     .pane-controls > * { min-width: 0; }
@@ -5937,7 +7123,7 @@ function renderLibraryManagerHtml(
     .tabs-title { font-size: 11px; color: var(--vscode-descriptionForeground); margin-right: 2px; }
     .tab { border-radius: 6px; padding: 3px 9px; font-size: 12px; }
     .tab.active { border-color: #60a5fa; color: #bfdbfe; }
-    .status { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 6px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .status { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 5px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); }
     .status.warn { border-color: #f59e0b; color: #f59e0b; }
     .status.error { border-color: #ef4444; color: #ef4444; }
     .grid { min-height: 0; display: grid; grid-template-columns: minmax(420px,1fr) minmax(420px,1fr); gap: 10px; overflow-x: auto; }
@@ -5946,6 +7132,14 @@ function renderLibraryManagerHtml(
     .meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
     .pane-controls { padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
     .pane-meta { display: none; }
+    .selectionbar { flex-wrap: nowrap; overflow: visible; }
+    .selectionbar .meta { flex: 1 1 auto; min-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .more-menu { position: relative; }
+    .more-menu summary { list-style: none; cursor: pointer; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 5px 9px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+    .more-menu summary::-webkit-details-marker { display: none; }
+    .more-menu[open] summary { border-color: #60a5fa; }
+    .more-panel { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; width: max-content; max-width: 260px; display: grid; gap: 5px; padding: 7px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-sideBar-background); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+    .more-panel button { text-align: left; width: 100%; }
     .grow { flex: 1 1 auto; min-width: 180px; }
     .group-filter-wrap { position: relative; flex: 1 1 0; min-width: 0; max-width: 100%; }
     .group-filter-trigger { width: 100%; text-align: left; display: inline-flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 34px; }
@@ -5968,6 +7162,7 @@ function renderLibraryManagerHtml(
     .tree.drag-over { outline: 2px dashed #60a5fa; outline-offset: -2px; border-radius: 8px; }
     .node { display: grid; gap: 4px; }
     .row { border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 6px 8px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; background: var(--vscode-editor-background); }
+    .row, .static-row { content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 34px; }
     .row[draggable="true"] { cursor: grab; }
     .row.selected { border-color: #60a5fa; box-shadow: inset 0 0 0 1px rgba(96,165,250,.4); }
     .row.muted { opacity: .7; }
@@ -5990,6 +7185,7 @@ function renderLibraryManagerHtml(
     .btn.danger { border-color: #fb7185; color: #fecdd3; }
     .btn.ghost { color: var(--vscode-descriptionForeground); }
     .btn:disabled { opacity: .5; cursor: default; }
+    [hidden] { display: none !important; }
     .empty { border: 1px dashed var(--vscode-panel-border); border-radius: 8px; padding: 12px; color: var(--vscode-descriptionForeground); font-size: 12px; display: grid; gap: 8px; justify-items: start; }
     .empty-title { font-size: 13px; color: var(--vscode-foreground); }
     .empty-reason { color: var(--vscode-descriptionForeground); }
@@ -6004,6 +7200,11 @@ function renderLibraryManagerHtml(
     .controls input { min-width: 0; width: min(460px, 100%); }
     @media (max-width: 920px) {
       .wrap { height: auto; min-height: 100vh; }
+      .quickbar { flex-wrap: wrap; overflow: visible; }
+      .decisionbar { align-items: stretch; flex-direction: column; }
+      .decision-copy { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 6px; }
+      .decision-title { white-space: normal; }
+      .decision-chips { flex-wrap: wrap; overflow: visible; }
       .hero { grid-template-columns: 1fr; }
       .metrics { border-left: 0; border-top: 1px solid var(--vscode-panel-border); }
       .grid { grid-template-columns: minmax(320px, 1fr); overflow: visible; }
@@ -6014,7 +7215,7 @@ function renderLibraryManagerHtml(
   <div class="wrap">
     <div class="head">
       <div class="head-main">
-        <div class="title">Skill Library Manager</div>
+        <div class="title">스킬 보관함</div>
         <div class="controls">
           <select id="groupingMode"><option value="agent">에이전트 우선</option><option value="group">그룹 우선</option></select>
           <label class="meta"><input id="changedOnly" type="checkbox" /> 변경만</label>
@@ -6029,8 +7230,8 @@ function renderLibraryManagerHtml(
     </div>
     <div class="quickbar" aria-label="Skill Library quick actions">
       <button id="toggleSummaryBtn" class="summary-toggle" title="상단 요약 접기/펼치기">요약 펼치기</button>
-      <button id="openWizardBtn" title="Ctrl+Alt+A">Add/Move <span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">A</span></button>
-      <button id="openTransferExplorerBtn" title="Ctrl+Alt+X">Transfer <span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">X</span></button>
+      <button id="openWizardBtn" title="Ctrl+Alt+A">추가/이동 <span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">A</span></button>
+      <button id="openTransferExplorerBtn" title="Ctrl+Alt+X">비교/반영 <span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">X</span></button>
       <button id="focusSearchBtn" title="/ 키로 검색">검색 <span class="kbd">/</span></button>
       <span class="spacer"></span>
       <div class="quick-stats">
@@ -6040,9 +7241,16 @@ function renderLibraryManagerHtml(
         <span class="quick-stat">SKILL.md 누락 ${missingSkillMdTotal}</span>
       </div>
     </div>
+    <section class="decisionbar" aria-label="Skill Library status filters">
+      <div class="decision-copy">
+        <div class="decision-kicker">다음 행동</div>
+        <div id="decisionTitle" class="decision-title">${escHtml(decisionRecommendation)}</div>
+      </div>
+      <div id="statusFilterChips" class="decision-chips">${initialDecisionChips}</div>
+    </section>
     <section id="summaryPanel" class="hero summary-panel" aria-label="Skill Library summary">
       <div class="hero-copy">
-        <div class="hero-title">스킬 추가, 업데이트, 삭제를 중앙에서 한 번에 봅니다</div>
+        <div class="hero-title">스킬 추가, 변경 반영, 삭제를 한 화면에서 봅니다</div>
         <div class="hero-sub">사이드바는 빠른 탐색용으로 두고, 이 화면에서는 변경 현황, 그룹, 반영/복원/삭제 액션을 넓게 검토하세요.</div>
         <div class="shortcut-row">
           <span><span class="kbd">R</span> 새로고침</span>
@@ -6085,7 +7293,7 @@ function renderLibraryManagerHtml(
           <button data-side="workspace" data-action="group-create" type="button">새 그룹</button>
         </div>
         <div id="workspaceGroupPicked" class="pane-meta">그룹 필터: 전체</div>
-        <div class="pane-controls"><span id="workspaceSelectedHint" class="meta">선택 없음</span><button data-side="workspace" data-action="group-assign">선택 할당</button><button data-side="workspace" data-action="group-unassign">선택 해제</button><button class="btn primary" data-side="workspace" data-action="move-selected">선택 반영 →</button><button class="btn update" data-side="workspace" data-action="update-selected">선택 업데이트 ←</button><button class="btn danger" data-side="workspace" data-action="delete-selected">선택 삭제</button><button data-side="workspace" data-action="move-group">그룹 이동 →</button></div>
+        <div class="pane-controls selectionbar"><span id="workspaceSelectedHint" class="meta">선택 없음</span><button class="btn" data-side="workspace" data-action="diff-selected">Diff</button><button class="btn primary" data-side="workspace" data-action="move-selected">Central로 보내기 →</button><button class="btn update" data-side="workspace" data-action="update-selected">← 변경 가져오기</button><details class="more-menu" data-side="workspace"><summary>더보기</summary><div class="more-panel"><button data-side="workspace" data-action="group-assign">그룹에 할당</button><button data-side="workspace" data-action="group-unassign">그룹에서 해제</button><button data-side="workspace" data-action="move-group">그룹 이동 →</button><button class="btn danger" data-side="workspace" data-action="delete-selected">선택 삭제</button></div></details></div>
         <div id="workspaceTree" class="tree" data-side="workspace">${workspaceStaticRows}</div>
       </section>
       <section class="pane">
@@ -6106,7 +7314,7 @@ function renderLibraryManagerHtml(
           <button data-side="central" data-action="group-create" type="button">새 그룹</button>
         </div>
         <div id="centralGroupPicked" class="pane-meta">그룹 필터: 전체</div>
-        <div class="pane-controls"><span id="centralSelectedHint" class="meta">선택 없음</span><button data-side="central" data-action="group-assign">선택 할당</button><button data-side="central" data-action="group-unassign">선택 해제</button><button class="btn primary" data-side="central" data-action="move-selected">← 선택 반영</button><button class="btn update" data-side="central" data-action="update-selected">선택 업데이트 →</button><button class="btn danger" data-side="central" data-action="delete-selected">선택 삭제</button><button data-side="central" data-action="move-group">그룹 이동 ←</button></div>
+        <div class="pane-controls selectionbar"><span id="centralSelectedHint" class="meta">선택 없음</span><button class="btn" data-side="central" data-action="diff-selected">Diff</button><button class="btn primary" data-side="central" data-action="move-selected">← Workspace로 가져오기</button><button class="btn update" data-side="central" data-action="update-selected">변경 가져오기 →</button><details class="more-menu" data-side="central"><summary>더보기</summary><div class="more-panel"><button data-side="central" data-action="group-assign">그룹에 할당</button><button data-side="central" data-action="group-unassign">그룹에서 해제</button><button data-side="central" data-action="move-group">그룹 이동 ←</button><button class="btn danger" data-side="central" data-action="delete-selected">선택 삭제</button></div></details></div>
         <div id="centralTree" class="tree" data-side="central">${centralStaticRows}</div>
       </section>
     </div>
@@ -6126,7 +7334,18 @@ function renderLibraryManagerHtml(
     };
     let state = EMPTY_STATE;
     const GROUP_UNASSIGNED = "__ungrouped__";
-    const uiState = { busy:false, query:"", tool:"all", grouping:"agent", changedOnly:false, summaryCollapsed: savedViewState.summaryCollapsed !== false, expanded:{}, selectedNodes:{ workspace:[], central:[] }, selectionAnchor:{ workspace:"", central:"" }, selectedGroups:{ workspace:[], central:[] }, groupSearch:{ workspace:"", central:"" }, groupMenuOpen:{ workspace:false, central:false } };
+    const statusFilterInfo = {
+      all:{label:"전체",helper:"모든 스킬",tone:"neutral"},
+      attention:{label:"검토 필요",helper:"먼저 볼 항목",tone:"alert"},
+      modified:{label:"내용 다름",helper:"Diff 확인",tone:"update"},
+      workspaceOnly:{label:"Workspace만",helper:"올릴 후보",tone:"promote"},
+      centralOnly:{label:"Central만",helper:"가져올 후보",tone:"import"},
+      same:{label:"동일",helper:"조치 없음",tone:"quiet"}
+    };
+    const defaultStatusFilter = "${defaultStatusFilter}";
+    const initialStatusFilter = Object.prototype.hasOwnProperty.call(statusFilterInfo, savedViewState.statusFilter) ? savedViewState.statusFilter : defaultStatusFilter;
+    const uiState = { busy:false, query:"", tool:"all", grouping:"agent", changedOnly: initialStatusFilter === "attention", statusFilter: initialStatusFilter, summaryCollapsed: savedViewState.summaryCollapsed !== false, expanded:{}, selectedNodes:{ workspace:[], central:[] }, selectionAnchor:{ workspace:"", central:"" }, selectedGroups:{ workspace:[], central:[] }, groupSearch:{ workspace:"", central:"" }, groupMenuOpen:{ workspace:false, central:false } };
+    let renderFrame = 0;
     const statusInfo = { added:{label:"신규",cls:"s-added"}, modified:{label:"수정",cls:"s-modified"}, removed:{label:"누락",cls:"s-removed"}, typeChanged:{label:"타입충돌",cls:"s-typeChanged"}, same:{label:"동일",cls:"s-same"} };
     function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;"); }
     function norm(v){ return String(v || "").replaceAll("\\\\","/"); }
@@ -6134,7 +7353,14 @@ function renderLibraryManagerHtml(
     function statusRank(status){ if (status === "typeChanged") return 4; if (status === "modified") return 3; if (status === "added" || status === "removed") return 2; return 1; }
     function summarizeStatus(list){ const a = (Array.isArray(list) ? list : []).filter(Boolean); if (a.some((s)=>s==="typeChanged")) return "typeChanged"; if (a.some((s)=>s==="modified")) return "modified"; const ad = a.some((s)=>s==="added"); const rm = a.some((s)=>s==="removed"); if (ad && rm) return "modified"; if (ad) return "added"; if (rm) return "removed"; return "same"; }
     function setStatus(msg,tone){ const el = document.getElementById("statusLine"); el.textContent = msg || "준비 완료"; el.className = "status " + (tone || ""); }
-    function persistViewState(){ if (vscode.setState) vscode.setState({ summaryCollapsed: !!uiState.summaryCollapsed }); }
+    function persistViewState(){ if (vscode.setState) vscode.setState({ summaryCollapsed: !!uiState.summaryCollapsed, statusFilter: uiState.statusFilter }); }
+    function scheduleRender(){
+      if (renderFrame) cancelAnimationFrame(renderFrame);
+      renderFrame = requestAnimationFrame(()=>{
+        renderFrame = 0;
+        render();
+      });
+    }
     function updateSummaryChrome(){
       document.body.classList.toggle("summary-collapsed", !!uiState.summaryCollapsed);
       const btn = document.getElementById("toggleSummaryBtn");
@@ -6147,6 +7373,27 @@ function renderLibraryManagerHtml(
     window.addEventListener("unhandledrejection",(ev)=>{ const reason = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason || "알 수 없는 오류"); setStatus("화면 오류: " + reason, "error"); });
     function toolPass(tool){ return uiState.tool === "all" || uiState.tool === tool; }
     function textPass(text){ const q = uiState.query.trim().toLowerCase(); if (!q) return true; return String(text || "").toLowerCase().includes(q); }
+    function statusFilterPass(entry, side){
+      const filter = Object.prototype.hasOwnProperty.call(statusFilterInfo, uiState.statusFilter) ? uiState.statusFilter : "all";
+      const status = entry.status || "same";
+      if (filter === "all") return true;
+      if (filter === "attention") return status !== "same";
+      if (filter === "modified") return status === "modified" || status === "typeChanged";
+      if (filter === "same") return status === "same";
+      if (filter === "workspaceOnly") return side === "workspace" ? status === "added" : status === "removed";
+      if (filter === "centralOnly") return side === "central" ? status === "added" : status === "removed";
+      return true;
+    }
+    function setStatusFilter(filter){
+      if (!Object.prototype.hasOwnProperty.call(statusFilterInfo, filter)) filter = "all";
+      uiState.statusFilter = filter;
+      uiState.changedOnly = filter === "attention";
+      const changed = document.getElementById("changedOnly");
+      if (changed instanceof HTMLInputElement) changed.checked = uiState.changedOnly;
+      persistViewState();
+      vscode.postMessage({ type:"toggleChangedOnly", payload:{ enabled:uiState.changedOnly } });
+      render();
+    }
     function getSide(side){ return side === "workspace" ? state.workspace : state.central; }
     function getSideGroupsAll(side){ const groups = Array.isArray(getSide(side)?.groups) ? getSide(side).groups : []; return groups.filter((g)=>(uiState.tool==="all" || (Array.isArray(g.tools) && g.tools.includes(uiState.tool)))); }
     function getSideGroups(side){ const groups = getSideGroupsAll(side); return groups.filter((g)=>textPass(g.name + " " + g.targetSummary)); }
@@ -6202,7 +7449,7 @@ function renderLibraryManagerHtml(
       return ids.some((id)=>groupOnly.includes(id));
     }
     function getSideEntriesRaw(side){ const entries = Array.isArray(getSide(side)?.entries) ? getSide(side).entries : []; return entries.filter((e)=>toolPass(e.tool) && entryPassGroupFilter(e, side) && textPass(e.tool + " " + e.relativePath + " " + (e.groupNames || []).join(" "))); }
-    function getSideEntries(side){ const entries = getSideEntriesRaw(side); return uiState.changedOnly ? entries.filter((e)=>e.status!=="same") : entries; }
+    function getSideEntries(side){ const entries = getSideEntriesRaw(side).filter((e)=>statusFilterPass(e, side)); return uiState.changedOnly ? entries.filter((e)=>e.status!=="same") : entries; }
     function createFolderTree(side,idPrefix,tool,folder,items){
       const root = { id:idPrefix+"/folder/"+tool+"/skills/"+folder, nodeType:"folder", label:"skills/"+folder, tool, relativePath:"skills/"+folder, pathKind:"folder", exists:false, children:[], _folders:{}, _statuses:[], _groups:{} };
       for (const entry of items){
@@ -6332,27 +7579,24 @@ function renderLibraryManagerHtml(
       const kids = Array.isArray(node.children) ? node.children : []; const hasKids = kids.length > 0; const open = hasKids ? isExpanded(node.id, depth) : false;
       const canMovePath = isPathNode(node.nodeType) && node.exists && !!node.tool && !!node.relativePath;
       const canUpdatePath = isPathNode(node.nodeType) && node.status !== "same" && node.status !== "added" && !!node.tool && !!node.relativePath;
-      const canDeletePath = isPathNode(node.nodeType) && node.exists && !!node.tool && !!node.relativePath;
-      const canDiff = isPathNode(node.nodeType) && node.status !== "same" && !!node.tool && !!node.relativePath;
       const info = statusInfo[node.status] || statusInfo.same; const meta = nodeMeta(node); const mv = side === "workspace" ? "→" : "←";
       const updateMv = side === "workspace" ? "←" : "→";
+      const selected = isSelected(side,node);
       const attrs = canMovePath ? ('data-transfer-kind="path" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '"')
         : "";
       const sel = isPathNode(node.nodeType)
         ? ('data-action="select-node" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '" data-exists="' + (node.exists ? "1" : "0") + '" data-status="' + esc(node.status || "same") + '" data-node-key="' + esc(targetKey({ tool:node.tool, relativePath:node.relativePath, kind:node.pathKind })) + '"')
         : "";
       const toggle = hasKids ? ('<button class="toggle" data-action="toggle" data-node-id="' + esc(node.id) + '">' + (open ? "▾" : "▸") + "</button>") : '<button class="toggle placeholder">·</button>';
-      const diffBtn = canDiff ? ('<button class="btn" ' + (uiState.busy?"disabled ":"") + 'data-action="open-diff" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">Diff</button>') : "";
       const moveText = node.status === "added" ? "추가" : "반영";
       const moveLabel = side === "workspace" ? (moveText + " " + mv) : (mv + " " + moveText);
-      const updateText = node.status === "removed" ? "복원" : "업데이트";
+      const updateText = node.status === "removed" ? "복원" : "변경 가져오기";
       const updateLabel = side === "workspace" ? (updateMv + " " + updateText) : (updateText + " " + updateMv);
-      const moveBtn = canMovePath ? ('<button class="btn primary" ' + (uiState.busy?"disabled ":"") + 'title="현재 패널의 스킬을 반대편에 반영" data-action="move-path" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">' + esc(moveLabel) + "</button>") : "";
-      const updateBtn = canUpdatePath ? ('<button class="btn update" ' + (uiState.busy?"disabled ":"") + 'title="반대편 내용을 현재 패널로 가져와 업데이트" data-action="update-path" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">' + esc(updateLabel) + "</button>") : "";
-      const deleteBtn = canDeletePath ? ('<button class="btn danger" ' + (uiState.busy?"disabled ":"") + 'title="현재 패널에서 이 항목 삭제" data-action="delete-path" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">삭제</button>') : "";
-      const row = '<div class="row' + (isSelected(side,node) ? " selected" : "") + (uiState.busy ? " disabled" : "") + '" style="padding-left:' + (8 + depth * 14) + 'px" draggable="' + (!uiState.busy && canMovePath ? "true" : "false") + '" data-side="' + esc(side) + '" ' + attrs + " " + sel + ">" +
+      const moveBtn = selected && canMovePath ? ('<button class="btn primary" ' + (uiState.busy?"disabled ":"") + 'title="현재 패널의 스킬을 반대편에 반영" data-action="move-path" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">' + esc(moveLabel) + "</button>") : "";
+      const updateBtn = selected && !moveBtn && canUpdatePath ? ('<button class="btn update" ' + (uiState.busy?"disabled ":"") + 'title="반대편 내용을 현재 패널로 가져오기" data-action="update-path" data-side="' + esc(side) + '" data-tool="' + esc(node.tool) + '" data-relative-path="' + esc(node.relativePath) + '" data-path-kind="' + esc(node.pathKind) + '">' + esc(updateLabel) + "</button>") : "";
+      const row = '<div class="row' + (selected ? " selected" : "") + (uiState.busy ? " disabled" : "") + '" style="padding-left:' + (8 + depth * 14) + 'px" draggable="' + (!uiState.busy && canMovePath ? "true" : "false") + '" data-side="' + esc(side) + '" ' + attrs + " " + sel + ">" +
         '<div class="left"><div class="line1">' + toggle + '<span class="label">' + esc(node.label) + '</span></div>' + (meta ? '<div class="sub">' + esc(meta) + "</div>" : "") + "</div>" +
-        '<div class="right"><span class="badge ' + esc(info.cls) + '">' + esc(info.label) + "</span>" + diffBtn + updateBtn + moveBtn + deleteBtn + "</div></div>";
+        '<div class="right"><span class="badge ' + esc(info.cls) + '">' + esc(info.label) + "</span>" + updateBtn + moveBtn + "</div></div>";
       if (!hasKids || !open) return '<div class="node">' + row + "</div>";
       return '<div class="node">' + row + kids.map((c)=>renderNode(side,c,depth+1)).join("") + "</div>";
     }
@@ -6416,21 +7660,143 @@ function renderLibraryManagerHtml(
       }).join("");
     }
     function selectedTargets(side){ return getSelectedTargets(side); }
+    function setActionState(side, action, options){
+      const selector = '[data-side="' + side + '"][data-action="' + action + '"]';
+      document.querySelectorAll(selector).forEach((el)=>{
+        const hidden = !!options.hidden;
+        el.hidden = hidden;
+        if (el instanceof HTMLButtonElement) {
+          el.disabled = !!options.disabled || uiState.busy;
+          el.title = options.title || "";
+        }
+      });
+    }
+    function updateSelectionActions(side){
+      const allTargets = selectedTargets(side);
+      const existingTargets = allTargets.filter((target)=>!!target.exists);
+      const updateTargets = allTargets.filter((target)=>target.status !== "same" && target.status !== "added");
+      const diffTargets = allTargets.filter((target)=>target.status !== "same");
+      const groupIds = selectedConcreteGroupIds(side);
+      setActionState(side, "diff-selected", {
+        hidden: diffTargets.length === 0,
+        disabled: diffTargets.length !== 1,
+        title: diffTargets.length > 1 ? "Diff는 항목 하나만 선택했을 때 열 수 있습니다." : "선택 항목 Diff 열기"
+      });
+      setActionState(side, "move-selected", {
+        hidden: existingTargets.length === 0,
+        disabled: false,
+        title: "현재 패널에 있는 선택 항목을 반대편에 반영합니다."
+      });
+      setActionState(side, "update-selected", {
+        hidden: updateTargets.length === 0,
+        disabled: false,
+        title: "반대편의 변경/누락 항목을 현재 패널로 가져옵니다."
+      });
+      setActionState(side, "delete-selected", {
+        hidden: existingTargets.length === 0,
+        disabled: false,
+        title: "현재 패널에서 선택 항목 삭제"
+      });
+      setActionState(side, "group-assign", {
+        hidden: existingTargets.length === 0,
+        disabled: false,
+        title: "선택 항목을 그룹에 할당"
+      });
+      setActionState(side, "group-unassign", {
+        hidden: existingTargets.length === 0,
+        disabled: false,
+        title: "선택 항목을 그룹에서 해제"
+      });
+      setActionState(side, "move-group", {
+        hidden: groupIds.length === 0,
+        disabled: false,
+        title: "선택한 그룹을 반대편으로 이동"
+      });
+      document.querySelectorAll('.selectionbar [data-side="' + side + '"].more-menu').forEach((menu)=>{
+        const visible = Array.from(menu.querySelectorAll("button")).some((button)=>!button.hidden);
+        menu.hidden = !visible;
+      });
+    }
     function updateHint(side){
       const el = document.getElementById(side + "SelectedHint"); if (!el) return;
       const groupNames = selectedGroupTagNames(side);
       const groupLabel = groupNames.length > 0 ? ("그룹 필터 " + groupNames.length + "개") : "그룹 필터 전체";
       const targets = selectedTargets(side);
-      if (targets.length === 0) { el.textContent = "선택 없음 (Ctrl/Cmd/Shift로 다중 선택) · " + groupLabel; return; }
+      if (targets.length === 0) {
+        el.textContent = "선택 없음 (Ctrl/Cmd/Shift로 다중 선택) · " + groupLabel;
+        updateSelectionActions(side);
+        return;
+      }
       const existingCount = targets.filter((target)=>!!target.exists).length;
       const preview = targets.slice(0, 2).map((target)=>target.tool + "/" + target.relativePath).join(", ");
       const more = targets.length > 2 ? (" 외 " + (targets.length - 2) + "개") : "";
       el.textContent = "선택 " + targets.length + "개 (현재 패널 " + existingCount + "개): " + preview + more + " · " + groupLabel;
+      updateSelectionActions(side);
     }
     function renderTabs(){
       const tabs = document.getElementById("toolTabs"); const tools = Array.isArray(state.tools) ? state.tools : []; const all = ["all", ...tools];
       tabs.innerHTML = all.map((t)=>'<button class="tab ' + (uiState.tool===t ? "active" : "") + '" data-action="tab" data-tool="' + esc(t) + '">' + esc(t==="all" ? "All" : t) + "</button>").join("");
-      tabs.querySelectorAll("[data-action='tab']").forEach((el)=>el.addEventListener("click", ()=>{ uiState.tool = el.getAttribute("data-tool") || "all"; closeGroupMenus(); vscode.postMessage({ type:"setAgentTab", payload:{ tool:uiState.tool } }); render(); }));
+    }
+    function bindTabs(){
+      const tabs = document.getElementById("toolTabs");
+      if (!tabs) return;
+      tabs.addEventListener("click",(ev)=>{
+        const target = ev.target;
+        const btn = target instanceof Element ? target.closest("[data-action='tab']") : null;
+        if (!(btn instanceof HTMLElement) || !tabs.contains(btn)) return;
+        uiState.tool = btn.getAttribute("data-tool") || "all";
+        closeGroupMenus();
+        vscode.postMessage({ type:"setAgentTab", payload:{ tool:uiState.tool } });
+        render();
+      });
+    }
+    function statusFilterCounts(){
+      const workspaceEntries = getSideEntriesRaw("workspace");
+      const centralEntries = getSideEntriesRaw("central");
+      const byKey = new Map();
+      for (const entry of workspaceEntries){
+        const key = entry.tool + ":skills/" + entry.folder;
+        const prev = byKey.get(key) || {};
+        prev.workspace = summarizeStatus([prev.workspace, entry.status || "same"].filter(Boolean));
+        byKey.set(key, prev);
+      }
+      for (const entry of centralEntries){
+        const key = entry.tool + ":skills/" + entry.folder;
+        const prev = byKey.get(key) || {};
+        prev.central = summarizeStatus([prev.central, entry.status || "same"].filter(Boolean));
+        byKey.set(key, prev);
+      }
+      const counts = { all: byKey.size, attention: 0, modified: 0, workspaceOnly: 0, centralOnly: 0, same: 0 };
+      for (const item of byKey.values()){
+        const workspaceOnly = item.workspace === "added" || item.central === "removed";
+        const centralOnly = item.central === "added" || item.workspace === "removed";
+        const modified = item.workspace === "modified" || item.central === "modified" || item.workspace === "typeChanged" || item.central === "typeChanged";
+        const same = item.workspace === "same" && item.central === "same";
+        if (workspaceOnly) counts.workspaceOnly += 1;
+        if (centralOnly) counts.centralOnly += 1;
+        if (modified) counts.modified += 1;
+        if (same) counts.same += 1;
+        if (!same) counts.attention += 1;
+      }
+      return counts;
+    }
+    function decisionRecommendation(counts){
+      if (counts.modified > 0) return counts.modified + "개 스킬이 양쪽에서 다릅니다. Diff로 기준을 정하세요.";
+      if (counts.workspaceOnly > 0) return counts.workspaceOnly + "개 스킬은 Workspace에만 있습니다. 보관할 스킬이면 Central로 올리세요.";
+      if (counts.centralOnly > 0) return counts.centralOnly + "개 스킬은 Central에만 있습니다. 필요한 스킬이면 Workspace로 가져오세요.";
+      if (counts.attention === 0) return "양쪽 스킬이 정리되어 있습니다.";
+      return "검토할 항목을 골라 확인하세요.";
+    }
+    function renderDecisionBar(){
+      const counts = statusFilterCounts();
+      const title = document.getElementById("decisionTitle");
+      if (title) title.textContent = decisionRecommendation(counts);
+      const chips = document.getElementById("statusFilterChips");
+      if (!chips) return;
+      chips.innerHTML = Object.keys(statusFilterInfo).map((id)=>{
+        const info = statusFilterInfo[id] || statusFilterInfo.all;
+        return '<button class="decision-chip t-' + esc(info.tone) + (uiState.statusFilter === id ? " active" : "") + '" data-status-filter="' + esc(id) + '" type="button"><span>' + esc(info.label) + '</span><strong>' + String(counts[id] || 0) + '</strong><small>' + esc(info.helper) + '</small></button>';
+      }).join("");
     }
     function renderEmpty(side, reasonText){
       const canOffChanged = uiState.changedOnly;
@@ -6438,7 +7804,8 @@ function renderLibraryManagerHtml(
       const quickActions = [];
       if (canOffChanged) quickActions.push('<button class="btn" data-action="quick-changed-off" data-side="' + esc(side) + '" type="button">변경만 끄기</button>');
       if (hasGroupFilter) quickActions.push('<button class="btn" data-action="quick-clear-groups" data-side="' + esc(side) + '" type="button">그룹 필터 초기화</button>');
-      const filterLine = "현재 필터: 에이전트 " + (uiState.tool === "all" ? "All" : uiState.tool) + " · 그룹 " + groupFilterSummary(side) + " · 변경만 " + (uiState.changedOnly ? "켜짐" : "꺼짐") + (uiState.query.trim() ? (" · 검색 [" + uiState.query.trim() + "]") : "");
+      const statusLabel = (statusFilterInfo[uiState.statusFilter] || statusFilterInfo.all).label;
+      const filterLine = "현재 필터: 상태 " + statusLabel + " · 에이전트 " + (uiState.tool === "all" ? "All" : uiState.tool) + " · 그룹 " + groupFilterSummary(side) + " · 변경만 " + (uiState.changedOnly ? "켜짐" : "꺼짐") + (uiState.query.trim() ? (" · 검색 [" + uiState.query.trim() + "]") : "");
       return '<div class="empty"><div class="empty-title">표시할 항목이 없습니다.</div><div class="empty-reason">' + esc(filterLine) + '</div><div class="empty-reason">' + esc(reasonText) + "</div>" + (quickActions.length > 0 ? ('<div class="empty-actions">' + quickActions.join("") + "</div>") : "") + "</div>";
     }
     function renderPane(side){
@@ -6447,7 +7814,8 @@ function renderLibraryManagerHtml(
       const baseEntries = (Array.isArray(getSide(side)?.entries) ? getSide(side).entries : []).filter((e)=>toolPass(e.tool));
       const groupEntries = baseEntries.filter((e)=>entryPassGroupFilter(e, side));
       const queryEntries = groupEntries.filter((e)=>textPass(e.tool + " " + e.relativePath + " " + (e.groupNames || []).join(" ")));
-      const changedEntries = queryEntries.filter((e)=>e.status!=="same");
+      const statusEntries = queryEntries.filter((e)=>statusFilterPass(e, side));
+      const changedEntries = statusEntries.filter((e)=>e.status!=="same");
       const summarizeSkillStatus = (statuses)=>{
         if (statuses.some((s)=>s==="typeChanged")) return "typeChanged";
         if (statuses.some((s)=>s==="modified")) return "modified";
@@ -6479,7 +7847,8 @@ function renderLibraryManagerHtml(
         const reasons = [];
         if (selectedGroupIds(side).length > 0 && groupEntries.length === 0) reasons.push("선택한 그룹 필터와 일치하는 항목이 없습니다.");
         if (uiState.query.trim() && queryEntries.length === 0) reasons.push("검색어와 일치하는 항목이 없습니다.");
-        if (uiState.changedOnly && queryEntries.length > 0 && changedEntries.length === 0) reasons.push("변경만이 켜져 있어 동일 항목이 숨겨졌습니다.");
+        if (queryEntries.length > 0 && statusEntries.length === 0) reasons.push("선택한 상태 필터와 일치하는 항목이 없습니다.");
+        if (uiState.changedOnly && statusEntries.length > 0 && changedEntries.length === 0) reasons.push("변경만이 켜져 있어 동일 항목이 숨겨졌습니다.");
         reasonText = reasons.length > 0 ? reasons.join(" ") : reasonText;
       }
       tree.innerHTML = nodes.length ? nodes.map((n)=>renderNode(side,n,0)).join("") : renderEmpty(side, reasonText);
@@ -6491,45 +7860,105 @@ function renderLibraryManagerHtml(
       updateHint(side);
     }
     function bindTrees(){
-      document.querySelectorAll("[data-action='toggle']").forEach((btn)=>btn.addEventListener("click", ()=>{ const id = btn.getAttribute("data-node-id") || ""; if (!id) return; uiState.expanded[id] = !uiState.expanded[id]; render(); }));
-      document.querySelectorAll("[data-action='select-node']").forEach((row)=>row.addEventListener("click", (ev)=>{
-        const side = row.getAttribute("data-side") || "workspace";
-        const target = rowToTarget(row);
-        if (!target) return;
-        const key = row.getAttribute("data-node-key") || targetKey(target);
-        const current = getSelectedTargets(side);
-        if (ev.shiftKey) {
-          const rows = Array.from(document.querySelectorAll('[data-action="select-node"][data-side="' + side + '"]'));
-          const keys = rows.map((item)=>item.getAttribute("data-node-key") || "").filter(Boolean);
-          const anchor = uiState.selectionAnchor[side] || key;
-          const from = keys.indexOf(anchor);
-          const to = keys.indexOf(key);
-          if (from >= 0 && to >= 0) {
-            const [start, end] = from <= to ? [from, to] : [to, from];
-            const ranged = rows.slice(start, end + 1).map((item)=>rowToTarget(item)).filter((item)=>!!item);
-            const next = (ev.ctrlKey || ev.metaKey) ? [...current, ...ranged] : ranged;
+      document.querySelectorAll(".tree[data-side]").forEach((tree)=>{
+        tree.addEventListener("click",(ev)=>{
+          const target = ev.target;
+          const actionEl = target instanceof Element ? target.closest("[data-action]") : null;
+          if (!(actionEl instanceof HTMLElement) || !tree.contains(actionEl)) return;
+          const action = actionEl.getAttribute("data-action") || "";
+          if (action === "toggle") {
+            ev.stopPropagation();
+            const id = actionEl.getAttribute("data-node-id") || "";
+            if (!id) return;
+            uiState.expanded[id] = !uiState.expanded[id];
+            render();
+            return;
+          }
+          if (action === "open-diff") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            vscode.postMessage({ type:"openDiff", payload:{ sourceSide:actionEl.getAttribute("data-side"), tool:actionEl.getAttribute("data-tool"), relativePath:actionEl.getAttribute("data-relative-path"), kind:actionEl.getAttribute("data-path-kind") } });
+            return;
+          }
+          if (action === "move-path") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            vscode.postMessage({ type:"movePath", payload:{ sourceSide:actionEl.getAttribute("data-side"), tool:actionEl.getAttribute("data-tool"), relativePath:actionEl.getAttribute("data-relative-path"), kind:actionEl.getAttribute("data-path-kind") } });
+            return;
+          }
+          if (action === "update-path") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            vscode.postMessage({ type:"updatePath", payload:{ targetSide:actionEl.getAttribute("data-side"), tool:actionEl.getAttribute("data-tool"), relativePath:actionEl.getAttribute("data-relative-path"), kind:actionEl.getAttribute("data-path-kind") } });
+            return;
+          }
+          if (action === "delete-path") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            vscode.postMessage({ type:"deletePath", payload:{ side:actionEl.getAttribute("data-side"), tool:actionEl.getAttribute("data-tool"), relativePath:actionEl.getAttribute("data-relative-path"), kind:actionEl.getAttribute("data-path-kind") } });
+            return;
+          }
+          if (action === "quick-changed-off") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            uiState.changedOnly = false;
+            uiState.statusFilter = "all";
+            persistViewState();
+            const changed = document.getElementById("changedOnly");
+            if (changed instanceof HTMLInputElement) changed.checked = false;
+            render();
+            return;
+          }
+          if (action === "quick-clear-groups") {
+            ev.stopPropagation();
+            if (uiState.busy) return;
+            const side = normalizeSide(actionEl.getAttribute("data-side"));
+            setGroupSelection(side, []);
+            return;
+          }
+          if (action !== "select-node") return;
+          const row = actionEl;
+          const side = row.getAttribute("data-side") || "workspace";
+          const selectedTarget = rowToTarget(row);
+          if (!selectedTarget) return;
+          const key = row.getAttribute("data-node-key") || targetKey(selectedTarget);
+          const current = getSelectedTargets(side);
+          if (ev.shiftKey) {
+            const rows = Array.from(tree.querySelectorAll('[data-action="select-node"][data-side="' + side + '"]'));
+            const keys = rows.map((item)=>item.getAttribute("data-node-key") || "").filter(Boolean);
+            const anchor = uiState.selectionAnchor[side] || key;
+            const from = keys.indexOf(anchor);
+            const to = keys.indexOf(key);
+            if (from >= 0 && to >= 0) {
+              const [start, end] = from <= to ? [from, to] : [to, from];
+              const ranged = rows.slice(start, end + 1).map((item)=>rowToTarget(item)).filter((item)=>!!item);
+              const next = (ev.ctrlKey || ev.metaKey) ? [...current, ...ranged] : ranged;
+              setSelectedTargets(side, next, key);
+              render();
+              return;
+            }
+          }
+          if (ev.ctrlKey || ev.metaKey) {
+            const exists = current.some((item)=>targetKey(item) === key);
+            const next = exists ? current.filter((item)=>targetKey(item) !== key) : [...current, selectedTarget];
             setSelectedTargets(side, next, key);
             render();
             return;
           }
-        }
-        if (ev.ctrlKey || ev.metaKey) {
-          const exists = current.some((item)=>targetKey(item) === key);
-          const next = exists ? current.filter((item)=>targetKey(item) !== key) : [...current, target];
-          setSelectedTargets(side, next, key);
+          setSelectedTargets(side, [selectedTarget], key);
           render();
-          return;
-        }
-        setSelectedTargets(side, [target], key);
-        render();
-      }));
-      document.querySelectorAll("[data-action='open-diff']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; vscode.postMessage({ type:"openDiff", payload:{ sourceSide:btn.getAttribute("data-side"), tool:btn.getAttribute("data-tool"), relativePath:btn.getAttribute("data-relative-path"), kind:btn.getAttribute("data-path-kind") } }); }));
-      document.querySelectorAll("[data-action='move-path']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; vscode.postMessage({ type:"movePath", payload:{ sourceSide:btn.getAttribute("data-side"), tool:btn.getAttribute("data-tool"), relativePath:btn.getAttribute("data-relative-path"), kind:btn.getAttribute("data-path-kind") } }); }));
-      document.querySelectorAll("[data-action='update-path']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; vscode.postMessage({ type:"updatePath", payload:{ targetSide:btn.getAttribute("data-side"), tool:btn.getAttribute("data-tool"), relativePath:btn.getAttribute("data-relative-path"), kind:btn.getAttribute("data-path-kind") } }); }));
-      document.querySelectorAll("[data-action='delete-path']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; vscode.postMessage({ type:"deletePath", payload:{ side:btn.getAttribute("data-side"), tool:btn.getAttribute("data-tool"), relativePath:btn.getAttribute("data-relative-path"), kind:btn.getAttribute("data-path-kind") } }); }));
-      document.querySelectorAll("[data-action='quick-changed-off']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; uiState.changedOnly = false; const changed = document.getElementById("changedOnly"); if (changed instanceof HTMLInputElement) changed.checked = false; render(); }));
-      document.querySelectorAll("[data-action='quick-clear-groups']").forEach((btn)=>btn.addEventListener("click",(ev)=>{ ev.stopPropagation(); if (uiState.busy) return; const side = normalizeSide(btn.getAttribute("data-side")); setGroupSelection(side, []); }));
-      document.querySelectorAll(".row[draggable='true']").forEach((row)=>row.addEventListener("dragstart",(ev)=>{ const k = row.getAttribute("data-transfer-kind") || ""; if (k!=="path") return; const payload = { kind:"path", sourceSide:row.getAttribute("data-side") || "", tool:row.getAttribute("data-tool") || "", relativePath:row.getAttribute("data-relative-path") || "", pathKind:row.getAttribute("data-path-kind") || "folder" }; ev.dataTransfer?.setData("application/skill-bridge-library", JSON.stringify(payload)); ev.dataTransfer?.setData("text/plain", JSON.stringify(payload)); }));
+        });
+        tree.addEventListener("dragstart",(ev)=>{
+          const target = ev.target;
+          const row = target instanceof Element ? target.closest(".row[draggable='true']") : null;
+          if (!(row instanceof HTMLElement) || !tree.contains(row)) return;
+          const k = row.getAttribute("data-transfer-kind") || "";
+          if (k !== "path") return;
+          const payload = { kind:"path", sourceSide:row.getAttribute("data-side") || "", tool:row.getAttribute("data-tool") || "", relativePath:row.getAttribute("data-relative-path") || "", pathKind:row.getAttribute("data-path-kind") || "folder" };
+          ev.dataTransfer?.setData("application/skill-bridge-library", JSON.stringify(payload));
+          ev.dataTransfer?.setData("text/plain", JSON.stringify(payload));
+        });
+      });
     }
     function bindDrops(){
       document.querySelectorAll(".tree[data-side]").forEach((el)=>{
@@ -6548,6 +7977,23 @@ function renderLibraryManagerHtml(
       const groupIds = selectedConcreteGroupIds(side);
       const allTargets = selectedTargets(side);
       const targets = allTargets.filter((target)=>!!target.exists);
+      if (action === "diff-selected"){
+        const diffTargets = allTargets.filter((target)=>target.status !== "same");
+        if (diffTargets.length === 0) { setStatus("Diff를 볼 변경 항목을 하나 선택하세요.", "warn"); return; }
+        if (diffTargets.length > 1) { setStatus("Diff는 한 번에 하나만 열 수 있습니다. 항목 하나만 선택하세요.", "warn"); return; }
+        const target = diffTargets[0];
+        vscode.postMessage({
+          type:"openDiff",
+          payload:{
+            sourceSide: side,
+            tool: target.tool,
+            relativePath: target.relativePath,
+            kind: target.kind
+          }
+        });
+        setStatus("Diff 열기: " + target.tool + "/" + target.relativePath, "info");
+        return;
+      }
       if (action === "move-group"){
         vscode.postMessage({
           type:"moveGroup",
@@ -6582,7 +8028,7 @@ function renderLibraryManagerHtml(
             targets: updateTargets.map((target)=>({ tool:target.tool, relativePath:target.relativePath, kind:target.kind }))
           }
         });
-        setStatus("선택 업데이트 요청: 대상 " + updateTargets.length + "개", "info");
+        setStatus("선택 변경 가져오기 요청: 대상 " + updateTargets.length + "개", "info");
         return;
       }
       if (action === "delete-selected"){
@@ -6673,7 +8119,7 @@ function renderLibraryManagerHtml(
       });
     }
     function bindControls(){
-      document.querySelectorAll("[data-action='group-create'],[data-action='group-assign'],[data-action='group-unassign'],[data-action='group-filter-clear'],[data-action='group-filter-select-all'],[data-action='move-group'],[data-action='move-selected'],[data-action='update-selected'],[data-action='delete-selected']").forEach((btn)=>btn.addEventListener("click", (ev)=>{ ev.stopPropagation(); const side = normalizeSide(btn.getAttribute("data-side")); const action = btn.getAttribute("data-action") || ""; applyGroupAction(action, side); }));
+      document.querySelectorAll("[data-action='group-create'],[data-action='group-assign'],[data-action='group-unassign'],[data-action='group-filter-clear'],[data-action='group-filter-select-all'],[data-action='move-group'],[data-action='move-selected'],[data-action='update-selected'],[data-action='delete-selected'],[data-action='diff-selected']").forEach((btn)=>btn.addEventListener("click", (ev)=>{ ev.stopPropagation(); const side = normalizeSide(btn.getAttribute("data-side")); const action = btn.getAttribute("data-action") || ""; applyGroupAction(action, side); }));
       document.body.addEventListener("change", (ev)=>{
         const target = ev.target;
         if (!(target instanceof HTMLInputElement)) return;
@@ -6687,6 +8133,8 @@ function renderLibraryManagerHtml(
       });
     }
     function bindStatic(){
+      bindTabs();
+      bindTrees();
       bindDrops();
       bindControls();
       bindGroupMenuStatics("workspace");
@@ -6699,7 +8147,9 @@ function renderLibraryManagerHtml(
       const wsGroups = groupFilterSummary("workspace");
       const ctGroups = groupFilterSummary("central");
       const query = uiState.query.trim();
+      const statusLabel = (statusFilterInfo[uiState.statusFilter] || statusFilterInfo.all).label;
       el.innerHTML = [
+        '<span class="filter-chip">상태 ' + esc(statusLabel) + '</span>',
         '<span class="filter-chip">에이전트 ' + esc(uiState.tool === "all" ? "All" : uiState.tool) + '</span>',
         '<span class="filter-chip">Workspace 그룹 ' + esc(wsGroups) + '</span>',
         '<span class="filter-chip">Central 그룹 ' + esc(ctGroups) + '</span>',
@@ -6708,12 +8158,16 @@ function renderLibraryManagerHtml(
       ].filter(Boolean).join("");
     }
     function render(){
+      if (renderFrame) {
+        cancelAnimationFrame(renderFrame);
+        renderFrame = 0;
+      }
       renderTabs();
       updateSummaryChrome();
+      renderDecisionBar();
       updateFilterSummary();
       renderPane("workspace");
       renderPane("central");
-      bindTrees();
       const wsCount = Array.isArray(state.workspace?.entries) ? state.workspace.entries.length : 0;
       const ctCount = Array.isArray(state.central?.entries) ? state.central.entries.length : 0;
       const wsExists = Array.isArray(state.workspace?.entries) ? state.workspace.entries.filter((e)=>!!e.exists).length : 0;
@@ -6731,13 +8185,19 @@ function renderLibraryManagerHtml(
       }
     }
     document.getElementById("groupingMode").addEventListener("change",(ev)=>{ const el = ev.target; if (!(el instanceof HTMLSelectElement)) return; uiState.grouping = el.value === "group" ? "group" : "agent"; closeGroupMenus(); vscode.postMessage({ type:"setGroupingMode", payload:{ mode:uiState.grouping } }); render(); });
-    document.getElementById("changedOnly").addEventListener("change",(ev)=>{ const el = ev.target; if (!(el instanceof HTMLInputElement)) return; uiState.changedOnly = !!el.checked; vscode.postMessage({ type:"toggleChangedOnly", payload:{ enabled:uiState.changedOnly } }); render(); });
-    document.getElementById("searchInput").addEventListener("input",(ev)=>{ const el = ev.target; if (!(el instanceof HTMLInputElement)) return; uiState.query = el.value || ""; closeGroupMenus(); vscode.postMessage({ type:"setSearch", payload:{ query:uiState.query } }); render(); });
+    document.getElementById("changedOnly").addEventListener("change",(ev)=>{ const el = ev.target; if (!(el instanceof HTMLInputElement)) return; uiState.changedOnly = !!el.checked; uiState.statusFilter = uiState.changedOnly ? "attention" : "all"; persistViewState(); vscode.postMessage({ type:"toggleChangedOnly", payload:{ enabled:uiState.changedOnly } }); render(); });
+    document.getElementById("searchInput").addEventListener("input",(ev)=>{ const el = ev.target; if (!(el instanceof HTMLInputElement)) return; uiState.query = el.value || ""; closeGroupMenus(); vscode.postMessage({ type:"setSearch", payload:{ query:uiState.query } }); scheduleRender(); });
     document.getElementById("refreshBtn").addEventListener("click",()=>{ if (uiState.busy) return; vscode.postMessage({ type:"refresh" }); });
     document.getElementById("toggleSummaryBtn").addEventListener("click",()=>{ uiState.summaryCollapsed = !uiState.summaryCollapsed; persistViewState(); updateSummaryChrome(); });
     document.getElementById("openWizardBtn").addEventListener("click",()=>{ if (uiState.busy) return; vscode.postMessage({ type:"openAddMoveWizard" }); });
     document.getElementById("openTransferExplorerBtn").addEventListener("click",()=>{ if (uiState.busy) return; vscode.postMessage({ type:"openTransferExplorer" }); });
     document.getElementById("focusSearchBtn").addEventListener("click",()=>{ const input = document.getElementById("searchInput"); if (input instanceof HTMLInputElement) { input.focus(); input.select(); } });
+    document.getElementById("statusFilterChips").addEventListener("click",(ev)=>{
+      const target = ev.target;
+      const btn = target instanceof Element ? target.closest("[data-status-filter]") : null;
+      if (!btn || uiState.busy) return;
+      setStatusFilter(btn.getAttribute("data-status-filter") || "all");
+    });
     document.addEventListener("keydown",(ev)=>{
       const target = ev.target;
       const isTyping = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -6771,6 +8231,8 @@ function renderLibraryManagerHtml(
       if (key === "f") {
         ev.preventDefault();
         uiState.changedOnly = !uiState.changedOnly;
+        uiState.statusFilter = uiState.changedOnly ? "attention" : "all";
+        persistViewState();
         const changed = document.getElementById("changedOnly");
         if (changed instanceof HTMLInputElement) changed.checked = uiState.changedOnly;
         vscode.postMessage({ type:"toggleChangedOnly", payload:{ enabled:uiState.changedOnly } });
@@ -6816,27 +8278,74 @@ function renderLibraryManagerHtml(
 }
 
 function resolveContext(): { workspacePath: string; centralRepoPath: string; agents: ToolType[] } {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    throw new Error("열려 있는 workspace가 없습니다.");
-  }
+  const workspacePath = getActiveWorkspacePath();
+  const folderUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+  const config = vscode.workspace.getConfiguration(SETTINGS_SECTION, folderUri);
 
-  const workspacePath = folders[0].uri.fsPath;
-  const config = vscode.workspace.getConfiguration(SETTINGS_SECTION, folders[0].uri);
-
-  const centralRaw = String(config.get<string>("centralRepoPath") ?? "").trim();
-  const fallbackRaw = process.env.SKILL_BRIDGE_HOME?.trim() || "${userHome}/skill-bridge-repo";
-  const expandedCentral = expandConfiguredPath(centralRaw || fallbackRaw, workspacePath);
-
-  const centralRepoPath = path.isAbsolute(expandedCentral)
-    ? path.normalize(expandedCentral)
-    : path.join(workspacePath, expandedCentral);
+  const centralRepoPath = resolveSharedCentralRepoPath(workspacePath);
 
   const configured = config.get<string[]>("defaultAgents", [...CONFIGURABLE_TOOLS]);
   const normalized = configured.filter(isToolType).filter((item) => item !== "agents");
   const agents = [...new Set<ToolType>([...normalized, "agents"])];
 
   return { workspacePath, centralRepoPath, agents };
+}
+
+function compactPathForDisplay(value: string): string {
+  const normalized = path.normalize(value);
+  const home = path.normalize(os.homedir());
+  const homePrefix = `${home}${path.sep}`;
+  const withHome = normalized === home
+    ? "~"
+    : normalized.startsWith(homePrefix)
+      ? `~${path.sep}${normalized.slice(homePrefix.length)}`
+      : normalized;
+  if (withHome.length <= 54) return withHome;
+  const parts = withHome.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 3) return withHome;
+  return `${parts[0]}${path.sep}...${path.sep}${parts.slice(-2).join(path.sep)}`;
+}
+
+function getActiveWorkspacePath(): string {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    throw new Error("열려 있는 workspace가 없습니다.");
+  }
+  return folders[0].uri.fsPath;
+}
+
+function resolveSharedCentralRepoPath(workspacePath: string): string {
+  const config = vscode.workspace.getConfiguration(SETTINGS_SECTION);
+  const inspected = config.inspect<string>("centralRepoPath");
+  const configuredRaw = String(inspected?.globalValue ?? inspected?.defaultValue ?? "").trim();
+  const fallbackRaw = process.env.SKILL_BRIDGE_HOME?.trim() || DEFAULT_CENTRAL_REPO_PATH;
+  return resolveConfiguredPath(configuredRaw || fallbackRaw, workspacePath);
+}
+
+function getDefaultCentralRepoPath(workspacePath: string): string {
+  return resolveConfiguredPath(DEFAULT_CENTRAL_REPO_PATH, workspacePath);
+}
+
+function resolveConfiguredPath(raw: string, workspacePath: string): string {
+  const expanded = expandConfiguredPath(raw, workspacePath);
+  return path.isAbsolute(expanded)
+    ? path.normalize(expanded)
+    : path.join(workspacePath, expanded);
+}
+
+async function clearCentralRepoPathOverrides(): Promise<void> {
+  await vscode.workspace
+    .getConfiguration(SETTINGS_SECTION)
+    .update("centralRepoPath", undefined, vscode.ConfigurationTarget.Workspace)
+    .then(undefined, () => undefined);
+
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  await Promise.all(folders.map(async (folder) => {
+    await vscode.workspace
+      .getConfiguration(SETTINGS_SECTION, folder.uri)
+      .update("centralRepoPath", undefined, vscode.ConfigurationTarget.WorkspaceFolder)
+      .then(undefined, () => undefined);
+  }));
 }
 
 function expandConfiguredPath(raw: string, workspacePath: string): string {
@@ -6854,8 +8363,42 @@ function expandConfiguredPath(raw: string, workspacePath: string): string {
   return expanded;
 }
 
+type SelectionGroupLoadResult = {
+  groups: SelectionGroup[];
+  needsSave: boolean;
+  migratedCentralGroupCount: number;
+};
+
+function groupStorePath(basePath: string): string {
+  return path.join(basePath, "skill_workspace.json");
+}
+
+async function loadSelectionGroups(workspacePath: string, centralRepoPath: string): Promise<SelectionGroupLoadResult> {
+  const workspaceGroups = await loadWorkspaceGroups(workspacePath);
+  const centralTarget = groupStorePath(centralRepoPath);
+  const centralFileExists = await exists(centralTarget);
+  const centralFileGroups = await loadGroupFile(centralTarget);
+  const workspaceSideGroups = workspaceGroups.filter((group) => group.side === "workspace");
+  const legacyCentralGroups = workspaceGroups.filter((group) => group.side === "central");
+  const centralSideGroups = centralFileGroups.filter((group) => group.side === "central");
+  const centralFileHasWorkspaceGroups = centralFileGroups.some((group) => group.side === "workspace");
+  const shouldMigrateLegacyCentral = !centralFileExists && legacyCentralGroups.length > 0;
+
+  return {
+    groups: [
+      ...workspaceSideGroups,
+      ...(shouldMigrateLegacyCentral ? legacyCentralGroups : centralSideGroups)
+    ],
+    needsSave: legacyCentralGroups.length > 0 || centralFileHasWorkspaceGroups || shouldMigrateLegacyCentral,
+    migratedCentralGroupCount: shouldMigrateLegacyCentral ? legacyCentralGroups.length : 0
+  };
+}
+
 async function loadWorkspaceGroups(workspacePath: string): Promise<SelectionGroup[]> {
-  const target = path.join(workspacePath, "skill_workspace.json");
+  return await loadGroupFile(groupStorePath(workspacePath));
+}
+
+async function loadGroupFile(target: string): Promise<SelectionGroup[]> {
   if (!(await exists(target))) return [];
   try {
     const raw = await fs.readFile(target, "utf8");
@@ -6869,10 +8412,15 @@ async function loadWorkspaceGroups(workspacePath: string): Promise<SelectionGrou
         side: group.side === "central" ? "central" as const : "workspace" as const,
         targets: Array.isArray(group.targets)
           ? group.targets
-              .filter((target) => target && (target.kind === "file" || target.kind === "folder"))
+              .filter((target) =>
+                target
+                && (target.kind === "file" || target.kind === "folder")
+                && typeof target.tool === "string"
+                && isToolType(target.tool)
+              )
               .map((target) => ({
                 kind: target.kind!,
-                tool: target.tool!,
+                tool: target.tool as ToolType,
                 relativePath: String(target.relativePath ?? "")
               }))
           : [],
@@ -6889,7 +8437,17 @@ async function loadWorkspaceGroups(workspacePath: string): Promise<SelectionGrou
 }
 
 async function saveWorkspaceGroups(workspacePath: string, groups: SelectionGroup[]): Promise<void> {
-  const target = path.join(workspacePath, "skill_workspace.json");
+  await saveGroupFile(groupStorePath(workspacePath), groups.filter((group) => group.side === "workspace"));
+}
+
+async function saveSelectionGroups(workspacePath: string, centralRepoPath: string, groups: SelectionGroup[]): Promise<void> {
+  await Promise.all([
+    saveWorkspaceGroups(workspacePath, groups),
+    saveGroupFile(groupStorePath(centralRepoPath), groups.filter((group) => group.side === "central"))
+  ]);
+}
+
+async function saveGroupFile(target: string, groups: SelectionGroup[]): Promise<void> {
   const payload: WorkspaceGroupFile = {
     version: 2,
     groups: groups.map((group) => ({
@@ -6897,6 +8455,7 @@ async function saveWorkspaceGroups(workspacePath: string, groups: SelectionGroup
       meta: sanitizeGroupMeta(group.meta)
     }))
   };
+  await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, JSON.stringify(payload, null, 2), "utf8");
 }
 
@@ -7143,17 +8702,21 @@ function renderGroupInfoHtml(
       .replace(/"/g, "&quot;");
 
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const rowHtml = data.rows.map((row) => `
-      <tr>
-        <td>${esc(row.targetPath)}</td>
+  const rowHtml = data.rows.map((row) => {
+    const noHistory = row.latestProject === "기록 없음" || row.latestAt === "-";
+    const searchText = `${row.targetPath} ${row.kind} ${row.latestProject} ${row.latestSource}`;
+    return `
+      <tr data-search="${esc(searchText.toLowerCase())}" data-history="${noHistory ? "missing" : "known"}">
+        <td><span class="path">${esc(row.targetPath)}</span><button class="copy" data-copy="${esc(row.targetPath)}" title="경로 복사">복사</button></td>
         <td>${esc(row.kind)}</td>
         <td>${esc(row.fileMtime)}</td>
         <td>${esc(row.fileSize)}</td>
         <td>${esc(row.latestAt)}</td>
         <td>${esc(row.latestProject)}</td>
-        <td>${esc(row.latestSource)}</td>
+        <td><span class="path">${esc(row.latestSource)}</span><button class="copy" data-copy="${esc(row.latestSource)}" title="경로 복사">복사</button></td>
       </tr>
-  `).join("");
+  `;
+  }).join("");
 
   return `<!doctype html>
 <html lang="ko">
@@ -7161,31 +8724,50 @@ function renderGroupInfoHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Group Info</title>
+  <title>스킬 그룹 정보</title>
   <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
-    .wrap { padding: 14px; display: grid; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: var(--vscode-sideBar-background); }
-    .card .k { font-size: 11px; opacity: 0.8; margin-bottom: 4px; }
-    .card .v { font-size: 13px; font-weight: 600; word-break: break-all; }
-    .meta { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; display: grid; gap: 6px; }
-    .meta-row { font-size: 12px; }
-    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
+    .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+    h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
+    .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+    .pill strong { color: var(--vscode-foreground); }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    input { min-width: min(360px, 58vw); }
+    input[type="checkbox"] { min-width: 0; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .meta { border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 6px 8px; display: flex; gap: 10px; overflow-x: auto; color: var(--vscode-descriptionForeground); font-size: 12px; scrollbar-gutter: stable; }
+    .meta b { color: var(--vscode-foreground); }
+    .meta-row { white-space: nowrap; }
+    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vscode-panel-border); vertical-align: top; }
-    thead { background: var(--vscode-sideBar-background); }
+    thead { background: var(--vscode-sideBar-background); position: sticky; top: 0; z-index: 1; }
     tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+    .path { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
+    .hidden-row { display: none; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2 style="margin:0;">Group Info: ${esc(data.name)}</h2>
-    <div class="cards">
-      <div class="card"><div class="k">Side</div><div class="v">${esc(data.side)}</div></div>
-      <div class="card"><div class="k">Target Count</div><div class="v">${data.count}</div></div>
-      <div class="card"><div class="k">Source</div><div class="v">${esc(data.source)}</div></div>
-      <div class="card"><div class="k">Repo Key</div><div class="v">${esc(data.repoKey)}</div></div>
+    <div class="head">
+      <h2 title="${esc(data.name)}">스킬 그룹 정보: ${esc(data.name)}</h2>
+      <div id="visibleCount" class="pill">표시 ${data.rows.length}개</div>
+    </div>
+    <div class="pills">
+      <span class="pill">위치 <strong>${esc(data.side === "workspace" ? "Workspace" : "Central")}</strong></span>
+      <span class="pill">타깃 <strong>${data.count}</strong></span>
+      <span class="pill">출처 <strong>${esc(data.source)}</strong></span>
+      <span class="pill">Repo <strong>${esc(data.repoKey)}</strong></span>
+    </div>
+    <div class="controls">
+      <input id="search" placeholder="경로/프로젝트/출처 검색..." />
+      <label class="pill"><input id="historyOnly" type="checkbox" /> 기록 없는 항목만</label>
     </div>
     <div class="meta">
       <div class="meta-row"><b>Repo URL:</b> ${esc(data.repoUrl)}</div>
@@ -7196,20 +8778,55 @@ function renderGroupInfoHtml(
       <table>
         <thead>
           <tr>
-            <th>File</th>
-            <th>Kind</th>
-            <th>File MTime</th>
-            <th>File Size</th>
-            <th>Latest At</th>
-            <th>Latest Project</th>
-            <th>Latest Source Path</th>
+            <th>경로</th>
+            <th>유형</th>
+            <th>파일 수정일</th>
+            <th>파일 크기</th>
+            <th>최근 기록</th>
+            <th>최근 프로젝트</th>
+            <th>최근 원본 경로</th>
           </tr>
         </thead>
         <tbody>${rowHtml || `<tr><td colspan="7">표시할 항목이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   </div>
-  <script nonce="${nonce}">/* static view */</script>
+  <script nonce="${nonce}">
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
+    const search = document.getElementById("search");
+    const historyOnly = document.getElementById("historyOnly");
+    const visibleCount = document.getElementById("visibleCount");
+    function applyFilters(){
+      const q = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : "";
+      const missing = historyOnly instanceof HTMLInputElement ? historyOnly.checked : false;
+      let visible = 0;
+      for (const row of rows) {
+        const text = row.getAttribute("data-search") || "";
+        const history = row.getAttribute("data-history") || "";
+        const show = (!q || text.includes(q)) && (!missing || history === "missing");
+        row.classList.toggle("hidden-row", !show);
+        if (show) visible += 1;
+      }
+      visibleCount.textContent = "표시 " + visible + " / " + rows.length + "개";
+    }
+    document.body.addEventListener("click", async (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
+      if (!(button instanceof HTMLElement)) return;
+      const value = button.getAttribute("data-copy") || "";
+      if (!value || value === "-") return;
+      try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = "복사됨";
+        setTimeout(() => { button.textContent = "복사"; }, 900);
+      } catch {
+        button.textContent = "실패";
+        setTimeout(() => { button.textContent = "복사"; }, 900);
+      }
+    });
+    search?.addEventListener("input", applyFilters);
+    historyOnly?.addEventListener("change", applyFilters);
+    applyFilters();
+  </script>
 </body>
 </html>`;
 }
@@ -7227,12 +8844,22 @@ function getSkillRoot(basePath: string, tool: ToolType, mode: "workspace" | "cen
   return roots[0];
 }
 
-function getSkillRootCandidates(basePath: string, tool: ToolType, mode: "workspace" | "central"): string[] {
+function getWritableSkillRoot(basePath: string, tool: ToolType, mode: "workspace" | "central"): string {
+  return getPrimarySkillRoot(basePath, tool, mode);
+}
+
+function getPrimarySkillRoot(basePath: string, tool: ToolType, mode: "workspace" | "central"): string {
   const dotted = tool === "agents" ? ".agents" : `.${tool}`;
   const plain = tool;
-  const primary = mode === "workspace"
+  return mode === "workspace"
     ? path.join(basePath, dotted)
     : path.join(basePath, plain);
+}
+
+function getSkillRootCandidates(basePath: string, tool: ToolType, mode: "workspace" | "central"): string[] {
+  const primary = getPrimarySkillRoot(basePath, tool, mode);
+  const dotted = tool === "agents" ? ".agents" : `.${tool}`;
+  const plain = tool;
   const secondary = mode === "workspace"
     ? path.join(basePath, plain)
     : path.join(basePath, dotted);
@@ -7245,6 +8872,22 @@ function resolveSkillPath(basePath: string, tool: ToolType, relativePath: string
     throw new Error("skills 하위 경로만 허용됩니다.");
   }
   return path.join(getSkillRoot(basePath, tool, mode), normalized);
+}
+
+function resolveOpenFolderTarget(
+  basePath: string,
+  mode: "workspace" | "central",
+  node?: SkillTreeNode
+): string {
+  if (!node || (node.kind !== "file" && node.kind !== "folder")) {
+    return basePath;
+  }
+
+  const normalized = normalizeRel(node.relativePath);
+  if (!normalized) {
+    return getSkillRoot(basePath, node.tool, mode);
+  }
+  return resolveSkillPath(basePath, node.tool, normalized, mode);
 }
 
 async function collectFiles(root: string, basePath: string): Promise<string[]> {
@@ -7516,9 +9159,10 @@ function renderFolderDiffSummaryHtml(
   };
   const rows = data.rows.map((row) => {
     const isSame = row.changeCode === "=";
-    return `<tr>
+    const searchText = `${row.relativePath} ${row.entryKind} ${row.sourceState} ${row.targetState} ${row.decisionText} ${row.riskLevel}`;
+    return `<tr data-search="${esc(searchText.toLowerCase())}" data-change="${esc(row.changeCode)}" data-risk="${esc(row.riskLevel)}">
       <td class="code code-${esc(row.changeCode)}" title="${esc(row.status)}">${esc(codeToLabel(row.changeCode))}</td>
-      <td>${esc(row.relativePath)} <small>[${esc(row.entryKind)}]</small></td>
+      <td><span class="path">${esc(row.relativePath)}</span> <small>[${esc(row.entryKind)}]</small><button class="copy" data-copy="${esc(row.relativePath)}" title="경로 복사">복사</button></td>
       <td>${esc(row.sourceState)}</td>
       <td>${esc(row.targetState)}</td>
       <td>${esc(row.decisionText)}</td>
@@ -7533,16 +9177,28 @@ function renderFolderDiffSummaryHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Folder Diff Summary</title>
+  <title>폴더 Diff 요약</title>
   <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
-    .wrap { padding: 12px; display: grid; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: var(--vscode-sideBar-background); }
-    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
+    .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .direction { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
+    .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
+    .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+    .pill strong { color: var(--vscode-foreground); }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    input, select, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    input { min-width: min(360px, 58vw); }
+    input[type="checkbox"] { min-width: 0; }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vscode-panel-border); vertical-align: top; }
-    thead { background: var(--vscode-sideBar-background); }
+    thead { background: var(--vscode-sideBar-background); position: sticky; top: 0; z-index: 1; }
+    tbody tr:hover { background: var(--vscode-list-hoverBackground); }
     .code { font-weight: 800; }
     .code-A { color: #22c55e; }
     .code-D { color: #ef4444; }
@@ -7553,20 +9209,34 @@ function renderFolderDiffSummaryHtml(
     .risk-high { border-color: #ef4444; color: #ef4444; }
     .risk-medium { border-color: #f59e0b; color: #f59e0b; }
     .risk-low { border-color: #22c55e; color: #22c55e; }
-    button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .path { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
+    .hidden-row { display: none; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2 style="margin:0;">Diff Summary: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-    <div><b>${sourceLabel}</b> → <b>${targetLabel}</b></div>
-    <div class="cards">
-      <div class="card"><b>신규</b><br>${addedFiles}</div>
-      <div class="card"><b>수정</b><br>${modifiedFiles}</div>
-      <div class="card"><b>삭제</b><br>${removedFiles}</div>
-      <div class="card"><b>타입충돌</b><br>${typeChangedFiles}</div>
-      <div class="card"><b>동일</b><br>${sameFiles}</div>
+    <div class="head">
+      <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">폴더 Diff 요약: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
+      <div class="direction"><b>${sourceLabel}</b> → <b>${targetLabel}</b></div>
+    </div>
+    <div class="pills">
+      <span class="pill">신규 <strong>${addedFiles}</strong></span>
+      <span class="pill">수정 <strong>${modifiedFiles}</strong></span>
+      <span class="pill">삭제 <strong>${removedFiles}</strong></span>
+      <span class="pill">타입충돌 <strong>${typeChangedFiles}</strong></span>
+      <span class="pill">동일 <strong>${sameFiles}</strong></span>
+      <span id="visibleCount" class="pill">표시 ${data.rows.length}개</span>
+    </div>
+    <div class="controls">
+      <input id="search" placeholder="파일/상태/설명 검색..." />
+      <select id="riskFilter">
+        <option value="">전체 위험도</option>
+        <option value="high">높음</option>
+        <option value="medium">중간</option>
+        <option value="low">낮음</option>
+      </select>
+      <label class="pill"><input id="changedOnly" type="checkbox" checked /> 변경만</label>
     </div>
     <div class="table-wrap">
       <table>
@@ -7577,13 +9247,49 @@ function renderFolderDiffSummaryHtml(
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
+    const search = document.getElementById("search");
+    const riskFilter = document.getElementById("riskFilter");
+    const changedOnly = document.getElementById("changedOnly");
+    const visibleCount = document.getElementById("visibleCount");
+    function applyFilters(){
+      const q = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : "";
+      const risk = riskFilter instanceof HTMLSelectElement ? riskFilter.value : "";
+      const changed = changedOnly instanceof HTMLInputElement ? changedOnly.checked : false;
+      let visible = 0;
+      for (const row of rows) {
+        const text = row.getAttribute("data-search") || "";
+        const change = row.getAttribute("data-change") || "";
+        const rowRisk = row.getAttribute("data-risk") || "";
+        const show = (!q || text.includes(q)) && (!risk || rowRisk === risk) && (!changed || change !== "=");
+        row.classList.toggle("hidden-row", !show);
+        if (show) visible += 1;
+      }
+      visibleCount.textContent = "표시 " + visible + " / " + rows.length + "개";
+    }
     document.body.addEventListener("click", (event) => {
+      const copy = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
+      if (copy instanceof HTMLElement) {
+        const value = copy.getAttribute("data-copy") || "";
+        navigator.clipboard.writeText(value).then(() => {
+          copy.textContent = "복사됨";
+          setTimeout(() => { copy.textContent = "복사"; }, 900);
+        }).catch(() => {
+          copy.textContent = "실패";
+          setTimeout(() => { copy.textContent = "복사"; }, 900);
+        });
+        return;
+      }
       const el = event.target;
       if (!(el instanceof HTMLButtonElement)) return;
       if (el.dataset.kind !== "open-diff") return;
       const key = el.dataset.key || "";
       vscode.postMessage({ type: "openDiff", payload: { key } });
     });
+    search?.addEventListener("input", applyFilters);
+    riskFilter?.addEventListener("change", applyFilters);
+    changedOnly?.addEventListener("change", applyFilters);
+    applyFilters();
   </script>
 </body>
 </html>`;
@@ -7617,9 +9323,10 @@ function renderFolderTransferDiffHtml(
     const isSkill = /(^|\/)SKILL\.md$/i.test(row.relativePath);
     const sizeDelta = row.sourceSize !== null && row.targetSize !== null ? row.sourceSize - row.targetSize : null;
     const sizeDeltaLabel = sizeDelta === null ? "-" : sizeDelta > 0 ? `+${sizeDelta} B` : `${sizeDelta} B`;
-    return `<tr>
+    const searchText = `${row.relativePath} ${row.status} ${sizeDeltaLabel} ${row.sourceMtime ?? ""} ${row.targetMtime ?? ""}`;
+    return `<tr data-search="${esc(searchText.toLowerCase())}" data-change="${esc(row.status)}">
       <td class="status-${esc(row.status)}"><b>${esc(row.status)}</b></td>
-      <td>${esc(row.relativePath)} ${isSkill ? "<b>[SKILL.md]</b>" : ""}</td>
+      <td><span class="path">${esc(row.relativePath)}</span> ${isSkill ? "<b>[SKILL.md]</b>" : ""}<button class="copy" data-copy="${esc(row.relativePath)}" title="경로 복사">복사</button></td>
       <td>${row.sourceSize ?? "-"}${row.sourceSize === null ? "" : " B"}</td>
       <td>${row.targetSize ?? "-"}${row.targetSize === null ? "" : " B"}</td>
       <td>${esc(sizeDeltaLabel)}</td>
@@ -7634,43 +9341,95 @@ function renderFolderTransferDiffHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Folder Diff</title>
+  <title>폴더 Diff</title>
   <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
-    .wrap { padding: 12px; display: grid; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: var(--vscode-sideBar-background); }
-    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
+    .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
+    .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+    .pill strong { color: var(--vscode-foreground); }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    input { min-width: min(360px, 58vw); }
+    input[type="checkbox"] { min-width: 0; }
+    button { cursor: pointer; }
+    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vscode-panel-border); vertical-align: top; }
-    thead { background: var(--vscode-sideBar-background); }
+    thead { background: var(--vscode-sideBar-background); position: sticky; top: 0; z-index: 1; }
     tbody tr:hover { background: var(--vscode-list-hoverBackground); }
     .status-A { color: #22c55e; }
     .status-D { color: #ef4444; }
     .status-M { color: #f59e0b; }
     .status-\= { color: var(--vscode-descriptionForeground); }
+    .path { display: inline-block; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
+    .hidden-row { display: none; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2 style="margin:0;">Folder Diff: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-    <div class="cards">
-      <div class="card"><b>Status</b><br>${esc(data.status)}</div>
-      <div class="card"><b>Total Files</b><br>${data.totalFiles}</div>
-      <div class="card"><b>Changes</b><br>A ${data.addedCount} / M ${data.modifiedCount} / D ${data.removedCount}</div>
-      <div class="card"><b>Source Size</b><br>${data.totalSourceBytes} B</div>
-      <div class="card"><b>Target Size</b><br>${data.totalTargetBytes} B</div>
-      <div class="card"><b>SKILL.md</b><br>${data.skillMdCount}</div>
-      <div class="card"><b>Same</b><br>${data.sameCount}</div>
+    <div class="head">
+      <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">폴더 Diff: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
+      <span id="visibleCount" class="pill">표시 ${data.rows.length}개</span>
+    </div>
+    <div class="pills">
+      <span class="pill">상태 <strong>${esc(data.status)}</strong></span>
+      <span class="pill">파일 <strong>${data.totalFiles}</strong></span>
+      <span class="pill">변경 <strong>A ${data.addedCount} / M ${data.modifiedCount} / D ${data.removedCount}</strong></span>
+      <span class="pill">Source <strong>${data.totalSourceBytes} B</strong></span>
+      <span class="pill">Target <strong>${data.totalTargetBytes} B</strong></span>
+      <span class="pill">SKILL.md <strong>${data.skillMdCount}</strong></span>
+      <span class="pill">동일 <strong>${data.sameCount}</strong></span>
+    </div>
+    <div class="controls">
+      <input id="search" placeholder="파일/상태/수정일 검색..." />
+      <label class="pill"><input id="changedOnly" type="checkbox" checked /> 변경만</label>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Change</th><th>Path</th><th>Source Size</th><th>Target Size</th><th>Delta</th><th>Source MTime</th><th>Target MTime</th></tr></thead>
+        <thead><tr><th>변경</th><th>경로</th><th>보내는 쪽 크기</th><th>받는 쪽 크기</th><th>차이</th><th>보내는 쪽 수정일</th><th>받는 쪽 수정일</th></tr></thead>
         <tbody>${treeRows || `<tr><td colspan="7">표시할 파일이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   </div>
-  <script nonce="${nonce}">/* static */</script>
+  <script nonce="${nonce}">
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
+    const search = document.getElementById("search");
+    const changedOnly = document.getElementById("changedOnly");
+    const visibleCount = document.getElementById("visibleCount");
+    function applyFilters(){
+      const q = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : "";
+      const changed = changedOnly instanceof HTMLInputElement ? changedOnly.checked : false;
+      let visible = 0;
+      for (const row of rows) {
+        const text = row.getAttribute("data-search") || "";
+        const change = row.getAttribute("data-change") || "";
+        const show = (!q || text.includes(q)) && (!changed || change !== "=");
+        row.classList.toggle("hidden-row", !show);
+        if (show) visible += 1;
+      }
+      visibleCount.textContent = "표시 " + visible + " / " + rows.length + "개";
+    }
+    document.body.addEventListener("click", (event) => {
+      const copy = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
+      if (!(copy instanceof HTMLElement)) return;
+      const value = copy.getAttribute("data-copy") || "";
+      navigator.clipboard.writeText(value).then(() => {
+        copy.textContent = "복사됨";
+        setTimeout(() => { copy.textContent = "복사"; }, 900);
+      }).catch(() => {
+        copy.textContent = "실패";
+        setTimeout(() => { copy.textContent = "복사"; }, 900);
+      });
+    });
+    search?.addEventListener("input", applyFilters);
+    changedOnly?.addEventListener("change", applyFilters);
+    applyFilters();
+  </script>
 </body>
 </html>`;
 }
@@ -7696,8 +9455,9 @@ function renderTypeChangedTransferDiffHtml(
   const renderRows = (rows: Array<{ relativePath: string; size: number; mtime: string }>): string =>
     rows.map((row) => {
       const isSkill = /(^|\/)SKILL\.md$/i.test(row.relativePath);
-      return `<tr>
-        <td>${esc(row.relativePath)} ${isSkill ? "<b>[SKILL.md]</b>" : ""}</td>
+      const searchText = `${row.relativePath} ${row.size} ${row.mtime}`;
+      return `<tr data-search="${esc(searchText.toLowerCase())}">
+        <td><span class="path">${esc(row.relativePath)}</span> ${isSkill ? "<b>[SKILL.md]</b>" : ""}<button class="copy" data-copy="${esc(row.relativePath)}" title="경로 복사">복사</button></td>
         <td>${row.size} B</td>
         <td>${esc(row.mtime)}</td>
       </tr>`;
@@ -7709,43 +9469,93 @@ function renderTypeChangedTransferDiffHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Type Changed Diff</title>
+  <title>타입 충돌 Diff</title>
   <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
-    .wrap { padding: 12px; display: grid; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px; background: var(--vscode-sideBar-background); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
+    .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
+    .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+    .pill strong { color: var(--vscode-foreground); }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    input { min-width: min(360px, 58vw); }
+    button { cursor: pointer; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vscode-panel-border); vertical-align: top; }
-    thead { background: var(--vscode-sideBar-background); }
+    thead { background: var(--vscode-sideBar-background); position: sticky; top: 0; z-index: 1; }
+    tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+    .path { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
+    .hidden-row { display: none; }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2 style="margin:0;">Type Changed: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-    <div class="cards">
-      <div class="card"><b>Source Type</b><br>${esc(data.sourceKind)}</div>
-      <div class="card"><b>Target Type</b><br>${esc(data.targetKind)}</div>
-      <div class="card"><b>Change</b><br>${esc(data.targetKind)} -> ${esc(data.sourceKind)}</div>
+    <div class="head">
+      <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">타입 충돌 Diff: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
+      <span id="visibleCount" class="pill">표시 ${data.sourceRows.length + data.targetRows.length}개</span>
+    </div>
+    <div class="pills">
+      <span class="pill">Source <strong>${esc(data.sourceKind)}</strong></span>
+      <span class="pill">Target <strong>${esc(data.targetKind)}</strong></span>
+      <span class="pill">적용 후 <strong>${esc(data.targetKind)} → ${esc(data.sourceKind)}</strong></span>
+    </div>
+    <div class="controls">
+      <input id="search" placeholder="양쪽 트리 경로 검색..." />
     </div>
     <div class="grid">
       <div class="table-wrap">
         <table>
-          <thead><tr><th colspan="3">Source Tree</th></tr><tr><th>Path</th><th>Size</th><th>MTime</th></tr></thead>
+          <thead><tr><th colspan="3">보내는 쪽 트리</th></tr><tr><th>경로</th><th>크기</th><th>수정일</th></tr></thead>
           <tbody>${renderRows(data.sourceRows)}</tbody>
         </table>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th colspan="3">Target Tree</th></tr><tr><th>Path</th><th>Size</th><th>MTime</th></tr></thead>
+          <thead><tr><th colspan="3">받는 쪽 트리</th></tr><tr><th>경로</th><th>크기</th><th>수정일</th></tr></thead>
           <tbody>${renderRows(data.targetRows)}</tbody>
         </table>
       </div>
     </div>
   </div>
-  <script nonce="${nonce}">/* static */</script>
+  <script nonce="${nonce}">
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
+    const search = document.getElementById("search");
+    const visibleCount = document.getElementById("visibleCount");
+    function applyFilters(){
+      const q = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : "";
+      let visible = 0;
+      for (const row of rows) {
+        const text = row.getAttribute("data-search") || "";
+        const show = !q || text.includes(q);
+        row.classList.toggle("hidden-row", !show);
+        if (show) visible += 1;
+      }
+      visibleCount.textContent = "표시 " + visible + " / " + rows.length + "개";
+    }
+    document.body.addEventListener("click", (event) => {
+      const copy = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
+      if (!(copy instanceof HTMLElement)) return;
+      const value = copy.getAttribute("data-copy") || "";
+      navigator.clipboard.writeText(value).then(() => {
+        copy.textContent = "복사됨";
+        setTimeout(() => { copy.textContent = "복사"; }, 900);
+      }).catch(() => {
+        copy.textContent = "실패";
+        setTimeout(() => { copy.textContent = "복사"; }, 900);
+      });
+    });
+    search?.addEventListener("input", applyFilters);
+    applyFilters();
+  </script>
 </body>
 </html>`;
 }

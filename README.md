@@ -7,11 +7,11 @@ A lightweight desktop tool and VSCode extension for managing AI agent skills (Cl
 When you build useful skills (prompts/commands) in a project's `.claude`, `.codex`, or `.cursor` folder, they stay isolated in that workspace. Skill Bridge lets you:
 
 - **Browse** skills across all your local workspaces in one place
-- **Promote** a good local skill to a central Git repository
-- **Pull** skills from the central repo into any workspace
+- **Send** a good local skill to a central Git repository
+- **Bring** skills from the central repo into any workspace
 - **Diff** workspace vs. central versions before syncing
 - **Review** skill assets for missing `SKILL.md`, sensitive-looking content, scripts, broken links, and workspace-specific paths
-- **Hydrate** a project from reusable personal skill packs
+- **Fill** a project from reusable personal skill bundles
 - **Track** skill versions without touching the CLI or Git directly
 
 This is not a skill runner, not an auto-sync daemon, and not a Git replacement. It's a **skill asset bridge** for everyday users.
@@ -20,7 +20,7 @@ This is not a skill runner, not an auto-sync daemon, and not a Git replacement. 
 
 - Desktop asset inventory shows workspace and central skill folders, warnings, file counts, and modified state.
 - Desktop workspace management includes per-workspace auto-refresh, denser tree controls, group cleanup, and adjustable tree typography.
-- VSCode adds Personal Skill Home, project hydration, personal packs, Add/Move Wizard, tree filters, Transfer Manager review prompts, and Problems-view quality diagnostics.
+- VSCode adds a personal central skill folder, project skill filling, personal skill bundles, skill add/move, tree filters, pre-transfer review prompts, and Problems-view quality diagnostics.
 - Existing overwrite flows still go through diff review; Skill Bridge does not auto-merge or auto-push without user intent.
 
 ## Project Structure

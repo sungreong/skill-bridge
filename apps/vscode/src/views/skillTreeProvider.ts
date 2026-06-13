@@ -19,7 +19,7 @@ export class SkillTreeItem extends vscode.TreeItem {
     this.description = resolveDescription(node);
     this.tooltip = resolveTooltip(node);
 
-    if (node.kind === "group") {
+    if ((node.kind === "group" || node.kind === "skillGroup") && node.groupId) {
       const payload: GroupTreeNode = {
         id: node.groupId ?? "",
         kind: "group",
@@ -47,12 +47,20 @@ export class SkillTreeItem extends vscode.TreeItem {
 }
 
 function collapsibleStateOf(node: SkillTreeNode): vscode.TreeItemCollapsibleState {
+  if (node.kind === "skillGroup") {
+    return node.children.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+  }
   if (node.kind === "file" || node.kind === "group") return vscode.TreeItemCollapsibleState.None;
   if (node.kind === "groupRoot" || node.kind === "groupTool") return vscode.TreeItemCollapsibleState.Expanded;
   return vscode.TreeItemCollapsibleState.Collapsed;
 }
 
 function resolveContextValue(node: SkillTreeNode): string {
+  if (node.kind === "skillGroup") {
+    return node.groupId
+      ? `skillBridge.group.${node.side === "central" ? "central" : "workspace"}`
+      : "skillBridge.virtualGroup";
+  }
   if (node.kind === "groupRoot") return `skillBridge.groupRoot.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "groupTool") return `skillBridge.groupTool.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "group") return `skillBridge.group.${node.side === "central" ? "central" : "workspace"}`;
@@ -66,6 +74,9 @@ function resolveContextValue(node: SkillTreeNode): string {
 function resolveDescription(node: SkillTreeNode): string | undefined {
   if (node.kind === "file") {
     return `${node.tool} · ${shortParentPath(node.relativePath)}`;
+  }
+  if (node.kind === "skillGroup") {
+    return node.selected ? `선택됨 · ${node.count ?? 0}개` : `${node.count ?? 0}개`;
   }
   if (node.kind === "group") {
     return node.selected ? `선택됨 · ${node.count ?? 0}개` : `${node.count ?? 0}개`;
@@ -85,16 +96,16 @@ function resolveDescription(node: SkillTreeNode): string | undefined {
       risk: "주의",
       recent: "최근"
     };
-    const count = node.assetFileCount ?? countFiles(node);
-    const warningCount = node.assetWarnings?.length ?? 0;
-    return warningCount > 0
-      ? `${labels[node.assetStatus] ?? node.assetStatus} · ${warningCount}개 경고 · ${count}개`
-      : `${labels[node.assetStatus] ?? node.assetStatus} · ${count}개`;
+    return labels[node.assetStatus] ?? node.assetStatus;
   }
   return undefined;
 }
 
 function resolveTooltip(node: SkillTreeNode): string {
+  if (node.kind === "skillGroup") {
+    const label = node.groupId ? "그룹" : "미분류";
+    return `${label}: ${node.label} (${node.count ?? 0}개)`;
+  }
   if (node.kind === "group") {
     return `${node.label} (${node.count ?? 0}개)`;
   }
@@ -109,10 +120,26 @@ function resolveTooltip(node: SkillTreeNode): string {
   const warnings = node.assetWarnings && node.assetWarnings.length > 0
     ? `\n\n${node.assetWarnings.map((warning) => `- ${warning.message}`).join("\n")}`
     : "";
-  return `${tool}/${rel}${warnings}`;
+  const asset = node.assetStatus
+    ? `\n상태: ${assetStatusLabel(node.assetStatus)} · 파일 ${node.assetFileCount ?? countFiles(node)}개`
+    : "";
+  return `${tool}/${rel}${asset}${warnings}`;
+}
+
+function assetStatusLabel(status: SkillAssetTreeMeta["status"]): string {
+  if (status === "same") return "동일";
+  if (status === "new") return "새 스킬";
+  if (status === "changed") return "변경";
+  if (status === "missingSkillMd") return "SKILL.md 없음";
+  if (status === "risk") return "주의";
+  return "최근";
 }
 
 function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined): vscode.ThemeIcon {
+  if (node.kind === "skillGroup") {
+    if (!node.groupId) return new vscode.ThemeIcon("folder-library");
+    return new vscode.ThemeIcon("tag", node.selected ? new vscode.ThemeColor("charts.green") : undefined);
+  }
   if (node.kind === "groupRoot") {
     return new vscode.ThemeIcon(node.side === "central" ? "repo" : "folder");
   }
@@ -147,12 +174,16 @@ function shortParentPath(relativePath: string): string {
 }
 
 function countFiles(node: SkillTreeNode): number {
-  if (node.kind === "file") return 1;
-  let count = 0;
-  for (const child of node.children) {
-    count += countFiles(child);
-  }
-  return count;
+  const seen = new Set<string>();
+  const walk = (entry: SkillTreeNode): void => {
+    if (entry.kind === "file") {
+      seen.add(`${entry.tool}:${entry.relativePath}`);
+      return;
+    }
+    for (const child of entry.children) walk(child);
+  };
+  walk(node);
+  return seen.size;
 }
 
 export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem> {
@@ -226,6 +257,7 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
 
   getSelectionsFromNode(node: SkillTreeNode | null): SkillSelection[] {
     if (!node) return [];
+    if (node.kind === "skillGroup") return flattenFiles([node]);
     if (node.kind === "group" || node.kind === "groupRoot" || node.kind === "groupTool") return [];
     if (node.kind === "file") {
       if (!node.tool || !node.relativePath) return [];
@@ -275,7 +307,15 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
     const visibleGroups = this.activeTab === "all"
       ? this.groups
       : this.groups.filter((group) => group.targets.some((target) => target.tool === this.activeTab));
-    const skillRoots = buildSkillTree(visibleSkills, visibleMissing, this.assetMeta, this.filterMode);
+    const skillRoots = buildSkillTree(
+      visibleSkills,
+      visibleMissing,
+      this.assetMeta,
+      this.filterMode,
+      this.side,
+      visibleGroups,
+      this.selectedGroupId
+    );
     const groupRoot = buildGroupRoot(visibleGroups, this.side, this.selectedGroupId);
     this.roots = groupRoot ? [...skillRoots, groupRoot] : skillRoots;
     applyHighlight(this.roots, this.highlight);
@@ -287,7 +327,10 @@ function buildSkillTree(
   skills: SkillFile[],
   missingSkillFolders: Array<{ tool: ToolType; relativePath: string }>,
   assetMeta: Map<string, SkillAssetTreeMeta>,
-  filterMode: SkillTreeFilterMode
+  filterMode: SkillTreeFilterMode,
+  side: "workspace" | "central",
+  groups: SelectionGroup[],
+  selectedGroupId: string | null
 ): SkillTreeNode[] {
   const roots = new Map<string, SkillTreeNode>();
 
@@ -373,7 +416,110 @@ function buildSkillTree(
 
   const list = [...roots.values()];
   sortNodes(list);
+  applySkillGroupBuckets(list, side, groups, selectedGroupId);
   return list;
+}
+
+function applySkillGroupBuckets(
+  roots: SkillTreeNode[],
+  side: "workspace" | "central",
+  groups: SelectionGroup[],
+  selectedGroupId: string | null
+): void {
+  const groupsByTool = new Map<ToolType, SelectionGroup[]>();
+  for (const group of groups) {
+    if (group.side !== side) continue;
+    const tools = new Set(group.targets.map((target) => target.tool));
+    for (const tool of tools) {
+      const bucket = groupsByTool.get(tool) ?? [];
+      bucket.push(group);
+      groupsByTool.set(tool, bucket);
+    }
+  }
+
+  for (const root of roots) {
+    const toolGroups = (groupsByTool.get(root.tool) ?? []).sort((a, b) => a.name.localeCompare(b.name));
+    if (toolGroups.length === 0) continue;
+
+    const skillsRoot = root.children.find((child) => child.kind === "folder" && child.relativePath === "skills");
+    if (!skillsRoot) continue;
+
+    const foldersByPath = new Map<string, SkillTreeNode>();
+    const passthrough: SkillTreeNode[] = [];
+    for (const child of skillsRoot.children) {
+      const skillFolder = child.kind === "folder" ? getSkillFolderRelativePath(child.relativePath) : null;
+      if (skillFolder && skillFolder === child.relativePath) {
+        foldersByPath.set(skillFolder, child);
+      } else {
+        passthrough.push(child);
+      }
+    }
+    if (foldersByPath.size === 0) continue;
+
+    const assigned = new Set<string>();
+    const groupNodes: SkillTreeNode[] = [];
+
+    for (const group of toolGroups) {
+      const childNodes = skillGroupFolderTargets(group, root.tool)
+        .map((relativePath) => foldersByPath.get(relativePath))
+        .filter((node): node is SkillTreeNode => !!node)
+        .map((node) => cloneTreeNode(node, `skill-group:${side}:${root.tool}:${group.id}`));
+
+      if (childNodes.length === 0) continue;
+      for (const child of childNodes) assigned.add(child.relativePath);
+
+      groupNodes.push({
+        key: `skill-group:${side}:${root.tool}:${group.id}`,
+        kind: "skillGroup",
+        tool: root.tool,
+        relativePath: `__skill_groups__/${group.id}`,
+        label: group.name,
+        children: childNodes,
+        side,
+        groupId: group.id,
+        count: childNodes.length,
+        selected: group.id === selectedGroupId
+      });
+    }
+
+    const ungrouped = [...foldersByPath.entries()]
+      .filter(([relativePath]) => !assigned.has(relativePath))
+      .map(([, node]) => cloneTreeNode(node, `skill-group:${side}:${root.tool}:ungrouped`));
+    if (ungrouped.length > 0) {
+      groupNodes.push({
+        key: `skill-group:${side}:${root.tool}:ungrouped`,
+        kind: "skillGroup",
+        tool: root.tool,
+        relativePath: "__skill_groups__/ungrouped",
+        label: "미분류",
+        children: ungrouped,
+        side,
+        count: ungrouped.length
+      });
+    }
+
+    if (groupNodes.length > 0) {
+      skillsRoot.children = [...groupNodes, ...passthrough];
+    }
+  }
+}
+
+function skillGroupFolderTargets(group: SelectionGroup, tool: ToolType): string[] {
+  const targets = new Set<string>();
+  for (const target of group.targets) {
+    if (target.tool !== tool) continue;
+    const skillFolder = getSkillFolderRelativePath(target.relativePath);
+    if (skillFolder) targets.add(skillFolder);
+  }
+  return [...targets].sort((a, b) => a.localeCompare(b));
+}
+
+function cloneTreeNode(node: SkillTreeNode, keyPrefix: string): SkillTreeNode {
+  return {
+    ...node,
+    key: `${keyPrefix}:${node.relativePath}`,
+    children: node.children.map((child) => cloneTreeNode(child, keyPrefix))
+  };
 }
 
 function ensureFolderNode(
@@ -453,7 +599,7 @@ function buildGroupRoot(
         kind: "groupTool",
         tool: tool === "mixed" ? "agents" : tool,
         relativePath: `__groups__/${tool}`,
-        label: tool === "mixed" ? "혼합" : (side === "workspace" ? `.${tool}` : tool),
+        label: tool === "mixed" ? "혼합" : tool,
         side,
         count: toolGroups.length,
         children: toolGroups.map((group) => ({
@@ -506,16 +652,16 @@ function applyHighlight(nodes: SkillTreeNode[], highlight: Set<string>): boolean
 }
 
 function flattenFiles(nodes: SkillTreeNode[]): SkillSelection[] {
-  const out: SkillSelection[] = [];
+  const out = new Map<string, SkillSelection>();
   const walk = (entries: SkillTreeNode[]) => {
     for (const node of entries) {
       if (node.kind === "file") {
-        out.push({ tool: node.tool, relativePath: node.relativePath });
+        out.set(`${node.tool}:${node.relativePath}`, { tool: node.tool, relativePath: node.relativePath });
       } else {
         walk(node.children);
       }
     }
   };
   walk(nodes);
-  return out;
+  return [...out.values()];
 }

@@ -170,6 +170,5 @@ function buildToolBuckets(
 
 function toolLabel(side: "workspace" | "central", tool: ToolType | "mixed"): string {
   if (tool === "mixed") return "혼합";
-  if (side === "workspace") return `.${tool}`;
   return tool;
 }
