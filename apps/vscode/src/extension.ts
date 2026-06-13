@@ -7077,23 +7077,23 @@ function renderLibraryManagerHtml(
   <title>스킬 보관함</title>
   <style>
     body { margin: 0; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
-    .wrap { box-sizing: border-box; height: 100vh; padding: 10px; display: grid; gap: 6px; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr); }
+    .wrap { box-sizing: border-box; height: 100vh; padding: 10px; display: grid; gap: 6px; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr); min-width: 0; overflow: hidden; }
     .head { display: flex; flex-direction: column; gap: 6px; }
     .head-main { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
     .title { font-size: 15px; font-weight: 700; }
-    .quickbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 5px 7px; display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; overflow-x: auto; background: color-mix(in oklab, var(--vscode-editor-background) 96%, var(--vscode-editor-foreground) 4%); scrollbar-gutter: stable; }
+    .quickbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 5px 7px; display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 96%, var(--vscode-editor-foreground) 4%); scrollbar-gutter: stable; }
     .quickbar .spacer { flex: 1 1 auto; min-width: 12px; }
     .quick-stats { display: flex; gap: 5px; flex-wrap: nowrap; align-items: center; }
     .quick-stat { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
     .summary-toggle { min-width: auto; white-space: nowrap; }
-    .decisionbar { border: 1px solid var(--vscode-panel-border); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
-    .decision-copy { min-width: 180px; flex: 1 1 220px; display: flex; align-items: center; gap: 6px; padding-right: 0; border-right: 0; }
+    .decisionbar { box-sizing: border-box; min-width: 0; min-height: 42px; max-height: 86px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
+    .decision-copy { min-width: 0; max-width: 42%; flex: 1 1 220px; display: flex; align-items: center; gap: 6px; padding-right: 0; border-right: 0; }
     .decision-kicker { font-size: 11px; color: var(--vscode-descriptionForeground); font-weight: 700; }
     .decision-title { min-width: 0; font-size: 12px; line-height: 1.35; font-weight: 700; color: var(--vscode-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .decision-chips { min-width: 0; flex: 2 1 420px; display: flex; gap: 5px; overflow-x: auto; scrollbar-gutter: stable; }
-    .decision-chip { flex: 0 0 auto; min-width: 0; min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-input-background); text-align: left; }
+    .decision-chips { min-width: 0; flex: 2 1 420px; display: flex; flex-flow: row wrap; align-items: flex-start; align-content: flex-start; gap: 5px; max-height: 68px; overflow: auto; scrollbar-gutter: stable; }
+    .decision-chip { box-sizing: border-box; flex: 0 0 auto; width: auto; max-width: 180px; height: 28px; min-width: 0; min-height: 28px; max-height: 28px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; padding: 3px 8px; line-height: 1; border-radius: 999px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-input-background); text-align: left; white-space: nowrap; overflow: hidden; }
     .decision-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
-    .decision-chip strong { font-size: 13px; line-height: 1; color: var(--vscode-foreground); }
+    .decision-chip strong { flex: 0 0 auto; font-size: 13px; line-height: 1; color: var(--vscode-foreground); }
     .decision-chip small { display: none; }
     .decision-chip.active { border-color: #60a5fa; box-shadow: inset 0 0 0 1px rgba(96,165,250,.45); }
     .decision-chip.t-alert.active, .decision-chip.t-update.active { border-color: #fbbf24; box-shadow: inset 0 0 0 1px rgba(251,191,36,.45); }
@@ -7111,7 +7111,8 @@ function renderLibraryManagerHtml(
     .metric-value { font-size: 16px; font-weight: 800; }
     .shortcut-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .kbd { border: 1px solid var(--vscode-panel-border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .filter-summary { min-height: 24px; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto; font-size: 11px; color: var(--vscode-descriptionForeground); scrollbar-gutter: stable; }
+    .filter-summary { min-height: 24px; max-height: 52px; display: flex; align-items: flex-start; align-content: flex-start; gap: 6px; flex-wrap: wrap; overflow: auto; font-size: 11px; color: var(--vscode-descriptionForeground); scrollbar-gutter: stable; }
+    .filter-chip, .quick-stat, .tag, .badge { box-sizing: border-box; display: inline-flex; align-items: center; max-width: 100%; min-height: 20px; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filter-chip { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 8px; color: var(--vscode-foreground); }
     .controls, .pane-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
     .pane-controls > * { min-width: 0; }
@@ -7201,17 +7202,17 @@ function renderLibraryManagerHtml(
     @media (max-width: 920px) {
       .wrap { height: auto; min-height: 100vh; }
       .quickbar { flex-wrap: wrap; overflow: visible; }
-      .decisionbar { align-items: stretch; flex-direction: column; }
-      .decision-copy { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 6px; }
+      .decisionbar { align-items: stretch; flex-direction: column; max-height: none; }
+      .decision-copy { max-width: 100%; border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 6px; }
       .decision-title { white-space: normal; }
-      .decision-chips { flex-wrap: wrap; overflow: visible; }
+      .decision-chips { flex-wrap: wrap; max-height: none; overflow: visible; }
       .hero { grid-template-columns: 1fr; }
       .metrics { border-left: 0; border-top: 1px solid var(--vscode-panel-border); }
       .grid { grid-template-columns: minmax(320px, 1fr); overflow: visible; }
     }
   </style>
 </head>
-<body>
+<body class="summary-collapsed">
   <div class="wrap">
     <div class="head">
       <div class="head-main">
