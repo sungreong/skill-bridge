@@ -1873,6 +1873,120 @@ pre {
   line-height: 1.4;
 }
 
+.instruction-profile-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.instruction-profile-field {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.instruction-profile-field span {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #475569;
+}
+
+.instruction-profile-field input {
+  flex: 1;
+  min-width: 160px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.instruction-profile-hint {
+  flex: 1 1 280px;
+  color: #64748b;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.instruction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.instruction-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.instruction-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.instruction-row-main strong,
+.instruction-row-main span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.instruction-row-main strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.instruction-row-main span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.instruction-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.instruction-targets {
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+  background: #f8fbff;
+  padding: 8px 10px;
+}
+
+.instruction-targets summary {
+  cursor: pointer;
+  color: #1e3a8a;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.instruction-targets div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.instruction-targets code {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+}
+
 .update-item {
   display: flex;
   gap: 8px;

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type {
   GroupTreeNode,
+  InstructionFile,
   SelectionGroup,
   SkillAssetTreeMeta,
   SkillFile,
@@ -33,7 +34,7 @@ export class SkillTreeItem extends vscode.TreeItem {
         title: "Select Group",
         arguments: [payload]
       };
-    } else if (node.kind === "file" || node.kind === "folder") {
+    } else if (node.kind === "file" || node.kind === "folder" || node.kind === "instructionFile") {
       this.command = {
         command: commandId,
         title: "Select",
@@ -50,7 +51,7 @@ function collapsibleStateOf(node: SkillTreeNode): vscode.TreeItemCollapsibleStat
   if (node.kind === "skillGroup") {
     return node.children.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
   }
-  if (node.kind === "file" || node.kind === "group") return vscode.TreeItemCollapsibleState.None;
+  if (node.kind === "file" || node.kind === "instructionFile" || node.kind === "group") return vscode.TreeItemCollapsibleState.None;
   if (node.kind === "groupRoot" || node.kind === "groupTool") return vscode.TreeItemCollapsibleState.Expanded;
   return vscode.TreeItemCollapsibleState.Collapsed;
 }
@@ -64,6 +65,8 @@ function resolveContextValue(node: SkillTreeNode): string {
   if (node.kind === "groupRoot") return `skillBridge.groupRoot.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "groupTool") return `skillBridge.groupTool.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "group") return `skillBridge.group.${node.side === "central" ? "central" : "workspace"}`;
+  if (node.kind === "instructionRoot") return "skillBridge.instructionRoot";
+  if (node.kind === "instructionFile") return "skillBridge.instructionFile";
   if (node.kind === "file") return "skillBridge.file";
   const rel = node.relativePath.replace(/\\/g, "/");
   if (rel === "") return "skillBridge.folderRoot";
@@ -74,6 +77,9 @@ function resolveContextValue(node: SkillTreeNode): string {
 function resolveDescription(node: SkillTreeNode): string | undefined {
   if (node.kind === "file") {
     return `${node.tool} · ${shortParentPath(node.relativePath)}`;
+  }
+  if (node.kind === "instructionFile") {
+    return shortParentPath(node.relativePath);
   }
   if (node.kind === "skillGroup") {
     return node.selected ? `선택됨 · ${node.count ?? 0}개` : `${node.count ?? 0}개`;
@@ -115,6 +121,12 @@ function resolveTooltip(node: SkillTreeNode): string {
   if (node.kind === "groupRoot") {
     return node.side === "central" ? "Central 그룹" : "Workspace 그룹";
   }
+  if (node.kind === "instructionRoot") {
+    return `${node.side === "central" ? "Central" : "Workspace"} instruction files (${node.count ?? countFiles(node)}개)`;
+  }
+  if (node.kind === "instructionFile") {
+    return `instruction/${node.relativePath}`;
+  }
   const tool = node.tool;
   const rel = node.relativePath;
   const warnings = node.assetWarnings && node.assetWarnings.length > 0
@@ -147,6 +159,8 @@ function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined):
   if (node.kind === "group") {
     return new vscode.ThemeIcon("tag", node.selected ? new vscode.ThemeColor("charts.green") : undefined);
   }
+  if (node.kind === "instructionRoot") return new vscode.ThemeIcon("book");
+  if (node.kind === "instructionFile") return new vscode.ThemeIcon("markdown", color);
   if (node.kind === "folder") {
     if (node.assetStatus === "missingSkillMd" || node.assetStatus === "risk") {
       return new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.orange"));
@@ -192,6 +206,7 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   private highlight = new Set<string>();
   private selected: SkillTreeNode | null = null;
   private skills: SkillFile[] = [];
+  private instructions: InstructionFile[] = [];
   private groups: SelectionGroup[] = [];
   private selectedGroupId: string | null = null;
   private activeTab: SourceTab = "all";
@@ -208,6 +223,11 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
 
   setSkills(skills: SkillFile[]): void {
     this.skills = skills;
+    this.rebuild();
+  }
+
+  setInstructions(instructions: InstructionFile[]): void {
+    this.instructions = instructions;
     this.rebuild();
   }
 
@@ -258,7 +278,7 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   getSelectionsFromNode(node: SkillTreeNode | null): SkillSelection[] {
     if (!node) return [];
     if (node.kind === "skillGroup") return flattenFiles([node]);
-    if (node.kind === "group" || node.kind === "groupRoot" || node.kind === "groupTool") return [];
+    if (node.kind === "group" || node.kind === "groupRoot" || node.kind === "groupTool" || node.kind === "instructionRoot" || node.kind === "instructionFile") return [];
     if (node.kind === "file") {
       if (!node.tool || !node.relativePath) return [];
       return [{ tool: node.tool, relativePath: node.relativePath }];
@@ -307,6 +327,9 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
     const visibleGroups = this.activeTab === "all"
       ? this.groups
       : this.groups.filter((group) => group.targets.some((target) => target.tool === this.activeTab));
+    const visibleInstructions = this.activeTab === "all" || this.activeTab === "agents"
+      ? this.instructions
+      : [];
     const skillRoots = buildSkillTree(
       visibleSkills,
       visibleMissing,
@@ -316,8 +339,13 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
       visibleGroups,
       this.selectedGroupId
     );
+    const instructionRoot = buildInstructionRoot(visibleInstructions, this.side);
     const groupRoot = buildGroupRoot(visibleGroups, this.side, this.selectedGroupId);
-    this.roots = groupRoot ? [...skillRoots, groupRoot] : skillRoots;
+    this.roots = [
+      ...skillRoots,
+      ...(instructionRoot ? [instructionRoot] : []),
+      ...(groupRoot ? [groupRoot] : [])
+    ];
     applyHighlight(this.roots, this.highlight);
     this.emitter.fire(undefined);
   }
@@ -572,6 +600,32 @@ function getSkillFolderRelativePath(relativePath: string): string | null {
   const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
   if (parts[0] !== "skills" || !parts[1]) return null;
   return `skills/${parts[1]}`;
+}
+
+function buildInstructionRoot(instructions: InstructionFile[], side: "workspace" | "central"): SkillTreeNode | null {
+  if (instructions.length === 0) return null;
+  return {
+    key: `instructions:${side}`,
+    kind: "instructionRoot",
+    tool: "agents",
+    relativePath: "__instructions__",
+    label: "instructions",
+    side,
+    count: instructions.length,
+    children: instructions
+      .slice()
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+      .map((item) => ({
+        key: `instruction:${side}:${item.relativePath}`,
+        kind: "instructionFile",
+        tool: "agents",
+        relativePath: item.relativePath,
+        absolutePath: item.absolutePath,
+        label: item.relativePath,
+        side,
+        children: []
+      }))
+  };
 }
 
 function buildGroupRoot(

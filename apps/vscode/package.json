@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "Skill Bridge",
   "description": "Workspace/Central skill viewer and sync",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "publisher": "skill-bridge",
   "engines": {
@@ -600,4 +600,3 @@
     "@types/vscode": "^1.90.0"
   }
 }
-

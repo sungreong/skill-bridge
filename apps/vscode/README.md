@@ -2,6 +2,11 @@
 
 Workspace-based skill manager for Claude/Codex/Gemini/Cursor/Antigravity/.agents.
 
+## Agent Instructions
+- Workspace tree shows root instruction files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `GEMINI.md`, `CURSOR.md`, and supported rule files such as `.cursor/rules/*.mdc`.
+- Central tree shows matching profile files from `instructions/<workspace-folder-name>/`.
+- Instruction files are displayed and opened separately from skill transfer targets, so existing skill Promote/Import flows remain scoped to `skills/<skill>/...`.
+
 ## Commands
 - Skill Bridge: Refresh
 - Skill Bridge: Central로 보내기

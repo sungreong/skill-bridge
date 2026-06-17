@@ -2,6 +2,7 @@
 
 type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
+type InstructionSource = "workspace" | "central";
 type Selection = { tool: ToolType; relativePath: string };
 type SkillAssetWarning = {
   code: string;
@@ -19,6 +20,15 @@ type SkillAsset = {
   totalBytes: number;
   updatedAt: string | null;
   files: Array<{ tool: ToolType; relativePath: string; absolutePath: string }>;
+  warnings: SkillAssetWarning[];
+};
+type InstructionFile = {
+  source: InstructionSource;
+  profileId: string;
+  relativePath: string;
+  absolutePath: string;
+  totalBytes: number;
+  updatedAt: string | null;
   warnings: SkillAssetWarning[];
 };
 
@@ -42,6 +52,11 @@ declare global {
       checkCentralRepo: (centralRepoPath: string) => Promise<{ exists: boolean; isGitRepo: boolean }>;
       initializeCentralRepo: (centralRepoPath: string) => Promise<void>;
       buildSkillAssetInventory: (payload: { workspacePath: string; centralRepoPath: string }) => Promise<{ workspace: SkillAsset[]; central: SkillAsset[] }>;
+      buildInstructionInventory: (payload: { workspacePath: string; centralRepoPath: string; profileId: string }) => Promise<{ profileId: string; workspace: InstructionFile[]; central: InstructionFile[]; supportedTargets: string[] }>;
+      compareInstruction: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; relativePath: string; mode: "promote" | "import" }) => Promise<{ hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string }>;
+      promoteInstructions: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; selections: string[] }) => Promise<{ changedFiles: string[] }>;
+      importInstructions: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; selections: string[] }) => Promise<{ changedFiles: string[] }>;
+      findInstructionUpdateCandidates: (payload: { workspacePath: string; centralRepoPath: string; profileId: string }) => Promise<Array<{ relativePath: string; diff: { hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string } }>>;
       compareSkill: (payload: { workspacePath: string; centralRepoPath: string; tool: ToolType; relativePath: string; mode: "promote" | "import" }) => Promise<{ hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string }>;
       scanSensitive: (text: string) => Promise<Array<{ rule: string; description: string }>>;
       promoteSkills: (payload: { workspacePath: string; centralRepoPath: string; selections: Selection[] }) => Promise<{ changedFiles: string[]; commitHash?: string }>;

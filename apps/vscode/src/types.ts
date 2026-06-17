@@ -8,6 +8,11 @@ export type SkillFile = {
   absolutePath: string;
 };
 
+export type InstructionFile = {
+  relativePath: string;
+  absolutePath: string;
+};
+
 export type SkillAssetWarningSeverity = "info" | "warning" | "danger";
 
 export type SkillAssetWarning = {
@@ -37,9 +42,10 @@ export type SkillTreeFilterMode = "all" | "changed" | "new" | "risk" | "missingS
 
 export type SkillTreeNode = {
   key: string;
-  kind: "file" | "folder" | "groupRoot" | "groupTool" | "group" | "skillGroup";
+  kind: "file" | "folder" | "instructionRoot" | "instructionFile" | "groupRoot" | "groupTool" | "group" | "skillGroup";
   tool: ToolType;
   relativePath: string;
+  absolutePath?: string;
   label: string;
   children: SkillTreeNode[];
   highlighted?: boolean;

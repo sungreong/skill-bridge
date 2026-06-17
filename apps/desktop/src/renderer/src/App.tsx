@@ -3,9 +3,19 @@ import type { MouseEvent, ReactNode } from "react";
 
 type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
+type InstructionSource = "workspace" | "central";
 type TreeSide = "workspace" | "central";
 type Selection = { tool: ToolType; relativePath: string };
 type Skill = { tool: ToolType; relativePath: string; absolutePath: string };
+type InstructionFile = {
+  source: InstructionSource;
+  profileId: string;
+  relativePath: string;
+  absolutePath: string;
+  totalBytes: number;
+  updatedAt: string | null;
+  warnings: Array<{ code: string; severity: "info" | "warning" | "danger"; message: string; relativePath?: string }>;
+};
 type WorkspaceEntry = { id: string; name: string; path: string; autoRefreshSeconds: number };
 type DiffData = { hasChanges: boolean; oldText: string; newText: string; unifiedDiff: string };
 type UpdateCandidate = { tool: ToolType; relativePath: string; diff: DiffData };
@@ -83,6 +93,14 @@ type TransferPreview = {
     groupName: string;
   };
 };
+type InstructionTransferPreview = {
+  mode: "toCentral" | "toWorkspace";
+  profileId: string;
+  selections: string[];
+  existingChanged: Array<{ relativePath: string; diff: DiffData }>;
+  newFiles: number;
+  unchanged: number;
+};
 type EditorTarget = { source: SkillSource; basePath: string; tool: ToolType; relativePath: string };
 type CrudAction = "createFile" | "createFolder" | "rename" | "delete" | "duplicate";
 type ToolStatus = { tool: ToolType; workspaceDir: string; exists: boolean };
@@ -119,6 +137,10 @@ export function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceInfo | null>(null);
   const [centralSkills, setCentralSkills] = useState<Skill[]>([]);
+  const [instructionProfile, setInstructionProfile] = useState("");
+  const [workspaceInstructions, setWorkspaceInstructions] = useState<InstructionFile[]>([]);
+  const [centralInstructions, setCentralInstructions] = useState<InstructionFile[]>([]);
+  const [supportedInstructionTargets, setSupportedInstructionTargets] = useState<string[]>([]);
 
   const [status, setStatus] = useState("준비됨");
   const [isBusy, setIsBusy] = useState(false);
@@ -162,7 +184,7 @@ export function App() {
   const [workspaceAnchor, setWorkspaceAnchor] = useState<string | null>(null);
   const [centralAnchor, setCentralAnchor] = useState<string | null>(null);
 
-  const [detailTab, setDetailTab] = useState<"editor" | "diff" | "updates" | "git">("editor");
+  const [detailTab, setDetailTab] = useState<"editor" | "diff" | "instructions" | "updates" | "git">("editor");
   const [centralPaneCollapsed, setCentralPaneCollapsed] = useState(false);
   const [detailPaneCollapsed, setDetailPaneCollapsed] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -171,6 +193,7 @@ export function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [stackedLayout] = useState(false);
   const [preview, setPreview] = useState<TransferPreview | null>(null);
+  const [instructionPreview, setInstructionPreview] = useState<InstructionTransferPreview | null>(null);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [warnings, setWarnings] = useState<Array<{ rule: string; description: string }>>([]);
@@ -271,7 +294,7 @@ export function App() {
   const workspaceOrderedKeys = useMemo(() => flattenKeys(workspaceTree), [workspaceTree]);
   const centralOrderedKeys = useMemo(() => flattenKeys(centralTree), [centralTree]);
 
-  const modalOpen = preview !== null || settingsOpen;
+  const modalOpen = preview !== null || instructionPreview !== null || settingsOpen;
   const blockUi = isBusy || isSyncing || isSavingEditor;
   const editorDirty = editorText !== savedEditorText;
   const mainStripRef = useRef<HTMLElement | null>(null);
@@ -282,6 +305,11 @@ export function App() {
   useEffect(() => {
     void initialize();
   }, []);
+
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    setInstructionProfile(suggestInstructionProfile(activeWorkspace));
+  }, [activeWorkspace?.id]);
 
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
@@ -494,12 +522,24 @@ export function App() {
       setBusyMessage("목록을 새로고침하는 중...");
     }
     try {
-      const [workspace, central] = await Promise.all([
+      const profileId = instructionProfile.trim() || suggestInstructionProfileByPath(targetWorkspacePath);
+      const [workspace, central, instructions] = await Promise.all([
         window.electronAPI.inspectWorkspace(targetWorkspacePath),
-        window.electronAPI.listCentralSkills(targetCentral)
+        window.electronAPI.listCentralSkills(targetCentral),
+        window.electronAPI.buildInstructionInventory({
+          workspacePath: targetWorkspacePath,
+          centralRepoPath: targetCentral,
+          profileId
+        })
       ]);
       setWorkspaceInfo(workspace);
       setCentralSkills(central);
+      setWorkspaceInstructions(instructions.workspace);
+      setCentralInstructions(instructions.central);
+      setSupportedInstructionTargets(instructions.supportedTargets);
+      if (!instructionProfile.trim()) {
+        setInstructionProfile(instructions.profileId);
+      }
       if (!preserveSelection) {
         clearSelections();
         setUpdateCandidates([]);
@@ -615,6 +655,36 @@ export function App() {
       if (!silent) setStatus("비교 요약 로드에 실패했습니다.");
     } finally {
       if (!silent) setOverviewLoading(false);
+    }
+  }
+
+  async function loadInstructions(profileId = instructionProfile, silent = false) {
+    if (!config || !activeWorkspace) return;
+    const normalizedProfile = profileId.trim() || suggestInstructionProfile(activeWorkspace);
+    if (!silent) {
+      setIsBusy(true);
+      setBusyMessage("Instruction 파일을 조회하는 중...");
+    }
+    try {
+      const inventory = await window.electronAPI.buildInstructionInventory({
+        workspacePath: activeWorkspace.path,
+        centralRepoPath: config.centralRepo,
+        profileId: normalizedProfile
+      });
+      setInstructionProfile(inventory.profileId);
+      setWorkspaceInstructions(inventory.workspace);
+      setCentralInstructions(inventory.central);
+      setSupportedInstructionTargets(inventory.supportedTargets);
+      if (!silent) {
+        setStatus(`Instructions 갱신: workspace ${inventory.workspace.length}개 · central ${inventory.central.length}개`);
+      }
+    } catch (error) {
+      if (!silent) setStatus(`Instruction 조회 실패: ${String(error)}`);
+    } finally {
+      if (!silent) {
+        setIsBusy(false);
+        setBusyMessage("");
+      }
     }
   }
 
@@ -1753,6 +1823,101 @@ export function App() {
     }
   }
 
+  async function startInstructionTransfer(mode: "toCentral" | "toWorkspace", selections: string[]) {
+    if (!config || !activeWorkspace || blockUi || modalOpen) return;
+    if (selections.length === 0) {
+      setStatus("전송할 instruction 파일을 선택하세요.");
+      return;
+    }
+    if (!(await confirmDiscardDirty("저장하지 않은 변경이 있습니다. Instruction 전송을 진행할까요?"))) return;
+    if (!(await ensureCentralRepoReady())) return;
+
+    const profileId = instructionProfile.trim() || suggestInstructionProfile(activeWorkspace);
+    setDetailTab("instructions");
+    setIsBusy(true);
+    setBusyMessage(mode === "toCentral" ? "Instruction 중앙 저장 전 diff 계산 중..." : "Instruction 가져오기 전 diff 계산 중...");
+    try {
+      const changed: Array<{ relativePath: string; diff: DiffData }> = [];
+      let newFiles = 0;
+      let unchanged = 0;
+      let newTextJoined = "";
+
+      for (const relativePath of selections) {
+        const diff = await window.electronAPI.compareInstruction({
+          workspacePath: activeWorkspace.path,
+          centralRepoPath: config.centralRepo,
+          profileId,
+          relativePath,
+          mode: mode === "toCentral" ? "promote" : "import"
+        });
+        if (diff.hasChanges) {
+          changed.push({ relativePath, diff });
+          if (!diff.oldText) newFiles += 1;
+          if (mode === "toCentral") newTextJoined += `\n${diff.newText}`;
+        } else {
+          unchanged += 1;
+        }
+      }
+
+      const warningRows = mode === "toCentral" ? await window.electronAPI.scanSensitive(newTextJoined) : [];
+      setWarnings(warningRows);
+      changed.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+      if (changed.length === 0) {
+        setStatus("변경된 instruction 파일이 없습니다.");
+        return;
+      }
+
+      setInstructionPreview({
+        mode,
+        profileId,
+        selections,
+        existingChanged: changed,
+        newFiles,
+        unchanged
+      });
+    } catch (error) {
+      setStatus(`Instruction 전송 준비 실패: ${String(error)}`);
+    } finally {
+      setIsBusy(false);
+      setBusyMessage("");
+    }
+  }
+
+  async function executeInstructionTransfer() {
+    if (!config || !activeWorkspace || !instructionPreview) return;
+
+    setIsBusy(true);
+    setBusyMessage(instructionPreview.mode === "toCentral" ? "Instruction 중앙 저장 중..." : "Instruction 가져오는 중...");
+    try {
+      if (instructionPreview.mode === "toCentral") {
+        const result = await window.electronAPI.promoteInstructions({
+          workspacePath: activeWorkspace.path,
+          centralRepoPath: config.centralRepo,
+          profileId: instructionPreview.profileId,
+          selections: instructionPreview.selections
+        });
+        setStatus(`Instruction 중앙 저장 완료: ${result.changedFiles.length}개 파일`);
+      } else {
+        const result = await window.electronAPI.importInstructions({
+          workspacePath: activeWorkspace.path,
+          centralRepoPath: config.centralRepo,
+          profileId: instructionPreview.profileId,
+          selections: instructionPreview.selections
+        });
+        setStatus(`Instruction 가져오기 완료: ${result.changedFiles.length}개 파일`);
+      }
+
+      setInstructionPreview(null);
+      setWarnings([]);
+      await loadInstructions(instructionPreview.profileId, true);
+    } catch (error) {
+      setStatus(`Instruction 전송 실패: ${String(error)}`);
+    } finally {
+      setIsBusy(false);
+      setBusyMessage("");
+    }
+  }
+
   async function loadUpdates(silent = false) {
     if (!config || !activeWorkspace) return;
     if (!silent) setIsBusy(true);
@@ -1835,6 +2000,13 @@ export function App() {
   const workspaceDiffMap = useMemo(() => buildDiffHintMap(overview?.items ?? [], "workspace"), [overview]);
   const centralDiffMap = useMemo(() => buildDiffHintMap(overview?.items ?? [], "central"), [overview]);
   const groupedUpdateCandidates = useMemo(() => groupUpdateCandidates(updateCandidates), [updateCandidates]);
+  const workspaceInstructionPaths = useMemo(() => workspaceInstructions.map((item) => item.relativePath), [workspaceInstructions]);
+  const centralInstructionPaths = useMemo(() => centralInstructions.map((item) => item.relativePath), [centralInstructions]);
+  const instructionPathSet = useMemo(
+    () => new Set([...workspaceInstructionPaths, ...centralInstructionPaths]),
+    [workspaceInstructionPaths, centralInstructionPaths]
+  );
+  const mergedInstructionPaths = useMemo(() => [...instructionPathSet].sort((a, b) => a.localeCompare(b)), [instructionPathSet]);
   const mainStripStyle = stackedLayout
     ? undefined
     : ({ gridTemplateColumns: `${leftPaneWidth}px 8px minmax(380px, 1fr)` } as const);
@@ -2258,6 +2430,7 @@ export function App() {
                 <div className="tab-row">
                   <button className={`tab-btn ${detailTab === "editor" ? "active" : ""}`} onClick={() => setDetailTab("editor")} title="텍스트 편집기">편집</button>
                   <button className={`tab-btn ${detailTab === "diff" ? "active" : ""}`} onClick={() => setDetailTab("diff")} title="파일 변경 비교">Diff</button>
+                  <button className={`tab-btn ${detailTab === "instructions" ? "active" : ""}`} onClick={() => setDetailTab("instructions")} title="루트 에이전트 지침 파일">Instructions</button>
                   <button className={`tab-btn ${detailTab === "updates" ? "active" : ""}`} onClick={() => setDetailTab("updates")} title="업데이트 후보">업데이트</button>
                   <button className={`tab-btn ${detailTab === "git" ? "active" : ""}`} onClick={() => setDetailTab("git")} title="Git 동기화">Git</button>
                 </div>
@@ -2321,6 +2494,114 @@ export function App() {
                   )}
                   {editorTarget && !liveDiffLoading && liveDiffText !== null && (
                     <DiffView diffText={liveDiffText} />
+                  )}
+                </div>
+              )}
+
+              {!detailPaneCollapsed && detailTab === "instructions" && (
+                <div className="pane">
+                  <div className="pane-head">
+                    <div className="panel-head-left">
+                      <h2>Instructions</h2>
+                      <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+                        workspace {workspaceInstructions.length}개 · central {centralInstructions.length}개
+                      </span>
+                    </div>
+                    <div className="update-head-actions">
+                      <button
+                        className="icon-btn"
+                        onClick={() => void loadInstructions()}
+                        disabled={blockUi}
+                        title="현재 profile로 instruction 목록 조회"
+                      >
+                        ↺ 조회
+                      </button>
+                      <button
+                        className="primary icon-btn"
+                        onClick={() => void startInstructionTransfer("toCentral", workspaceInstructionPaths)}
+                        disabled={blockUi || workspaceInstructionPaths.length === 0}
+                        title="workspace instruction 전체를 중앙 profile로 저장"
+                      >
+                        전체 올리기
+                      </button>
+                      <button
+                        className="primary secondary icon-btn"
+                        onClick={() => void startInstructionTransfer("toWorkspace", centralInstructionPaths)}
+                        disabled={blockUi || centralInstructionPaths.length === 0}
+                        title="central profile instruction 전체를 workspace로 가져오기"
+                      >
+                        전체 가져오기
+                      </button>
+                    </div>
+                  </div>
+                  <div className="instruction-profile-row">
+                    <label className="instruction-profile-field">
+                      <span>Profile</span>
+                      <input
+                        value={instructionProfile}
+                        onChange={(event) => setInstructionProfile(event.target.value)}
+                        placeholder={activeWorkspace ? suggestInstructionProfile(activeWorkspace) : "default"}
+                        spellCheck={false}
+                      />
+                    </label>
+                    <span className="instruction-profile-hint">
+                      중앙 저장 위치: instructions/{instructionProfile.trim() || (activeWorkspace ? suggestInstructionProfile(activeWorkspace) : "default")}
+                    </span>
+                  </div>
+                  <div className="explain-box">
+                    <strong>관리 대상</strong>
+                    <p>
+                      루트의 <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>CURSOR.md</code>, <code>GEMINI.md</code> 같은 지침 파일과 일부 도구별 규칙 파일을 profile 단위로 관리합니다.
+                    </p>
+                  </div>
+                  <div className="instruction-list">
+                    {mergedInstructionPaths.map((relativePath) => {
+                      const workspaceFile = workspaceInstructions.find((item) => item.relativePath === relativePath);
+                      const centralFile = centralInstructions.find((item) => item.relativePath === relativePath);
+                      const warningCount = (workspaceFile?.warnings.length ?? 0) + (centralFile?.warnings.length ?? 0);
+                      return (
+                        <div key={relativePath} className="instruction-row">
+                          <div className="instruction-row-main">
+                            <strong>{relativePath}</strong>
+                            <span>
+                              {workspaceFile ? "workspace 있음" : "workspace 없음"} · {centralFile ? "central 있음" : "central 없음"}
+                              {warningCount > 0 ? ` · 경고 ${warningCount}개` : ""}
+                            </span>
+                          </div>
+                          <div className="instruction-row-actions">
+                            <button
+                              className="icon-btn"
+                              onClick={() => void startInstructionTransfer("toCentral", [relativePath])}
+                              disabled={blockUi || !workspaceFile}
+                              title="이 instruction을 중앙 profile로 저장"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="icon-btn"
+                              onClick={() => void startInstructionTransfer("toWorkspace", [relativePath])}
+                              disabled={blockUi || !centralFile}
+                              title="이 instruction을 workspace로 가져오기"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {mergedInstructionPaths.length === 0 && (
+                      <div className="diff-empty">현재 workspace/profile에서 발견된 instruction 파일이 없습니다.</div>
+                    )}
+                  </div>
+                  {supportedInstructionTargets.length > 0 && (
+                    <details className="instruction-targets">
+                      <summary>지원 후보 {supportedInstructionTargets.length}개</summary>
+                      <div>
+                        {supportedInstructionTargets.map((item) => (
+                          <code key={item}>{item}</code>
+                        ))}
+                      </div>
+                    </details>
                   )}
                 </div>
               )}
@@ -2691,6 +2972,47 @@ export function App() {
                   <pre className="admin-cli-output">{skillsCliOutput}</pre>
                 )}
               </section>
+            </div>
+          </div>
+        </div>
+      )}
+      {instructionPreview && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-card" role="dialog" aria-modal="true" aria-label="Instruction Diff 확인">
+            <div className="modal-head">
+              <h2>{instructionPreview.mode === "toCentral" ? "Instruction 중앙 저장 전 확인" : "Instruction 가져오기 전 확인"}</h2>
+              <button onClick={() => { setInstructionPreview(null); setWarnings([]); }} disabled={blockUi}>닫기</button>
+            </div>
+            <div className="modal-route">
+              {instructionPreview.mode === "toCentral" ? "작업 폴더 → 중앙 저장소" : "중앙 저장소 → 작업 폴더"} · profile {instructionPreview.profileId}
+            </div>
+            <div className="summary-grid">
+              <div>선택 파일: {instructionPreview.selections.length}개</div>
+              <div>변경 파일: {instructionPreview.existingChanged.length}개</div>
+              <div>신규 파일: {instructionPreview.newFiles}개</div>
+              <div>동일 파일: {instructionPreview.unchanged}개</div>
+            </div>
+            {warnings.length > 0 && (
+              <div className="warning-box">
+                <strong>민감 정보 경고</strong>
+                <ul>
+                  {warnings.map((w, idx) => (
+                    <li key={`${w.rule}-${idx}`}>{w.rule}: {w.description}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="diff-list modal-diff">
+              {instructionPreview.existingChanged.map((item) => (
+                <details key={item.relativePath}>
+                  <summary>{item.relativePath}</summary>
+                  <DiffView diffText={item.diff.unifiedDiff} />
+                </details>
+              ))}
+            </div>
+            <div className="button-row">
+              <button onClick={() => { setInstructionPreview(null); setWarnings([]); }} disabled={blockUi}>취소</button>
+              <button className="primary" onClick={() => void executeInstructionTransfer()} disabled={blockUi}>전송 진행</button>
             </div>
           </div>
         </div>
@@ -4152,6 +4474,28 @@ function workspaceShortLabel(item: WorkspaceEntry): string {
   const compact = base.replace(/[^a-zA-Z0-9]/g, "");
   if (compact.length >= 2) return compact.slice(0, 2).toUpperCase();
   return compact.toUpperCase() || "WS";
+}
+
+function suggestInstructionProfile(workspace: WorkspaceEntry): string {
+  if (workspace.id === GLOBAL_WORKSPACE_ID) return "global-home";
+  return sanitizeInstructionProfileName(workspace.name || suggestInstructionProfileByPath(workspace.path));
+}
+
+function suggestInstructionProfileByPath(workspacePath: string): string {
+  const parts = workspacePath.split(/[\\/]/).filter(Boolean);
+  const name = parts[parts.length - 1] ?? "default";
+  return sanitizeInstructionProfileName(name);
+}
+
+function sanitizeInstructionProfileName(value: string): string {
+  const safe = value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/\.+$/, "")
+    .slice(0, 80);
+  return safe || "default";
 }
 
 function normalizeTreeFontScale(value: unknown): number {

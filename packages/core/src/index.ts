@@ -11,6 +11,7 @@ const GLOBAL_WORKSPACE_NAME = "Global (Home)";
 
 export type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 export type SkillSource = "workspace" | "central";
+export type InstructionSource = "workspace" | "central";
 export type SkillNodeType = "file" | "folder";
 export type SkillAssetWarningCode =
   | "missing-skill-md"
@@ -49,6 +50,35 @@ export interface SkillFile {
   tool: ToolType;
   relativePath: string;
   absolutePath: string;
+}
+
+export interface InstructionFile {
+  source: InstructionSource;
+  profileId: string;
+  relativePath: string;
+  absolutePath: string;
+  totalBytes: number;
+  updatedAt: string | null;
+  warnings: SkillAssetWarning[];
+}
+
+export interface InstructionInventory {
+  profileId: string;
+  workspace: InstructionFile[];
+  central: InstructionFile[];
+  supportedTargets: string[];
+}
+
+export interface InstructionTransferRequest {
+  workspacePath: string;
+  centralRepoPath: string;
+  profileId: string;
+  selections: string[];
+}
+
+export interface InstructionUpdateCandidate {
+  relativePath: string;
+  diff: DiffResult;
 }
 
 export interface SkillAssetWarning {
@@ -217,6 +247,41 @@ const TOOL_PATHS: Record<ToolType, { workspace: string; central: string }> = {
   agents: { workspace: ".agents", central: "agents" }
 };
 
+const INSTRUCTION_ROOT = "instructions";
+
+const ROOT_INSTRUCTION_FILES = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "CODEX.md",
+  "GEMINI.md",
+  "CURSOR.md",
+  "WINDSURF.md",
+  "QWEN.md",
+  "AIDER.md",
+  "ROO.md",
+  "JUNIE.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".clinerules"
+];
+
+const NESTED_INSTRUCTION_FILES = [
+  ".github/copilot-instructions.md"
+];
+
+const INSTRUCTION_RULE_DIRS = [
+  { dir: ".cursor/rules", extensions: new Set([".mdc", ".md"]) },
+  { dir: ".windsurf/rules", extensions: new Set([".md"]) }
+];
+
+const SUPPORTED_INSTRUCTION_TARGETS = [
+  ...ROOT_INSTRUCTION_FILES,
+  ...NESTED_INSTRUCTION_FILES,
+  ".cursor/rules/*.mdc",
+  ".cursor/rules/*.md",
+  ".windsurf/rules/*.md"
+];
+
 const EDITABLE_EXTENSIONS = new Set([
   ".md", ".txt", ".json", ".yaml", ".yml", ".js", ".ts", ".tsx", ".jsx", ".sh", ".ps1", ".toml", ".ini", ".cfg", ".env"
 ]);
@@ -309,6 +374,46 @@ function collectValidSkillFiles(relativePaths: string[]): {
 function assertManagedSkillRelativePath(relativePath: string): void {
   if (!isManagedSkillRelativePath(relativePath)) {
     throw new Error(SKILLS_ONLY_ERROR);
+  }
+}
+
+function normalizeInstructionProfileId(profileId: string): string {
+  const trimmed = profileId.trim();
+  const fallback = "default";
+  const safe = trimmed
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/\.+$/, "")
+    .slice(0, 80);
+  return safe || fallback;
+}
+
+function normalizeInstructionRelativePath(relativePath: string): string {
+  return normalizeRelativePath(relativePath);
+}
+
+function isManagedInstructionRelativePath(relativePath: string): boolean {
+  const normalized = normalizeInstructionRelativePath(relativePath);
+  if (!normalized || normalized.includes("..") || path.isAbsolute(normalized)) return false;
+  const lower = normalized.toLowerCase();
+  if (ROOT_INSTRUCTION_FILES.some((item) => item.toLowerCase() === lower)) return true;
+  if (NESTED_INSTRUCTION_FILES.some((item) => item.toLowerCase() === lower)) return true;
+
+  for (const ruleDir of INSTRUCTION_RULE_DIRS) {
+    const prefix = `${ruleDir.dir.toLowerCase()}/`;
+    if (!lower.startsWith(prefix)) continue;
+    const rest = lower.slice(prefix.length);
+    if (!rest || rest.includes("/")) return false;
+    return ruleDir.extensions.has(path.extname(rest).toLowerCase());
+  }
+
+  return false;
+}
+
+function assertManagedInstructionRelativePath(relativePath: string): void {
+  if (!isManagedInstructionRelativePath(relativePath)) {
+    throw new Error("지원하는 instruction 파일 경로만 관리할 수 있습니다.");
   }
 }
 
@@ -699,6 +804,105 @@ export async function initializeCentralRepo(centralRepoPath: string): Promise<vo
   for (const tool of Object.keys(TOOL_PATHS) as ToolType[]) {
     await fs.mkdir(path.join(centralRepoPath, TOOL_PATHS[tool].central), { recursive: true });
   }
+  await fs.mkdir(path.join(centralRepoPath, INSTRUCTION_ROOT), { recursive: true });
+}
+
+export async function buildInstructionInventory(
+  workspacePath: string,
+  centralRepoPath: string,
+  profileId: string
+): Promise<InstructionInventory> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const [workspace, central] = await Promise.all([
+    listWorkspaceInstructionFiles(workspacePath, normalizedProfile),
+    listCentralInstructionFiles(centralRepoPath, normalizedProfile)
+  ]);
+  return {
+    profileId: normalizedProfile,
+    workspace,
+    central,
+    supportedTargets: [...SUPPORTED_INSTRUCTION_TARGETS]
+  };
+}
+
+export async function listWorkspaceInstructionFiles(workspacePath: string, profileId: string): Promise<InstructionFile[]> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const relativePaths = await discoverWorkspaceInstructionRelativePaths(workspacePath);
+  const files = await Promise.all(
+    relativePaths.map((relativePath) => buildInstructionFile(workspacePath, "workspace", normalizedProfile, relativePath))
+  );
+  return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+export async function listCentralInstructionFiles(centralRepoPath: string, profileId: string): Promise<InstructionFile[]> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const profileRoot = path.join(centralRepoPath, INSTRUCTION_ROOT, normalizedProfile);
+  if (!(await existsPath(profileRoot))) return [];
+
+  const relativePaths = (await collectFiles(profileRoot))
+    .map(normalizeInstructionRelativePath)
+    .filter(isManagedInstructionRelativePath);
+  const files = await Promise.all(
+    relativePaths.map((relativePath) => buildInstructionFile(centralRepoPath, "central", normalizedProfile, relativePath))
+  );
+  return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+export async function compareInstruction(
+  workspacePath: string,
+  centralRepoPath: string,
+  profileId: string,
+  relativePath: string,
+  mode: "promote" | "import"
+): Promise<DiffResult> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const normalizedRelativePath = normalizeInstructionRelativePath(relativePath);
+  assertManagedInstructionRelativePath(normalizedRelativePath);
+
+  const workspaceFile = resolveInstructionPath(workspacePath, "workspace", normalizedProfile, normalizedRelativePath);
+  const centralFile = resolveInstructionPath(centralRepoPath, "central", normalizedProfile, normalizedRelativePath);
+  const workspaceText = await readIfExists(workspaceFile);
+  const centralText = await readIfExists(centralFile);
+
+  if (mode === "promote") {
+    if (workspaceText === undefined) throw new Error(`Workspace instruction 파일을 찾을 수 없습니다: ${normalizedRelativePath}`);
+    return buildDiff(centralText ?? "", workspaceText, `instructions/${normalizedProfile}/${normalizedRelativePath}`);
+  }
+
+  if (centralText === undefined) throw new Error(`Central instruction 파일을 찾을 수 없습니다: ${normalizedProfile}/${normalizedRelativePath}`);
+  return buildDiff(workspaceText ?? "", centralText, `instructions/${normalizedProfile}/${normalizedRelativePath}`);
+}
+
+export async function promoteInstructions(req: InstructionTransferRequest): Promise<{ changedFiles: string[] }> {
+  const changedFiles = await copyInstructions(req.workspacePath, req.centralRepoPath, req.profileId, req.selections, "promote");
+  return { changedFiles };
+}
+
+export async function importInstructions(req: InstructionTransferRequest): Promise<{ changedFiles: string[] }> {
+  const changedFiles = await copyInstructions(req.workspacePath, req.centralRepoPath, req.profileId, req.selections, "import");
+  return { changedFiles };
+}
+
+export async function findInstructionUpdateCandidates(
+  workspacePath: string,
+  centralRepoPath: string,
+  profileId: string
+): Promise<InstructionUpdateCandidate[]> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const [workspace, central] = await Promise.all([
+    listWorkspaceInstructionFiles(workspacePath, normalizedProfile),
+    listCentralInstructionFiles(centralRepoPath, normalizedProfile)
+  ]);
+  const workspaceKeys = new Set(workspace.map((item) => item.relativePath));
+  const candidates: InstructionUpdateCandidate[] = [];
+
+  for (const item of central) {
+    if (!workspaceKeys.has(item.relativePath)) continue;
+    const diff = await compareInstruction(workspacePath, centralRepoPath, normalizedProfile, item.relativePath, "import");
+    if (diff.hasChanges) candidates.push({ relativePath: item.relativePath, diff });
+  }
+
+  return candidates.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
 export async function buildDiff(oldText: string, newText: string, label = "skill.md"): Promise<DiffResult> {
@@ -1277,6 +1481,119 @@ function joinMessages(a: string, b: string): string {
   const second = b.trim();
   if (first && second) return `${first}\n${second}`;
   return first || second;
+}
+
+async function discoverWorkspaceInstructionRelativePaths(workspacePath: string): Promise<string[]> {
+  const found = new Set<string>();
+
+  for (const relativePath of [...ROOT_INSTRUCTION_FILES, ...NESTED_INSTRUCTION_FILES]) {
+    const normalized = normalizeInstructionRelativePath(relativePath);
+    const target = path.join(workspacePath, ...normalized.split("/"));
+    if (await existsPath(target)) found.add(normalized);
+  }
+
+  for (const ruleDir of INSTRUCTION_RULE_DIRS) {
+    const dir = path.join(workspacePath, ...ruleDir.dir.split("/"));
+    if (!(await existsPath(dir))) continue;
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!ruleDir.extensions.has(ext)) continue;
+      const relativePath = normalizeInstructionRelativePath(path.posix.join(ruleDir.dir, entry.name));
+      found.add(relativePath);
+    }
+  }
+
+  return [...found].sort((a, b) => a.localeCompare(b));
+}
+
+async function buildInstructionFile(
+  basePath: string,
+  source: InstructionSource,
+  profileId: string,
+  relativePath: string
+): Promise<InstructionFile> {
+  const target = resolveInstructionPath(basePath, source, profileId, relativePath);
+  const stat = await fs.stat(target).catch(() => null);
+  const text = isEditableTextFile(relativePath) ? await readIfExists(target) : undefined;
+  const warnings: SkillAssetWarning[] = [];
+  if (text !== undefined) {
+    if (scanSensitiveContent(text).length > 0) {
+      warnings.push({
+        code: "sensitive-content",
+        severity: "danger",
+        message: "민감정보로 보일 수 있는 문자열이 포함되어 있습니다.",
+        relativePath
+      });
+    }
+    if (containsWorkspaceSpecificPath(text)) {
+      warnings.push({
+        code: "workspace-specific-path",
+        severity: "warning",
+        message: "로컬 절대경로로 보이는 문자열이 포함되어 다른 workspace에서 깨질 수 있습니다.",
+        relativePath
+      });
+    }
+  }
+
+  return {
+    source,
+    profileId,
+    relativePath,
+    absolutePath: target,
+    totalBytes: stat?.isFile() ? stat.size : 0,
+    updatedAt: stat?.isFile() ? new Date(stat.mtimeMs).toISOString() : null,
+    warnings: dedupeAssetWarnings(warnings)
+  };
+}
+
+async function copyInstructions(
+  workspacePath: string,
+  centralRepoPath: string,
+  profileId: string,
+  selections: string[],
+  mode: "promote" | "import"
+): Promise<string[]> {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const changedFiles: string[] = [];
+
+  for (const selection of selections) {
+    const relativePath = normalizeInstructionRelativePath(selection);
+    assertManagedInstructionRelativePath(relativePath);
+
+    const src = mode === "promote"
+      ? resolveInstructionPath(workspacePath, "workspace", normalizedProfile, relativePath)
+      : resolveInstructionPath(centralRepoPath, "central", normalizedProfile, relativePath);
+    const dest = mode === "promote"
+      ? resolveInstructionPath(centralRepoPath, "central", normalizedProfile, relativePath)
+      : resolveInstructionPath(workspacePath, "workspace", normalizedProfile, relativePath);
+
+    if (!(await existsPath(src))) {
+      const sourceLabel = mode === "promote" ? "Workspace" : "Central";
+      throw new Error(`${sourceLabel} instruction 파일을 찾을 수 없습니다: ${relativePath}`);
+    }
+
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.copyFile(src, dest);
+    changedFiles.push(mode === "promote"
+      ? path.join(INSTRUCTION_ROOT, normalizedProfile, relativePath)
+      : relativePath);
+  }
+
+  return changedFiles;
+}
+
+function resolveInstructionPath(basePath: string, source: InstructionSource, profileId: string, relativePath: string): string {
+  const normalizedProfile = normalizeInstructionProfileId(profileId);
+  const normalizedRelativePath = normalizeInstructionRelativePath(relativePath);
+  assertManagedInstructionRelativePath(normalizedRelativePath);
+
+  if (source === "workspace") {
+    return path.join(basePath, ...normalizedRelativePath.split("/"));
+  }
+
+  return path.join(basePath, INSTRUCTION_ROOT, normalizedProfile, ...normalizedRelativePath.split("/"));
 }
 
 async function copyWorkspaceToCentral(

@@ -13,6 +13,10 @@ import {
   existsSkillNode,
   findUpdateCandidates,
   getGitDiagnostics,
+  buildInstructionInventory,
+  compareInstruction,
+  findInstructionUpdateCandidates,
+  importInstructions,
   importSkills,
   initializeCentralRepo,
   inspectWorkspace,
@@ -23,6 +27,7 @@ import {
   buildSkillAssetInventory,
   loadWorkspaceGroupFile,
   loadConfig,
+  promoteInstructions,
   promoteSkills,
   readSkillText,
   renameSkillNode,
@@ -102,6 +107,11 @@ ipcMain.handle("central:listSkillAssets", async (_event, centralRepoPath: string
 ipcMain.handle("central:check", async (_event, centralRepoPath: string) => checkCentralRepo(centralRepoPath));
 ipcMain.handle("central:init", async (_event, centralRepoPath: string) => initializeCentralRepo(centralRepoPath));
 ipcMain.handle("skills:assetInventory", async (_event, payload: { workspacePath: string; centralRepoPath: string }) => buildSkillAssetInventory(payload.workspacePath, payload.centralRepoPath));
+ipcMain.handle("instructions:inventory", async (_event, payload: { workspacePath: string; centralRepoPath: string; profileId: string }) => buildInstructionInventory(payload.workspacePath, payload.centralRepoPath, payload.profileId));
+ipcMain.handle("instructions:compare", async (_event, payload) => compareInstruction(payload.workspacePath, payload.centralRepoPath, payload.profileId, payload.relativePath, payload.mode));
+ipcMain.handle("instructions:promote", async (_event, payload) => promoteInstructions(payload));
+ipcMain.handle("instructions:import", async (_event, payload) => importInstructions(payload));
+ipcMain.handle("instructions:updateCandidates", async (_event, payload) => findInstructionUpdateCandidates(payload.workspacePath, payload.centralRepoPath, payload.profileId));
 ipcMain.handle("diff:compare", async (_event, payload) => compareSkill(payload.workspacePath, payload.centralRepoPath, payload.tool, payload.relativePath, payload.mode));
 ipcMain.handle("sensitive:scan", async (_event, text: string) => scanSensitiveContent(text));
 ipcMain.handle("skills:promote", async (_event, payload) => promoteSkills(payload));

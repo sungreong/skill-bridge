@@ -9,6 +9,7 @@ import {
   type CentralPacksFile,
   type GroupTarget,
   type GroupTreeNode,
+  type InstructionFile,
   type PersonalSkillPack,
   type SelectionGroup,
   type SkillAssetTreeMeta,
@@ -32,6 +33,30 @@ const DEFAULT_CENTRAL_REPO_PATH = "${userHome}/skill-bridge-repo";
 const CONFIGURABLE_TOOLS: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
 type SourceTab = "all" | ToolType;
 const execFileAsync = promisify(execFile);
+
+const INSTRUCTION_ROOT = "instructions";
+const ROOT_INSTRUCTION_FILES = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "CODEX.md",
+  "GEMINI.md",
+  "CURSOR.md",
+  "WINDSURF.md",
+  "QWEN.md",
+  "AIDER.md",
+  "ROO.md",
+  "JUNIE.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".clinerules"
+];
+const NESTED_INSTRUCTION_FILES = [
+  ".github/copilot-instructions.md"
+];
+const INSTRUCTION_RULE_DIRS = [
+  { dir: ".cursor/rules", extensions: new Set([".mdc", ".md"]) },
+  { dir: ".windsurf/rules", extensions: new Set([".md"]) }
+];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   type TreeSide = "workspace" | "central";
@@ -92,6 +117,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activeTab: "all" as SourceTab,
     workspaceSkills: [] as SkillFile[],
     centralSkills: [] as SkillFile[],
+    workspaceInstructions: [] as InstructionFile[],
+    centralInstructions: [] as InstructionFile[],
     workspaceMissingSkillFolders: [] as Array<{ tool: ToolType; relativePath: string }>,
     centralMissingSkillFolders: [] as Array<{ tool: ToolType; relativePath: string }>,
     workspaceAssetMeta: new Map<string, SkillAssetTreeMeta>(),
@@ -150,15 +177,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     state.centralRepoPath = ctx.centralRepoPath;
     state.agents = ctx.agents;
 
-    const [workspaceSkills, centralSkills] = await Promise.all([
+    const instructionProfile = suggestInstructionProfile(ctx.workspacePath);
+    const [workspaceSkills, centralSkills, workspaceInstructions, centralInstructions] = await Promise.all([
       scanSkills(ctx.workspacePath, "workspace", ctx.agents),
-      scanSkills(ctx.centralRepoPath, "central", ctx.agents)
+      scanSkills(ctx.centralRepoPath, "central", ctx.agents),
+      scanWorkspaceInstructions(ctx.workspacePath),
+      scanCentralInstructions(ctx.centralRepoPath, instructionProfile)
     ]);
 
     const workspaceInventory = enforceSkillMdInventory(workspaceSkills);
     const centralInventory = enforceSkillMdInventory(centralSkills);
     state.workspaceSkills = workspaceInventory.validFiles;
     state.centralSkills = centralInventory.validFiles;
+    state.workspaceInstructions = workspaceInstructions;
+    state.centralInstructions = centralInstructions;
     state.workspaceMissingSkillFolders = workspaceInventory.missingFolders;
     state.centralMissingSkillFolders = centralInventory.missingFolders;
     const assetMeta = await buildTreeAssetMeta({
@@ -175,6 +207,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     centralProvider.setMissingSkillFolders(state.centralMissingSkillFolders);
     workspaceProvider.setAssetMeta(state.workspaceAssetMeta);
     centralProvider.setAssetMeta(state.centralAssetMeta);
+    workspaceProvider.setInstructions(state.workspaceInstructions);
+    centralProvider.setInstructions(state.centralInstructions);
     const diagnosticCounts = updateSkillDiagnostics();
     if (workspaceInventory.missingFolders.length > 0 || centralInventory.missingFolders.length > 0) {
       const summarize = (rows: Array<{ tool: ToolType; relativePath: string }>): string => {
@@ -8548,6 +8582,50 @@ async function scanSkills(basePath: string, mode: "workspace" | "central", agent
   return out.sort((a, b) => a.tool.localeCompare(b.tool) || a.relativePath.localeCompare(b.relativePath));
 }
 
+async function scanWorkspaceInstructions(workspacePath: string): Promise<InstructionFile[]> {
+  const out: InstructionFile[] = [];
+  const found = new Set<string>();
+
+  for (const relativePath of [...ROOT_INSTRUCTION_FILES, ...NESTED_INSTRUCTION_FILES]) {
+    const normalized = normalizeInstructionRelativePath(relativePath);
+    const absolutePath = resolveWorkspaceInstructionPath(workspacePath, normalized);
+    if (!(await exists(absolutePath))) continue;
+    found.add(normalized);
+    out.push({ relativePath: normalized, absolutePath });
+  }
+
+  for (const ruleDir of INSTRUCTION_RULE_DIRS) {
+    const dir = path.join(workspacePath, ...ruleDir.dir.split("/"));
+    if (!(await exists(dir))) continue;
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!ruleDir.extensions.has(ext)) continue;
+      const relativePath = normalizeInstructionRelativePath(path.posix.join(ruleDir.dir, entry.name));
+      if (found.has(relativePath)) continue;
+      found.add(relativePath);
+      out.push({ relativePath, absolutePath: path.join(dir, entry.name) });
+    }
+  }
+
+  return out.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+async function scanCentralInstructions(centralRepoPath: string, profileId: string): Promise<InstructionFile[]> {
+  const profileRoot = path.join(centralRepoPath, INSTRUCTION_ROOT, sanitizeInstructionProfileName(profileId));
+  if (!(await exists(profileRoot))) return [];
+  const relativePaths = (await collectFiles(profileRoot, centralRepoPath))
+    .map(normalizeInstructionRelativePath)
+    .filter(isManagedInstructionPath);
+  return relativePaths
+    .map((relativePath) => ({
+      relativePath,
+      absolutePath: resolveCentralInstructionPath(centralRepoPath, profileId, relativePath)
+    }))
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
 function parseSkillInputs(raw: string): string[] {
   const cleaned = raw
     .split(",")
@@ -8873,6 +8951,54 @@ function resolveSkillPath(basePath: string, tool: ToolType, relativePath: string
     throw new Error("skills 하위 경로만 허용됩니다.");
   }
   return path.join(getSkillRoot(basePath, tool, mode), normalized);
+}
+
+function suggestInstructionProfile(workspacePath: string): string {
+  const name = path.basename(path.resolve(workspacePath || "."));
+  return sanitizeInstructionProfileName(name);
+}
+
+function sanitizeInstructionProfileName(value: string): string {
+  const safe = value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/\.+$/, "")
+    .slice(0, 80);
+  return safe || "default";
+}
+
+function normalizeInstructionRelativePath(relativePath: string): string {
+  return normalizeRel(relativePath);
+}
+
+function isManagedInstructionPath(relativePath: string): boolean {
+  const normalized = normalizeInstructionRelativePath(relativePath);
+  if (!normalized || normalized.includes("..") || path.isAbsolute(normalized)) return false;
+  const lower = normalized.toLowerCase();
+  if (ROOT_INSTRUCTION_FILES.some((item) => item.toLowerCase() === lower)) return true;
+  if (NESTED_INSTRUCTION_FILES.some((item) => item.toLowerCase() === lower)) return true;
+  for (const ruleDir of INSTRUCTION_RULE_DIRS) {
+    const prefix = `${ruleDir.dir.toLowerCase()}/`;
+    if (!lower.startsWith(prefix)) continue;
+    const rest = lower.slice(prefix.length);
+    if (!rest || rest.includes("/")) return false;
+    return ruleDir.extensions.has(path.extname(rest).toLowerCase());
+  }
+  return false;
+}
+
+function resolveWorkspaceInstructionPath(workspacePath: string, relativePath: string): string {
+  const normalized = normalizeInstructionRelativePath(relativePath);
+  if (!isManagedInstructionPath(normalized)) throw new Error("지원하는 instruction 파일 경로만 허용됩니다.");
+  return path.join(workspacePath, ...normalized.split("/"));
+}
+
+function resolveCentralInstructionPath(centralRepoPath: string, profileId: string, relativePath: string): string {
+  const normalized = normalizeInstructionRelativePath(relativePath);
+  if (!isManagedInstructionPath(normalized)) throw new Error("지원하는 instruction 파일 경로만 허용됩니다.");
+  return path.join(centralRepoPath, INSTRUCTION_ROOT, sanitizeInstructionProfileName(profileId), ...normalized.split("/"));
 }
 
 function resolveOpenFolderTarget(
@@ -9858,10 +9984,13 @@ function toUserError(error: unknown): string {
 }
 
 async function openNodeIfFile(basePath: string, node: SkillTreeNode, mode: "workspace" | "central"): Promise<void> {
-  if (node.kind !== "file") return;
+  if (node.kind !== "file" && node.kind !== "instructionFile") return;
   if (!basePath) return;
   try {
-    const absolutePath = resolveSkillPath(basePath, node.tool, node.relativePath, mode);
+    const absolutePath = node.kind === "instructionFile"
+      ? node.absolutePath
+      : resolveSkillPath(basePath, node.tool, node.relativePath, mode);
+    if (!absolutePath) return;
     const uri = vscode.Uri.file(absolutePath);
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, { preview: true });
@@ -9875,6 +10004,8 @@ function applyTabFilter(
     activeTab: SourceTab;
     workspaceSkills: SkillFile[];
     centralSkills: SkillFile[];
+    workspaceInstructions: InstructionFile[];
+    centralInstructions: InstructionFile[];
     workspaceMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
     centralMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
     workspaceAssetMeta: Map<string, SkillAssetTreeMeta>;
@@ -9895,6 +10026,8 @@ function applyTabFilter(
   centralProvider.setAssetMeta(state.centralAssetMeta);
   workspaceProvider.setSkills(state.workspaceSkills);
   centralProvider.setSkills(state.centralSkills);
+  workspaceProvider.setInstructions(state.workspaceInstructions);
+  centralProvider.setInstructions(state.centralInstructions);
   workspaceProvider.setGroups(state.groups);
   centralProvider.setGroups(state.groups);
 }
@@ -9908,7 +10041,10 @@ function createWatchers(workspacePath: string, centralPath: string): vscode.File
     new vscode.RelativePattern(workspacePath, ".*/skills/**"),
     new vscode.RelativePattern(workspacePath, "*/skills/**"),
     new vscode.RelativePattern(centralPath, ".*/skills/**"),
-    new vscode.RelativePattern(centralPath, "*/skills/**")
+    new vscode.RelativePattern(centralPath, "*/skills/**"),
+    ...[...ROOT_INSTRUCTION_FILES, ...NESTED_INSTRUCTION_FILES].map((item) => new vscode.RelativePattern(workspacePath, item)),
+    ...INSTRUCTION_RULE_DIRS.map((item) => new vscode.RelativePattern(workspacePath, `${item.dir}/**`)),
+    new vscode.RelativePattern(centralPath, `${INSTRUCTION_ROOT}/**`)
   ];
   return patterns.map((pattern) => vscode.workspace.createFileSystemWatcher(pattern));
 }

@@ -2,6 +2,7 @@
 
 type ToolType = "claude" | "codex" | "gemini" | "cursor" | "antigravity" | "agents";
 type SkillSource = "workspace" | "central";
+type InstructionSource = "workspace" | "central";
 type SkillAssetWarning = {
   code: string;
   severity: "info" | "warning" | "danger";
@@ -22,6 +23,15 @@ type SkillAsset = {
 };
 
 type Selection = { tool: ToolType; relativePath: string };
+type InstructionFile = {
+  source: InstructionSource;
+  profileId: string;
+  relativePath: string;
+  absolutePath: string;
+  totalBytes: number;
+  updatedAt: string | null;
+  warnings: SkillAssetWarning[];
+};
 
 const api = {
   chooseDirectory: (): Promise<string | null> => ipcRenderer.invoke("dialog:chooseDirectory"),
@@ -36,6 +46,11 @@ const api = {
   checkCentralRepo: (centralRepoPath: string) => ipcRenderer.invoke("central:check", centralRepoPath),
   initializeCentralRepo: (centralRepoPath: string) => ipcRenderer.invoke("central:init", centralRepoPath),
   buildSkillAssetInventory: (payload: { workspacePath: string; centralRepoPath: string }): Promise<{ workspace: SkillAsset[]; central: SkillAsset[] }> => ipcRenderer.invoke("skills:assetInventory", payload),
+  buildInstructionInventory: (payload: { workspacePath: string; centralRepoPath: string; profileId: string }): Promise<{ profileId: string; workspace: InstructionFile[]; central: InstructionFile[]; supportedTargets: string[] }> => ipcRenderer.invoke("instructions:inventory", payload),
+  compareInstruction: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; relativePath: string; mode: "promote" | "import" }) => ipcRenderer.invoke("instructions:compare", payload),
+  promoteInstructions: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; selections: string[] }) => ipcRenderer.invoke("instructions:promote", payload),
+  importInstructions: (payload: { workspacePath: string; centralRepoPath: string; profileId: string; selections: string[] }) => ipcRenderer.invoke("instructions:import", payload),
+  findInstructionUpdateCandidates: (payload: { workspacePath: string; centralRepoPath: string; profileId: string }) => ipcRenderer.invoke("instructions:updateCandidates", payload),
   compareSkill: (payload: { workspacePath: string; centralRepoPath: string; tool: ToolType; relativePath: string; mode: "promote" | "import" }) => ipcRenderer.invoke("diff:compare", payload),
   scanSensitive: (text: string) => ipcRenderer.invoke("sensitive:scan", text),
   promoteSkills: (payload: { workspacePath: string; centralRepoPath: string; selections: Selection[] }) => ipcRenderer.invoke("skills:promote", payload),
