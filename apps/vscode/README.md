@@ -1,76 +1,167 @@
-﻿# Skill Bridge VS Code Extension
+# Skill Bridge VS Code Extension
 
-Workspace-based skill manager for Claude/Codex/Gemini/Cursor/Antigravity/.agents.
+Skill Bridge is the VS Code extension for browsing, reviewing, and moving AI agent skills between the current Workspace and a configured Central skill library.
+
+![Skill Bridge compare view showing Workspace and Central skills side by side](resources/screenshots/skill-library-compare.png)
+
+Skill Bridge gives users a clear review point before skill files move. Workspace and Central skills stay side by side, changed files are marked, and group or NPX library workflows remain visible without turning the extension into a Git GUI or skill runner.
+
+| Downloadable libraries | Reusable groups |
+| --- | --- |
+| ![NPX Skill Library for downloading and updating reusable skill packs](resources/screenshots/npx-skill-library.png) | ![Group Overview for managing reusable skill groups](resources/screenshots/group-overview.png) |
+
+## Core Concepts
+
+- **Workspace Skills:** skills under local agent roots such as `.codex/skills/<name>/SKILL.md`.
+- **Central Skills:** reusable skills under central roots such as `codex/skills/<name>/SKILL.md`.
+- **Transfer Review:** review screen used before copying changed files between Workspace and Central.
+- **Groups:** named skill selections saved for repeated transfer or organization.
+- **Project Presets:** Central-only project setup templates saved in `.skillbridge/project-presets.json`.
+- **Quick Tools:** configurable command shortcuts shown at the top of the tree.
+
+## Tree Views
+
+The extension contributes two views:
+
+- `Workspace Skills`
+- `Central Skills`
+
+Both views support multi-select, tree filtering, warnings, skill counts, and agent filtering.
+
+## Quick Tools
+
+Quick Tools shows common commands directly in the tree.
+
+By default, only the basic tool set is shown. Use `Manage Quick Tools` to choose which commands should appear. The selection is saved in `skillBridge.visibleQuickTools`.
+
+Advanced commands can still be enabled and will appear under `Advanced Tools`.
+
+## Agent View
+
+`Switch Agent View` lets the user show one or more agents at the same time.
+
+- Selecting one agent shows only that agent.
+- Selecting multiple agents shows those agents together.
+- Selecting all agents or none shows all agents.
+- The selected agents are saved in `skillBridge.visibleAgents`.
 
 ## Agent Instructions
+
 - Workspace tree shows root instruction files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `GEMINI.md`, `CURSOR.md`, and supported rule files such as `.cursor/rules/*.mdc`.
 - Central tree shows matching profile files from `instructions/<workspace-folder-name>/`.
-- Instruction files are displayed and opened separately from skill transfer targets, so existing skill Promote/Import flows remain scoped to `skills/<skill>/...`.
+- Instruction files are displayed and opened separately from skill transfer targets, so skill transfer stays scoped to `skills/<skill>/...`.
 
-## Commands
-- Skill Bridge: Refresh
-- Skill Bridge: Central로 보내기
-- Skill Bridge: Workspace로 가져오기
-- Skill Bridge: 변경 비교/반영 열기
-- Skill Bridge: Open Diff
-- Skill Bridge: Add Skills via NPX
-- Skill Bridge: 스킬 추가/이동 열기
-- Skill Bridge: 현재 프로젝트에 스킬 채우기
-- Skill Bridge: 개인 스킬 묶음 만들기
-- Skill Bridge: 개인 중앙 스킬 폴더 설정
-- Skill Bridge: Switch Tree Filter
-- Skill Bridge: Rebuild Links
+## Project Presets
 
-## 개인 중앙 스킬 폴더
-- If `skillBridge.centralRepoPath` is empty or unset, the extension falls back to `${env:SKILL_BRIDGE_HOME}` and then `${userHome}/skill-bridge-repo`.
-- The setting supports `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, and `${env:NAME}` variables.
-- `개인 중앙 스킬 폴더 설정` creates the central structure and stores the chosen folder globally.
-- `개인 중앙 스킬 폴더 초기화` forces the extension default `${userHome}/skill-bridge-repo`, refreshes the trees, and reports how many central skills/groups remain after group normalization.
-- Workspace groups are stored in the current workspace's `skill_workspace.json`.
-- Central groups are stored in the central skill folder's `skill_workspace.json`, so every project using the same central folder sees the same Central groups.
-- Existing project-local Central groups are migrated to the central folder the first time the extension opens a central folder that does not yet have a group file.
+Project Presets are reusable Central templates for project setup.
 
-## 프로젝트에 스킬 채우기
-- `현재 프로젝트에 스킬 채우기` imports a personal pack or selected central skills into the current workspace.
-- This flow still opens 전송 전 검토, so diffs, overwrite review, skipped deletes, and risk hints remain in the normal safety flow.
-- Applied skill bundles create/update a workspace group named `Pack: <name>` so the project can be refreshed again later.
+Main actions:
 
-## 개인 스킬 묶음
-- `개인 스킬 묶음 만들기` saves selected central skills into `.skill-bridge/packs.json` inside the central skill folder.
-- Packs are simple skill-folder lists for recurring project types such as `personal-default`, `frontend-project`, or `langgraph-project`.
-- Packs are not auto-sync rules and do not execute skills.
+- `Apply Project Preset`
+- `Create Project Preset from Central`
+- `Create Project Preset from Workspace`
+- `Export Group as Project Preset`
+- `Open Project Presets`
+- `Rename Project Preset`
+- `Edit Project Preset Description`
+- `Delete Project Preset`
 
-## 스킬 추가/이동
-- Create a new `skills/<name>/SKILL.md` skeleton in Workspace or Central.
-- Fill the current project from a personal skill bundle or central skill selection.
-- Save central skill selections as reusable personal packs.
-- Send one Workspace skill to Central, or bring one Central skill into Workspace, through 전송 전 검토.
-- Copy a skill from one agent folder to another without deleting the source.
-- Continue to the existing `npx skills add` flow when installing from a public repo.
+Applying a preset imports its Central skills into the current Workspace through Transfer Review and creates or updates a Workspace group named `Preset: <name>`.
 
-## 전송 전 검토
-- 전송 전 검토 shows rule-based risk hints before copying between Workspace and Central.
-- Use "AI 검토 프롬프트 복사" to copy a selected-item review prompt for another agent without file contents or absolute paths.
-- Skill summaries now show new/modified/delete/type-conflict status with apply/inspect/skip recommendations.
+Creating a preset from Workspace first sends missing or changed Workspace skills through Transfer Review, then saves only Central-backed targets.
 
-## Tree Filters
-- Filter by all, changed, new, risk, missing `SKILL.md`, or recent skill assets.
-- Skill folders show warning counts and file counts so the tree stays asset-centered.
+## Transfer Review
+
+Transfer Review protects changed files before copying.
+
+It shows:
+
+- new, changed, deleted, unchanged, and conflict-like rows
+- risk hints such as sensitive-looking content or scripts
+- diff review for changed existing files
+- apply, inspect, and skip recommendations
+
+Skill Bridge does not auto-merge conflicts and does not auto-push Git remotes.
+
+## Skill Add And Move
+
+The extension supports:
+
+- creating new `skills/<name>/SKILL.md` folders
+- sending Workspace skills to Central
+- bringing Central skills to Workspace
+- copying skills between agent folders
+- installing skills with the NPX skill flow
+- downloading or updating Central skills from a source
 
 ## Workspace Quality Gate
-- Skill Bridge maps actionable workspace asset warnings into the native VS Code Problems view.
-- `sensitive-content` is surfaced as an error; missing `SKILL.md`, workspace-specific paths, script files, and broken references are surfaced as warnings or info.
-- A compact shield status bar item appears only when workspace errors or warnings exist, and opens the Problems view when clicked.
-- This checks skill asset structure and metadata contracts. It is not a code linter, skill runner, automatic sync tool, or auto-fixer.
 
-## 스킬 보관함 UX
-- View title actions use compact icons; hover or Command Palette shows the full command name.
-- Row actions separate intent: `추가/반영` sends the current side to the opposite side, `변경 가져오기/복원` pulls the opposite side into the current side through review, and `삭제` removes only after confirmation.
-- Bulk actions support selected change import and selected delete from the Workspace/Central panes.
-- Keyboard shortcuts: `Ctrl+Alt+L` 스킬 보관함, `Ctrl+Alt+A` 스킬 추가/이동, `Ctrl+Alt+H` 프로젝트에 스킬 채우기, `Ctrl+Alt+X` 변경 비교/반영, `Ctrl+Alt+F` Tree Filter, `Ctrl+Alt+T` Source Tab.
-- Inside 스킬 보관함: `/` focuses search, `R` refreshes, `A` opens 스킬 추가/이동, `X` opens 변경 비교/반영, `F` toggles changed-only, `1`/`2` jump between Workspace and Central.
+Skill Bridge maps actionable warnings into VS Code Problems.
+
+Examples:
+
+- missing `SKILL.md`
+- sensitive-looking content
+- workspace-specific absolute paths
+- script files
+- broken markdown references
+- Central target newer than Workspace
+
+The quality gate checks skill asset structure and metadata. It is not a code linter or an auto-fixer.
+
+## Central Library
+
+`skillBridge.centralRepoPath` defines the Central skill library path.
+
+The setting supports:
+
+- `${userHome}`
+- `${workspaceFolder}`
+- `${workspaceRoot}`
+- `${env:NAME}`
+
+Central groups are stored in `.skillbridge/skill-workspace.json` in the Central folder.
+
+Project Presets are stored in `.skillbridge/project-presets.json` in the Central folder.
 
 ## Settings
-- skillBridge.centralRepoPath
-- skillBridge.autoPush
-- skillBridge.defaultAgents
+
+- `skillBridge.centralRepoPath`
+- `skillBridge.defaultAgents`
+- `skillBridge.visibleAgents`
+- `skillBridge.visibleQuickTools`
+- `skillBridge.language`
+- `skillBridge.autoSyncWorkspaceAgents`
+
+## Useful Commands
+
+- `Skill Bridge: Refresh`
+- `Skill Bridge: Review Sync Changes`
+- `Skill Bridge: Send to Central`
+- `Skill Bridge: Bring to Workspace`
+- `Skill Bridge: Open Skill Library`
+- `Skill Bridge: Open Group Overview`
+- `Skill Bridge: Open Project Presets`
+- `Skill Bridge: Apply Project Preset`
+- `Skill Bridge: Create Project Preset from Workspace`
+- `Skill Bridge: Switch Agent View`
+- `Skill Bridge: Manage Quick Tools`
+- `Skill Bridge: Filter Skill Tree`
+- `Skill Bridge: Check Setup and Repair`
+
+## Build And Package
+
+From the repository root:
+
+```bash
+npm run typecheck
+npm --workspace apps/vscode run package:vsix
+```
+
+Install the generated VSIX:
+
+```bash
+code --install-extension apps/vscode/skill-bridge-vscode-<version>.vsix --force
+```
+
+After installing, run `Developer: Reload Window`.
