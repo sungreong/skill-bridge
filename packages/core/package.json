@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "main": "dist/index.js",
   "types": "src/index.ts",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "diff": "^8.0.2"
+  }
 }

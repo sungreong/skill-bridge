@@ -1,0 +1,8 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <rect x="10" y="22" width="108" height="84" rx="14" stroke="currentColor" stroke-width="8"/>
+  <path d="M24 45H41M24 45V58H41V71H24" stroke="currentColor" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M50 45V71M50 59L66 45M50 59L67 71" stroke="currentColor" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M76 45V71M72 45H80M72 71H80" stroke="currentColor" stroke-width="7" stroke-linecap="square"/>
+  <path d="M88 45V71H103" stroke="currentColor" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M109 45V71H122" stroke="currentColor" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

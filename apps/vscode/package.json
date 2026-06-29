@@ -1,20 +1,28 @@
 {
   "name": "skill-bridge-vscode",
-  "displayName": "Skill Bridge",
-  "description": "Workspace/Central skill viewer and sync",
-  "version": "0.2.5",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.2.13",
   "private": true,
   "publisher": "skill-bridge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sungreong/skill-bridge.git",
+    "directory": "apps/vscode"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:skillBridge.workspaceSkills",
     "onView:skillBridge.centralSkills",
     "onCommand:skillBridge.refresh",
     "onCommand:skillBridge.switchTab",
+    "onCommand:skillBridge.manageQuickTools",
     "onCommand:skillBridge.promoteSelected",
     "onCommand:skillBridge.importSelected",
     "onCommand:skillBridge.createWorkspaceGroup",
@@ -24,7 +32,12 @@
     "onCommand:skillBridge.selectGroup",
     "onCommand:skillBridge.deleteGroup",
     "onCommand:skillBridge.groupActions",
+    "onCommand:skillBridge.openGroupOverview",
+    "onCommand:skillBridge.openNpxSkillLibrary",
+    "onCommand:skillBridge.workspaceGroupActions",
+    "onCommand:skillBridge.centralGroupActions",
     "onCommand:skillBridge.renameGroup",
+    "onCommand:skillBridge.editGroupDescription",
     "onCommand:skillBridge.createWorkspaceGroupFromNode",
     "onCommand:skillBridge.createCentralGroupFromNode",
     "onCommand:skillBridge.addWorkspaceSelectionToGroup",
@@ -46,13 +59,37 @@
     "onCommand:skillBridge.smartCentralActions",
     "onCommand:skillBridge.copyCentralNode",
     "onCommand:skillBridge.pasteCentralNode",
+    "onCommand:skillBridge.copyBetweenAgents",
+    "onCommand:skillBridge.copyWorkspaceBetweenAgents",
+    "onCommand:skillBridge.copyCentralBetweenAgents",
+    "onCommand:skillBridge.copyWorkspaceGroupBetweenAgents",
+    "onCommand:skillBridge.copyCentralGroupBetweenAgents",
     "onCommand:skillBridge.installSkills",
     "onCommand:skillBridge.viewSkillHistory",
+    "onCommand:skillBridge.showWorkspaceWarningReasons",
+    "onCommand:skillBridge.showCentralWarningReasons",
     "onCommand:skillBridge.openTransferExplorer",
     "onCommand:skillBridge.openLibraryManager",
     "onCommand:skillBridge.openAddMoveWizard",
     "onCommand:skillBridge.hydrateProject",
+    "onCommand:skillBridge.downloadCentralSkill",
+    "onCommand:skillBridge.downloadSkillManagerSkill",
     "onCommand:skillBridge.createCentralPack",
+    "onCommand:skillBridge.openProjectPresetOverview",
+    "onCommand:skillBridge.applyProjectPreset",
+    "onCommand:skillBridge.createProjectPresetFromCentral",
+    "onCommand:skillBridge.createProjectPresetFromWorkspace",
+    "onCommand:skillBridge.createProjectPresetFromWorkspaceGroup",
+    "onCommand:skillBridge.renameProjectPreset",
+    "onCommand:skillBridge.editProjectPresetDescription",
+    "onCommand:skillBridge.deleteProjectPreset",
+    "onCommand:skillBridge.repairCentralMetadata",
+    "onCommand:skillBridge.diagnoseEnvironment",
+    "onCommand:skillBridge.openPerformanceTools",
+    "onCommand:skillBridge.configureWorkspaceAutoSync",
+    "onCommand:skillBridge.toggleWorkspaceAgentAutoSync",
+    "onCommand:skillBridge.syncWorkspaceAgentNow",
+    "onCommand:skillBridge.toggleLanguage",
     "onCommand:skillBridge.setPersonalHome",
     "onCommand:skillBridge.resetPersonalHome",
     "onCommand:skillBridge.openWorkspaceFolder",
@@ -64,21 +101,84 @@
   ],
   "contributes": {
     "configuration": {
-      "title": "Skill Bridge",
+      "title": "%config.title%",
       "properties": {
         "skillBridge.centralRepoPath": {
           "type": "string",
           "default": "${userHome}/skill-bridge-repo",
-          "description": "개인 중앙 스킬 저장소 경로. ${userHome}, ${workspaceFolder}, ${workspaceRoot}, ${env:NAME} 변수를 사용할 수 있습니다."
+          "description": "%config.centralRepoPath.description%"
         },
         "skillBridge.defaultAgents": {
           "type": "array",
-          "default": ["claude", "codex", "gemini", "cursor", "antigravity", "agents"],
+          "default": [
+            "claude",
+            "codex",
+            "gemini",
+            "cursor",
+            "antigravity",
+            "agents"
+          ],
           "items": {
             "type": "string",
-            "enum": ["claude", "codex", "gemini", "cursor", "antigravity", "agents"]
+            "enum": [
+              "claude",
+              "codex",
+              "gemini",
+              "cursor",
+              "antigravity",
+              "agents"
+            ]
           },
-          "description": "관리 대상 에이전트"
+          "description": "%config.defaultAgents.description%"
+        },
+        "skillBridge.visibleAgents": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "gemini",
+              "cursor",
+              "antigravity",
+              "agents"
+            ]
+          },
+          "description": "%config.visibleAgents.description%"
+        },
+        "skillBridge.visibleQuickTools": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "%config.visibleQuickTools.description%"
+        },
+        "skillBridge.language": {
+          "type": "string",
+          "default": "en",
+          "enum": [
+            "en",
+            "ko"
+          ],
+          "description": "%config.language.description%"
+        },
+        "skillBridge.autoSyncWorkspaceAgents": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "gemini",
+              "cursor",
+              "antigravity",
+              "agents"
+            ]
+          },
+          "description": "%config.autoSyncWorkspaceAgents.description%"
         }
       }
     },
@@ -86,155 +186,688 @@
       "activitybar": [
         {
           "id": "skillBridge",
-          "title": "Skill Bridge",
-          "icon": "resources/skill-bridge.svg"
+          "title": "%viewContainer.title%",
+          "icon": "resources/skill-bridge-readable.svg"
         }
       ]
     },
     "views": {
       "skillBridge": [
-        { "id": "skillBridge.workspaceSkills", "name": "Workspace 스킬" },
-        { "id": "skillBridge.centralSkills", "name": "Central 스킬" }
+        {
+          "id": "skillBridge.workspaceSkills",
+          "name": "%view.workspace%"
+        },
+        {
+          "id": "skillBridge.centralSkills",
+          "name": "%view.central%"
+        }
       ]
     },
     "commands": [
-      { "command": "skillBridge.refresh", "title": "새로고침", "category": "Skill Bridge", "icon": "$(refresh)" },
-      { "command": "skillBridge.switchTab", "title": "에이전트 탭 전환", "category": "Skill Bridge", "icon": "$(list-tree)" },
-      { "command": "skillBridge.promoteSelected", "title": "Central로 보내기", "category": "Skill Bridge" },
-      { "command": "skillBridge.importSelected", "title": "Workspace로 가져오기", "category": "Skill Bridge" },
-      { "command": "skillBridge.createWorkspaceGroup", "title": "Workspace 그룹 만들기", "category": "Skill Bridge" },
-      { "command": "skillBridge.createCentralGroup", "title": "Central 그룹 만들기", "category": "Skill Bridge" },
-      { "command": "skillBridge.promoteGroup", "title": "그룹을 Central로 보내기", "category": "Skill Bridge" },
-      { "command": "skillBridge.importGroup", "title": "그룹을 Workspace로 가져오기", "category": "Skill Bridge" },
-      { "command": "skillBridge.selectGroup", "title": "그룹 선택", "category": "Skill Bridge" },
-      { "command": "skillBridge.deleteGroup", "title": "그룹 삭제", "category": "Skill Bridge" },
-      { "command": "skillBridge.groupActions", "title": "그룹 작업", "category": "Skill Bridge" },
-      { "command": "skillBridge.renameGroup", "title": "그룹 이름 바꾸기", "category": "Skill Bridge" },
-      { "command": "skillBridge.createWorkspaceGroupFromNode", "title": "여기에 그룹 만들기", "category": "Skill Bridge" },
-      { "command": "skillBridge.createCentralGroupFromNode", "title": "여기에 그룹 만들기", "category": "Skill Bridge" },
-      { "command": "skillBridge.addWorkspaceSelectionToGroup", "title": "그룹에 추가", "category": "Skill Bridge" },
-      { "command": "skillBridge.addCentralSelectionToGroup", "title": "그룹에 추가", "category": "Skill Bridge" },
-      { "command": "skillBridge.createWorkspaceFolder", "title": "새 폴더", "category": "Skill Bridge" },
-      { "command": "skillBridge.createWorkspaceFile", "title": "새 파일", "category": "Skill Bridge" },
-      { "command": "skillBridge.createWorkspaceSkill", "title": "스킬 만들기 (SKILL.md)", "category": "Skill Bridge" },
-      { "command": "skillBridge.quickWorkspaceCrud", "title": "스킬 파일 만들기/수정", "category": "Skill Bridge" },
-      { "command": "skillBridge.smartWorkspaceActions", "title": "추천 작업", "category": "Skill Bridge" },
-      { "command": "skillBridge.copyWorkspaceNode", "title": "복사", "category": "Skill Bridge" },
-      { "command": "skillBridge.pasteWorkspaceNode", "title": "붙여넣기", "category": "Skill Bridge" },
-      { "command": "skillBridge.renameWorkspaceNode", "title": "이름 바꾸기", "category": "Skill Bridge" },
-      { "command": "skillBridge.deleteWorkspaceNode", "title": "삭제", "category": "Skill Bridge" },
-      { "command": "skillBridge.duplicateWorkspaceNode", "title": "복제", "category": "Skill Bridge" },
-      { "command": "skillBridge.createCentralFolder", "title": "새 폴더", "category": "Skill Bridge" },
-      { "command": "skillBridge.createCentralFile", "title": "새 파일", "category": "Skill Bridge" },
-      { "command": "skillBridge.createCentralSkill", "title": "스킬 만들기 (SKILL.md)", "category": "Skill Bridge" },
-      { "command": "skillBridge.quickCentralCrud", "title": "스킬 파일 만들기/수정", "category": "Skill Bridge" },
-      { "command": "skillBridge.smartCentralActions", "title": "추천 작업", "category": "Skill Bridge" },
-      { "command": "skillBridge.copyCentralNode", "title": "복사", "category": "Skill Bridge" },
-      { "command": "skillBridge.pasteCentralNode", "title": "붙여넣기", "category": "Skill Bridge" },
-      { "command": "skillBridge.installSkills", "title": "npx로 스킬 설치", "category": "Skill Bridge" },
-      { "command": "skillBridge.viewSkillHistory", "title": "스킬 이력 보기", "category": "Skill Bridge" },
-      { "command": "skillBridge.openTransferExplorer", "title": "변경 비교/반영 열기 (Workspace ↔ Central)", "category": "Skill Bridge", "icon": "$(arrow-swap)" },
-      { "command": "skillBridge.openLibraryManager", "title": "스킬 보관함 열기", "category": "Skill Bridge", "icon": "$(library)" },
-      { "command": "skillBridge.openAddMoveWizard", "title": "스킬 추가/이동 열기", "category": "Skill Bridge", "icon": "$(add)" },
-      { "command": "skillBridge.hydrateProject", "title": "현재 프로젝트에 스킬 채우기", "category": "Skill Bridge", "icon": "$(repo-pull)" },
-      { "command": "skillBridge.createCentralPack", "title": "개인 스킬 묶음 만들기", "category": "Skill Bridge", "icon": "$(package)" },
-      { "command": "skillBridge.setPersonalHome", "title": "개인 중앙 스킬 폴더 설정", "category": "Skill Bridge", "icon": "$(home)" },
-      { "command": "skillBridge.resetPersonalHome", "title": "개인 중앙 스킬 폴더 초기화", "category": "Skill Bridge", "icon": "$(discard)" },
-      { "command": "skillBridge.openWorkspaceFolder", "title": "Workspace 폴더 열기", "category": "Skill Bridge", "icon": "$(folder-opened)" },
-      { "command": "skillBridge.openCentralFolder", "title": "Central 폴더 열기", "category": "Skill Bridge", "icon": "$(folder-opened)" },
-      { "command": "skillBridge.switchTreeFilter", "title": "트리 필터 전환", "category": "Skill Bridge", "icon": "$(filter)" },
-      { "command": "skillBridge.renameCentralNode", "title": "이름 바꾸기", "category": "Skill Bridge" },
-      { "command": "skillBridge.deleteCentralNode", "title": "삭제", "category": "Skill Bridge" },
-      { "command": "skillBridge.duplicateCentralNode", "title": "복제", "category": "Skill Bridge" },
-      { "command": "skillBridge.selectWorkspaceNode", "title": "Select Workspace Node", "category": "Skill Bridge" },
-      { "command": "skillBridge.selectCentralNode", "title": "Select Central Node", "category": "Skill Bridge" }
+      {
+        "command": "skillBridge.refresh",
+        "title": "%command.refresh%",
+        "category": "Skill Bridge",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "skillBridge.switchTab",
+        "title": "%command.switchTab%",
+        "category": "Skill Bridge",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "skillBridge.manageQuickTools",
+        "title": "%command.manageQuickTools%",
+        "category": "Skill Bridge",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "skillBridge.promoteSelected",
+        "title": "%command.promoteSelected%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.importSelected",
+        "title": "%command.importSelected%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createWorkspaceGroup",
+        "title": "%command.createWorkspaceGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createCentralGroup",
+        "title": "%command.createCentralGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.promoteGroup",
+        "title": "%command.promoteGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.importGroup",
+        "title": "%command.importGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.selectGroup",
+        "title": "%command.selectGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.deleteGroup",
+        "title": "%command.deleteGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.groupActions",
+        "title": "%command.groupActions%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.openGroupOverview",
+        "title": "%command.openGroupOverview%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.openNpxSkillLibrary",
+        "title": "%command.openNpxSkillLibrary%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.workspaceGroupActions",
+        "title": "%command.workspaceGroupActions%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.centralGroupActions",
+        "title": "%command.centralGroupActions%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.renameGroup",
+        "title": "%command.renameGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.editGroupDescription",
+        "title": "%command.editGroupDescription%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createWorkspaceGroupFromNode",
+        "title": "%command.createWorkspaceGroupFromNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createCentralGroupFromNode",
+        "title": "%command.createCentralGroupFromNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.addWorkspaceSelectionToGroup",
+        "title": "%command.addWorkspaceSelectionToGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.addCentralSelectionToGroup",
+        "title": "%command.addCentralSelectionToGroup%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createWorkspaceFolder",
+        "title": "%command.createWorkspaceFolder%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createWorkspaceFile",
+        "title": "%command.createWorkspaceFile%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createWorkspaceSkill",
+        "title": "%command.createWorkspaceSkill%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.quickWorkspaceCrud",
+        "title": "%command.quickWorkspaceCrud%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.smartWorkspaceActions",
+        "title": "%command.smartWorkspaceActions%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.copyWorkspaceNode",
+        "title": "%command.copyWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.pasteWorkspaceNode",
+        "title": "%command.pasteWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.renameWorkspaceNode",
+        "title": "%command.renameWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.deleteWorkspaceNode",
+        "title": "%command.deleteWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.duplicateWorkspaceNode",
+        "title": "%command.duplicateWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createCentralFolder",
+        "title": "%command.createCentralFolder%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createCentralFile",
+        "title": "%command.createCentralFile%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.createCentralSkill",
+        "title": "%command.createCentralSkill%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.quickCentralCrud",
+        "title": "%command.quickCentralCrud%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.smartCentralActions",
+        "title": "%command.smartCentralActions%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.copyCentralNode",
+        "title": "%command.copyCentralNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.pasteCentralNode",
+        "title": "%command.pasteCentralNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.copyBetweenAgents",
+        "title": "%command.copyBetweenAgents%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "skillBridge.copyWorkspaceBetweenAgents",
+        "title": "%command.copyWorkspaceBetweenAgents%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "skillBridge.copyCentralBetweenAgents",
+        "title": "%command.copyCentralBetweenAgents%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "skillBridge.copyWorkspaceGroupBetweenAgents",
+        "title": "%command.copyWorkspaceGroupBetweenAgents%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "skillBridge.copyCentralGroupBetweenAgents",
+        "title": "%command.copyCentralGroupBetweenAgents%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "skillBridge.installSkills",
+        "title": "%command.installSkills%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.viewSkillHistory",
+        "title": "%command.viewSkillHistory%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.showWorkspaceWarningReasons",
+        "title": "%command.showWorkspaceWarningReasons%",
+        "category": "Skill Bridge",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "skillBridge.showCentralWarningReasons",
+        "title": "%command.showCentralWarningReasons%",
+        "category": "Skill Bridge",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "skillBridge.openTransferExplorer",
+        "title": "%command.openTransferExplorer%",
+        "category": "Skill Bridge",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "skillBridge.openLibraryManager",
+        "title": "%command.openLibraryManager%",
+        "category": "Skill Bridge",
+        "icon": "$(library)"
+      },
+      {
+        "command": "skillBridge.openAddMoveWizard",
+        "title": "%command.openAddMoveWizard%",
+        "category": "Skill Bridge",
+        "icon": "$(add)"
+      },
+      {
+        "command": "skillBridge.hydrateProject",
+        "title": "%command.hydrateProject%",
+        "category": "Skill Bridge",
+        "icon": "$(repo-pull)"
+      },
+      {
+        "command": "skillBridge.downloadCentralSkill",
+        "title": "%command.downloadCentralSkill%",
+        "category": "Skill Bridge",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skillBridge.downloadSkillManagerSkill",
+        "title": "%command.downloadSkillManagerSkill%",
+        "category": "Skill Bridge",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skillBridge.createCentralPack",
+        "title": "%command.createCentralPack%",
+        "category": "Skill Bridge",
+        "icon": "$(package)"
+      },
+      {
+        "command": "skillBridge.openProjectPresetOverview",
+        "title": "%command.openProjectPresetOverview%",
+        "category": "Skill Bridge",
+        "icon": "$(library)"
+      },
+      {
+        "command": "skillBridge.applyProjectPreset",
+        "title": "%command.applyProjectPreset%",
+        "category": "Skill Bridge",
+        "icon": "$(repo-pull)"
+      },
+      {
+        "command": "skillBridge.createProjectPresetFromCentral",
+        "title": "%command.createProjectPresetFromCentral%",
+        "category": "Skill Bridge",
+        "icon": "$(package)"
+      },
+      {
+        "command": "skillBridge.createProjectPresetFromWorkspace",
+        "title": "%command.createProjectPresetFromWorkspace%",
+        "category": "Skill Bridge",
+        "icon": "$(package)"
+      },
+      {
+        "command": "skillBridge.createProjectPresetFromWorkspaceGroup",
+        "title": "%command.createProjectPresetFromWorkspaceGroup%",
+        "category": "Skill Bridge",
+        "icon": "$(export)"
+      },
+      {
+        "command": "skillBridge.renameProjectPreset",
+        "title": "%command.renameProjectPreset%",
+        "category": "Skill Bridge",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "skillBridge.editProjectPresetDescription",
+        "title": "%command.editProjectPresetDescription%",
+        "category": "Skill Bridge",
+        "icon": "$(note)"
+      },
+      {
+        "command": "skillBridge.deleteProjectPreset",
+        "title": "%command.deleteProjectPreset%",
+        "category": "Skill Bridge",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "skillBridge.repairCentralMetadata",
+        "title": "%command.repairCentralMetadata%",
+        "category": "Skill Bridge",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "skillBridge.diagnoseEnvironment",
+        "title": "%command.diagnoseEnvironment%",
+        "category": "Skill Bridge",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "skillBridge.openPerformanceTools",
+        "title": "%command.openPerformanceTools%",
+        "category": "Skill Bridge",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "skillBridge.configureWorkspaceAutoSync",
+        "title": "%command.configureWorkspaceAutoSync%",
+        "category": "Skill Bridge",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "skillBridge.toggleWorkspaceAgentAutoSync",
+        "title": "%command.toggleWorkspaceAgentAutoSync%",
+        "category": "Skill Bridge",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "skillBridge.syncWorkspaceAgentNow",
+        "title": "%command.syncWorkspaceAgentNow%",
+        "category": "Skill Bridge",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "skillBridge.toggleLanguage",
+        "title": "%command.toggleLanguage%",
+        "category": "Skill Bridge",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "skillBridge.setPersonalHome",
+        "title": "%command.setPersonalHome%",
+        "category": "Skill Bridge",
+        "icon": "$(home)"
+      },
+      {
+        "command": "skillBridge.resetPersonalHome",
+        "title": "%command.resetPersonalHome%",
+        "category": "Skill Bridge",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "skillBridge.openWorkspaceFolder",
+        "title": "%command.openWorkspaceFolder%",
+        "category": "Skill Bridge",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "skillBridge.openCentralFolder",
+        "title": "%command.openCentralFolder%",
+        "category": "Skill Bridge",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "skillBridge.switchTreeFilter",
+        "title": "%command.switchTreeFilter%",
+        "category": "Skill Bridge",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "skillBridge.renameCentralNode",
+        "title": "%command.renameWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.deleteCentralNode",
+        "title": "%command.deleteWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.duplicateCentralNode",
+        "title": "%command.duplicateWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.selectWorkspaceNode",
+        "title": "%command.selectWorkspaceNode%",
+        "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.selectCentralNode",
+        "title": "%command.selectCentralNode%",
+        "category": "Skill Bridge"
+      }
     ],
     "submenus": [
-      { "id": "skillBridge.workspaceFileActions", "label": "파일 작업" },
-      { "id": "skillBridge.centralFileActions", "label": "파일 작업" },
-      { "id": "skillBridge.workspaceAdvanced", "label": "고급" },
-      { "id": "skillBridge.centralAdvanced", "label": "고급" },
-      { "id": "skillBridge.globalTools", "label": "Skill Bridge 도구" },
-      { "id": "skillBridge.settings", "label": "설정" }
+      {
+        "id": "skillBridge.workspaceFileActions",
+        "label": "%submenu.workspaceActions%"
+      },
+      {
+        "id": "skillBridge.centralFileActions",
+        "label": "%submenu.centralActions%"
+      },
+      {
+        "id": "skillBridge.workspaceAdvanced",
+        "label": "%submenu.workspaceTools%"
+      },
+      {
+        "id": "skillBridge.centralAdvanced",
+        "label": "%submenu.centralTools%"
+      },
+      {
+        "id": "skillBridge.globalTools",
+        "label": "%submenu.globalTools%"
+      },
+      {
+        "id": "skillBridge.settings",
+        "label": "%submenu.settings%"
+      }
     ],
     "menus": {
-      "view/title": [
+      "view/container/title": [
         {
           "command": "skillBridge.refresh",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "when": "viewContainer == skillBridge",
           "group": "navigation@1"
         },
         {
-          "command": "skillBridge.switchTab",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
-          "group": "secondary@1"
-        },
-        {
           "command": "skillBridge.switchTreeFilter",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "when": "viewContainer == skillBridge",
           "group": "navigation@2"
         },
         {
-          "command": "skillBridge.openWorkspaceFolder",
-          "when": "view == skillBridge.workspaceSkills",
-          "group": "navigation@3"
-        },
-        {
-          "command": "skillBridge.openCentralFolder",
-          "when": "view == skillBridge.centralSkills",
+          "command": "skillBridge.switchTab",
+          "when": "viewContainer == skillBridge",
           "group": "navigation@3"
         },
         {
           "command": "skillBridge.openLibraryManager",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "when": "viewContainer == skillBridge",
           "group": "navigation@4"
         },
         {
           "command": "skillBridge.openTransferExplorer",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
-          "group": "secondary@2"
+          "when": "viewContainer == skillBridge",
+          "group": "navigation@5"
         },
         {
           "command": "skillBridge.openAddMoveWizard",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
-          "group": "secondary@3"
+          "when": "viewContainer == skillBridge",
+          "group": "navigation@6"
+        },
+        {
+          "command": "skillBridge.toggleLanguage",
+          "when": "viewContainer == skillBridge",
+          "group": "navigation@7"
+        },
+        {
+          "command": "skillBridge.setPersonalHome",
+          "when": "viewContainer == skillBridge",
+          "group": "navigation@8"
+        },
+        {
+          "command": "skillBridge.resetPersonalHome",
+          "when": "viewContainer == skillBridge",
+          "group": "navigation@9"
         },
         {
           "command": "skillBridge.hydrateProject",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "when": "viewContainer == skillBridge",
+          "group": "secondary@1"
+        },
+        {
+          "command": "skillBridge.downloadCentralSkill",
+          "when": "viewContainer == skillBridge",
+          "group": "secondary@2"
+        },
+        {
+          "command": "skillBridge.downloadSkillManagerSkill",
+          "when": "viewContainer == skillBridge",
+          "group": "secondary@3"
+        },
+        {
+          "command": "skillBridge.copyBetweenAgents",
+          "when": "viewContainer == skillBridge",
           "group": "secondary@4"
         },
         {
           "command": "skillBridge.createCentralPack",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "when": "viewContainer == skillBridge",
           "group": "secondary@5"
         },
         {
-          "command": "skillBridge.setPersonalHome",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "command": "skillBridge.diagnoseEnvironment",
+          "when": "viewContainer == skillBridge",
           "group": "secondary@6"
         },
         {
-          "command": "skillBridge.resetPersonalHome",
-          "when": "view == skillBridge.workspaceSkills || view == skillBridge.centralSkills",
+          "command": "skillBridge.openPerformanceTools",
+          "when": "viewContainer == skillBridge",
+          "group": "secondary@6.1"
+        },
+        {
+          "command": "skillBridge.configureWorkspaceAutoSync",
+          "when": "viewContainer == skillBridge",
           "group": "secondary@7"
+        },
+        {
+          "command": "skillBridge.syncWorkspaceAgentNow",
+          "when": "viewContainer == skillBridge",
+          "group": "secondary@8"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "skillBridge.openWorkspaceFolder",
+          "when": "view == skillBridge.workspaceSkills",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.hydrateProject",
+          "when": "view == skillBridge.workspaceSkills",
+          "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.createProjectPresetFromWorkspace",
+          "when": "view == skillBridge.workspaceSkills",
+          "group": "navigation@3"
+        },
+        {
+          "command": "skillBridge.configureWorkspaceAutoSync",
+          "when": "view == skillBridge.workspaceSkills",
+          "group": "secondary@1"
+        },
+        {
+          "command": "skillBridge.syncWorkspaceAgentNow",
+          "when": "view == skillBridge.workspaceSkills",
+          "group": "secondary@2"
+        },
+        {
+          "command": "skillBridge.openCentralFolder",
+          "when": "view == skillBridge.centralSkills",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.downloadCentralSkill",
+          "when": "view == skillBridge.centralSkills",
+          "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.createCentralPack",
+          "when": "view == skillBridge.centralSkills",
+          "group": "secondary@2"
+        },
+        {
+          "command": "skillBridge.openProjectPresetOverview",
+          "when": "view == skillBridge.centralSkills",
+          "group": "secondary@3"
         }
       ],
       "view/item/context": [
+        {
+          "command": "skillBridge.smartWorkspaceActions",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@0.2"
+        },
         {
           "command": "skillBridge.openWorkspaceFolder",
           "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
           "group": "navigation@0"
         },
         {
-          "command": "skillBridge.promoteSelected",
+          "command": "skillBridge.createWorkspaceGroupFromNode",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@1.2"
+        },
+        {
+          "command": "skillBridge.createProjectPresetFromWorkspace",
           "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@1.25"
+        },
+        {
+          "command": "skillBridge.promoteSelected",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot || viewItem == skillBridge.instructionRoot || viewItem == skillBridge.instructionFolder || viewItem == skillBridge.instructionFile)",
           "group": "navigation@1"
         },
         {
           "command": "skillBridge.addWorkspaceSelectionToGroup",
           "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
           "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.showWorkspaceWarningReasons",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@2.5"
+        },
+        {
+          "command": "skillBridge.copyWorkspaceBetweenAgents",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@2.7"
+        },
+        {
+          "command": "skillBridge.toggleWorkspaceAgentAutoSync",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@2.8"
+        },
+        {
+          "command": "skillBridge.syncWorkspaceAgentNow",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@2.9"
+        },
+        {
+          "command": "skillBridge.toggleWorkspaceAgentAutoSync",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.groupTool.workspace)",
+          "group": "navigation@1.16"
+        },
+        {
+          "command": "skillBridge.syncWorkspaceAgentNow",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.groupTool.workspace)",
+          "group": "navigation@1.17"
         },
         {
           "submenu": "skillBridge.workspaceFileActions",
@@ -247,19 +880,39 @@
           "group": "navigation@4"
         },
         {
+          "command": "skillBridge.smartCentralActions",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@0.2"
+        },
+        {
           "command": "skillBridge.openCentralFolder",
           "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
           "group": "navigation@0"
         },
         {
+          "command": "skillBridge.createCentralGroupFromNode",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@1.2"
+        },
+        {
           "command": "skillBridge.importSelected",
-          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot || viewItem == skillBridge.instructionRoot || viewItem == skillBridge.instructionFolder || viewItem == skillBridge.instructionFile)",
           "group": "navigation@1"
         },
         {
           "command": "skillBridge.addCentralSelectionToGroup",
           "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
           "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.showCentralWarningReasons",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
+          "group": "navigation@2.5"
+        },
+        {
+          "command": "skillBridge.copyCentralBetweenAgents",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@2.7"
         },
         {
           "submenu": "skillBridge.centralFileActions",
@@ -272,14 +925,84 @@
           "group": "navigation@4"
         },
         {
-          "command": "skillBridge.groupActions",
-          "when": "(view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)",
+          "command": "skillBridge.openGroupOverview",
+          "when": "(view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.groupRoot.workspace || viewItem == skillBridge.groupRoot.central || viewItem == skillBridge.groupTool.workspace || viewItem == skillBridge.groupTool.central || viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)",
+          "group": "navigation@0.9"
+        },
+        {
+          "command": "skillBridge.workspaceGroupActions",
+          "when": "view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.centralGroupActions",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.group.central",
           "group": "navigation@1"
         },
         {
           "command": "skillBridge.renameGroup",
           "when": "(view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)",
           "group": "navigation@1.1"
+        },
+        {
+          "command": "skillBridge.editGroupDescription",
+          "when": "(view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)",
+          "group": "navigation@1.12"
+        },
+        {
+          "command": "skillBridge.copyWorkspaceGroupBetweenAgents",
+          "when": "view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace",
+          "group": "navigation@1.15"
+        },
+        {
+          "command": "skillBridge.createProjectPresetFromWorkspaceGroup",
+          "when": "view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace",
+          "group": "navigation@1.18"
+        },
+        {
+          "command": "skillBridge.copyCentralGroupBetweenAgents",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.group.central",
+          "group": "navigation@1.15"
+        },
+        {
+          "command": "skillBridge.openProjectPresetOverview",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.presetRoot.central",
+          "group": "navigation@0"
+        },
+        {
+          "command": "skillBridge.createProjectPresetFromCentral",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.presetRoot.central",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.repairCentralMetadata",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.presetRoot.central",
+          "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.applyProjectPreset",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.preset.central",
+          "group": "navigation@0"
+        },
+        {
+          "command": "skillBridge.openProjectPresetOverview",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.preset.central",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.renameProjectPreset",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.preset.central",
+          "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.editProjectPresetDescription",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.preset.central",
+          "group": "navigation@3"
+        },
+        {
+          "command": "skillBridge.deleteProjectPreset",
+          "when": "view == skillBridge.centralSkills && viewItem == skillBridge.preset.central",
+          "group": "navigation@4"
         },
         {
           "command": "skillBridge.deleteGroup",
@@ -335,6 +1058,11 @@
           "group": "3_clipboard@1"
         },
         {
+          "command": "skillBridge.copyWorkspaceBetweenAgents",
+          "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
+          "group": "3_clipboard@1.5"
+        },
+        {
           "command": "skillBridge.pasteWorkspaceNode",
           "group": "3_clipboard@2"
         }
@@ -375,6 +1103,11 @@
           "command": "skillBridge.copyCentralNode",
           "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
           "group": "3_clipboard@1"
+        },
+        {
+          "command": "skillBridge.copyCentralBetweenAgents",
+          "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
+          "group": "3_clipboard@1.5"
         },
         {
           "command": "skillBridge.pasteCentralNode",
@@ -449,11 +1182,47 @@
           "group": "navigation@3"
         },
         {
-          "command": "skillBridge.createCentralPack",
+          "command": "skillBridge.downloadCentralSkill",
           "group": "navigation@4"
+        },
+        {
+          "command": "skillBridge.downloadSkillManagerSkill",
+          "group": "navigation@4.5"
+        },
+        {
+          "command": "skillBridge.copyBetweenAgents",
+          "group": "navigation@4.7"
+        },
+        {
+          "command": "skillBridge.createCentralPack",
+          "group": "navigation@5"
+        },
+        {
+          "command": "skillBridge.diagnoseEnvironment",
+          "group": "navigation@6"
+        },
+        {
+          "command": "skillBridge.repairCentralMetadata",
+          "group": "navigation@6.05"
+        },
+        {
+          "command": "skillBridge.openPerformanceTools",
+          "group": "navigation@6.1"
+        },
+        {
+          "command": "skillBridge.configureWorkspaceAutoSync",
+          "group": "navigation@6.2"
+        },
+        {
+          "command": "skillBridge.syncWorkspaceAgentNow",
+          "group": "navigation@6.3"
         }
       ],
       "skillBridge.settings": [
+        {
+          "command": "skillBridge.diagnoseEnvironment",
+          "group": "navigation@0"
+        },
         {
           "command": "skillBridge.setPersonalHome",
           "group": "navigation@1"
@@ -461,44 +1230,197 @@
         {
           "command": "skillBridge.resetPersonalHome",
           "group": "navigation@2"
+        },
+        {
+          "command": "skillBridge.configureWorkspaceAutoSync",
+          "group": "navigation@3"
         }
       ],
       "commandPalette": [
-        { "command": "skillBridge.openWorkspaceFolder" },
-        { "command": "skillBridge.openCentralFolder" },
-        { "command": "skillBridge.selectWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.selectCentralNode", "when": "false" },
-        { "command": "skillBridge.selectGroup", "when": "false" },
-        { "command": "skillBridge.deleteGroup", "when": "false" },
-        { "command": "skillBridge.groupActions", "when": "false" },
-        { "command": "skillBridge.renameGroup", "when": "false" },
-        { "command": "skillBridge.createWorkspaceGroupFromNode", "when": "false" },
-        { "command": "skillBridge.createCentralGroupFromNode", "when": "false" },
-        { "command": "skillBridge.addWorkspaceSelectionToGroup", "when": "false" },
-        { "command": "skillBridge.addCentralSelectionToGroup", "when": "false" },
-        { "command": "skillBridge.createWorkspaceFolder", "when": "false" },
-        { "command": "skillBridge.createWorkspaceFile", "when": "false" },
-        { "command": "skillBridge.createWorkspaceSkill", "when": "false" },
-        { "command": "skillBridge.quickWorkspaceCrud", "when": "false" },
-        { "command": "skillBridge.smartWorkspaceActions", "when": "false" },
-        { "command": "skillBridge.copyWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.pasteWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.renameWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.deleteWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.duplicateWorkspaceNode", "when": "false" },
-        { "command": "skillBridge.createCentralFolder", "when": "false" },
-        { "command": "skillBridge.createCentralFile", "when": "false" },
-        { "command": "skillBridge.createCentralSkill", "when": "false" },
-        { "command": "skillBridge.quickCentralCrud", "when": "false" },
-        { "command": "skillBridge.smartCentralActions", "when": "false" },
-        { "command": "skillBridge.copyCentralNode", "when": "false" },
-        { "command": "skillBridge.pasteCentralNode", "when": "false" },
-        { "command": "skillBridge.installSkills", "when": "false" },
-        { "command": "skillBridge.viewSkillHistory", "when": "false" },
-        { "command": "skillBridge.switchTreeFilter", "when": "false" },
-        { "command": "skillBridge.renameCentralNode", "when": "false" },
-        { "command": "skillBridge.deleteCentralNode", "when": "false" },
-        { "command": "skillBridge.duplicateCentralNode", "when": "false" }
+        {
+          "command": "skillBridge.openWorkspaceFolder"
+        },
+        {
+          "command": "skillBridge.openCentralFolder"
+        },
+        {
+          "command": "skillBridge.selectWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.selectCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.selectGroup",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.deleteGroup",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.groupActions",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.openGroupOverview",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.workspaceGroupActions",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.centralGroupActions",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.renameGroup",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.editGroupDescription",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createWorkspaceGroupFromNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createCentralGroupFromNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.addWorkspaceSelectionToGroup",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.addCentralSelectionToGroup",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createWorkspaceFolder",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createWorkspaceFile",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createWorkspaceSkill",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.quickWorkspaceCrud",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.smartWorkspaceActions",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.pasteWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.renameWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.deleteWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.duplicateWorkspaceNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createCentralFolder",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createCentralFile",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.createCentralSkill",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.quickCentralCrud",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.smartCentralActions",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.pasteCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyWorkspaceBetweenAgents",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyCentralBetweenAgents",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyWorkspaceGroupBetweenAgents",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyCentralGroupBetweenAgents",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.installSkills",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.downloadSkillManagerSkill"
+        },
+        {
+          "command": "skillBridge.toggleWorkspaceAgentAutoSync"
+        },
+        {
+          "command": "skillBridge.viewSkillHistory",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.showWorkspaceWarningReasons",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.showCentralWarningReasons",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.switchTreeFilter",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.renameCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.deleteCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.duplicateCentralNode",
+          "when": "false"
+        }
       ]
     },
     "keybindings": [
@@ -571,12 +1493,20 @@
         "key": "ctrl+alt+a"
       },
       {
+        "command": "skillBridge.copyBetweenAgents",
+        "key": "ctrl+alt+c"
+      },
+      {
         "command": "skillBridge.openTransferExplorer",
         "key": "ctrl+alt+x"
       },
       {
         "command": "skillBridge.hydrateProject",
         "key": "ctrl+alt+h"
+      },
+      {
+        "command": "skillBridge.downloadCentralSkill",
+        "key": "ctrl+alt+d"
       },
       {
         "command": "skillBridge.switchTreeFilter",
@@ -591,10 +1521,14 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit && node esbuild.cjs && npm run vendor:core",
+    "build:production": "tsc -p tsconfig.json --noEmit && node esbuild.cjs --production && npm run vendor:core",
     "watch": "tsc -p tsconfig.json --watch",
+    "vendor:core": "node ../../scripts/vendor-vscode-core.cjs",
     "check:manifest": "node scripts/check-manifest.cjs",
-    "package:vsix": "npx vsce package --allow-missing-repository --no-dependencies"
+    "check:runtime-deps": "node ../../scripts/check-vscode-runtime-deps.cjs",
+    "check:vsix-runtime-deps": "node ../../scripts/check-vsix-runtime-deps.cjs",
+    "package:vsix": "npm run build:production && npm run check:manifest && npm run check:runtime-deps && npx vsce package --allow-missing-repository --no-dependencies && npm run check:vsix-runtime-deps"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0"

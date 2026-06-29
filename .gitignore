@@ -1,15 +1,15 @@
 ﻿node_modules/
 *.log
 dist/
-apps/desktop/dist/
-apps/desktop/dist-renderer/
 packages/core/dist/
 release/
 
 .agents
 .claude
+.skillbridge/
 skill_workspace.json
 skills-lock.json
+SKILL_GROUP.md
 
 # Internal planning docs
 AGENTS.md
@@ -19,3 +19,7 @@ PLAN.md
 
 # VSCode extension build output
 *.vsix
+
+# Local benchmark outputs
+.benchmarks/*
+!.benchmarks/.gitkeep
