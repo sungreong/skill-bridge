@@ -24,6 +24,7 @@ export function buildEmbeddedCommonTools(language: UiLanguage, side: "workspace"
         description: sectionDescription(sectionId, language),
         icon: sectionIcon(sectionId),
         count: sectionChildren.length,
+        collapsed: true,
         children: sectionChildren
       };
     })
@@ -59,6 +60,7 @@ export function buildEmbeddedCommonTools(language: UiLanguage, side: "workspace"
       : localize(language, "Central actions", "중앙 기능"),
     icon: "tools",
     count: children.length,
+    collapsed: true,
     children
   };
 }

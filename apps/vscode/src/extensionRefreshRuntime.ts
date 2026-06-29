@@ -1,4 +1,20 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import * as vscode from "vscode";
+import {
+  collectFiles,
+  getSkillRootCandidates,
+  INSTRUCTION_ROOT,
+  INSTRUCTION_RULE_DIRS,
+  NESTED_INSTRUCTION_FILES,
+  ROOT_INSTRUCTION_FILES
+} from "./skillPaths";
+import {
+  GROUP_MARKDOWN_FILE,
+  GROUP_STORE_FILE,
+  LEGACY_GROUP_STORE_FILE,
+  SKILL_BRIDGE_STATE_DIR
+} from "./storagePaths";
 import type { InstructionFile, ProjectPreset, SelectionGroup, SkillAssetTreeMeta, SkillFile, SkillTreeFilterMode, SkillTreeNode, ToolType } from "./types";
 import { normalizeSourceTab, type SourceTab } from "./extensionSupport";
 
@@ -36,6 +52,23 @@ type TimedResult<T> = {
   ms: number;
 };
 
+const WATCHER_REFRESH_DEBOUNCE_MS = 750;
+const WATCHED_FILE_STAT_CONCURRENCY = 24;
+
+type RefreshContext = {
+  workspacePath: string;
+  centralRepoPath: string;
+  agents: ToolType[];
+};
+
+type WatchedFileInput = {
+  ctx: RefreshContext;
+  workspaceSkills: SkillFile[];
+  centralSkills: SkillFile[];
+  workspaceInstructions: InstructionFile[];
+  centralInstructions: InstructionFile[];
+};
+
 async function measureAsync<T>(operation: () => Promise<T>): Promise<TimedResult<T>> {
   const startedAt = Date.now();
   const value = await operation();
@@ -52,6 +85,164 @@ function hasStateRepairChanges(result: SkillBridgeStateRepairResult): boolean {
     || side.migratedGroupFile
     || side.migratedSkillsLock
   );
+}
+
+function normalizeFsKey(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function normalizeRel(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function isWithinPath(basePath: string, targetPath: string): boolean {
+  const relative = path.relative(path.resolve(basePath), path.resolve(targetPath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function watchedFileSignature(stat: { size: number; mtimeMs: number; ctimeMs: number }): string {
+  return `${stat.size}:${Math.trunc(stat.mtimeMs)}:${Math.trunc(stat.ctimeMs)}`;
+}
+
+function isManagedInstructionPath(relativePath: string): boolean {
+  const normalized = normalizeRel(relativePath).toLowerCase();
+  if (!normalized || normalized.includes("..") || path.isAbsolute(normalized)) return false;
+  if (ROOT_INSTRUCTION_FILES.some((item) => item.toLowerCase() === normalized)) return true;
+  if (NESTED_INSTRUCTION_FILES.some((item) => item.toLowerCase() === normalized)) return true;
+  for (const ruleDir of INSTRUCTION_RULE_DIRS) {
+    const prefix = `${ruleDir.dir.toLowerCase()}/`;
+    if (!normalized.startsWith(prefix)) continue;
+    const rest = normalized.slice(prefix.length);
+    if (!rest || rest.includes("/")) return false;
+    return ruleDir.extensions.has(path.extname(rest).toLowerCase());
+  }
+  return false;
+}
+
+function isRelevantRefreshFile(absolutePath: string, ctx: RefreshContext): boolean {
+  const resolved = path.resolve(absolutePath);
+  for (const side of ["workspace", "central"] as const) {
+    const basePath = side === "workspace" ? ctx.workspacePath : ctx.centralRepoPath;
+    for (const tool of ctx.agents) {
+      for (const root of getSkillRootCandidates(basePath, tool, side)) {
+        const skillsRoot = path.join(root, "skills");
+        if (isWithinPath(skillsRoot, resolved)) return true;
+      }
+    }
+  }
+
+  const workspaceRel = normalizeRel(path.relative(ctx.workspacePath, resolved));
+  if (isManagedInstructionPath(workspaceRel)) return true;
+
+  const centralInstructionsRoot = path.join(ctx.centralRepoPath, INSTRUCTION_ROOT);
+  if (isWithinPath(centralInstructionsRoot, resolved)) {
+    const centralRel = normalizeRel(path.relative(centralInstructionsRoot, resolved));
+    const [, ...instructionParts] = centralRel.split("/");
+    if (instructionParts.length > 0 && isManagedInstructionPath(instructionParts.join("/"))) return true;
+  }
+
+  return relevantGroupFilePaths(ctx).some((item) => normalizeFsKey(item) === normalizeFsKey(resolved));
+}
+
+function relevantGroupFilePaths(ctx: RefreshContext): string[] {
+  return [ctx.workspacePath, ctx.centralRepoPath].flatMap((basePath) => [
+    path.join(basePath, SKILL_BRIDGE_STATE_DIR, GROUP_STORE_FILE),
+    path.join(basePath, SKILL_BRIDGE_STATE_DIR, GROUP_MARKDOWN_FILE),
+    path.join(basePath, LEGACY_GROUP_STORE_FILE),
+    path.join(basePath, GROUP_MARKDOWN_FILE)
+  ]);
+}
+
+async function statWatchedFile(absolutePath: string): Promise<[string, string] | null> {
+  const stat = await fs.stat(absolutePath).catch(() => null);
+  if (!stat?.isFile()) return null;
+  return [normalizeFsKey(absolutePath), watchedFileSignature(stat)];
+}
+
+async function buildWatchedFileStats(input: WatchedFileInput): Promise<Map<string, string>> {
+  const files = [
+    ...input.workspaceSkills.map((item) => item.absolutePath),
+    ...input.centralSkills.map((item) => item.absolutePath),
+    ...input.workspaceInstructions.map((item) => item.absolutePath),
+    ...input.centralInstructions.map((item) => item.absolutePath),
+    ...relevantGroupFilePaths(input.ctx)
+  ];
+  const stats = new Map<string, string>();
+  await mapWithConcurrency(files, WATCHED_FILE_STAT_CONCURRENCY, async (filePath) => {
+    const entry = await statWatchedFile(filePath);
+    if (entry) stats.set(entry[0], entry[1]);
+  });
+  return stats;
+}
+
+function hasWatchedFileUnder(stats: Map<string, string>, directoryPath: string): boolean {
+  const directoryKey = normalizeFsKey(directoryPath);
+  const prefix = directoryKey.endsWith(path.sep) ? directoryKey : `${directoryKey}${path.sep}`;
+  for (const key of stats.keys()) {
+    if (key === directoryKey || key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+async function collectCurrentStatsUnderDirectory(directoryPath: string, ctx: RefreshContext): Promise<Map<string, string>> {
+  const stats = new Map<string, string>();
+  const relativeFiles = await collectFiles(directoryPath, directoryPath).catch(() => []);
+  await mapWithConcurrency(relativeFiles, WATCHED_FILE_STAT_CONCURRENCY, async (relativePath) => {
+    const absolutePath = path.join(directoryPath, ...normalizeRel(relativePath).split("/"));
+    if (!isRelevantRefreshFile(absolutePath, ctx)) return;
+    const entry = await statWatchedFile(absolutePath);
+    if (entry) stats.set(entry[0], entry[1]);
+  });
+  return stats;
+}
+
+function watchedDirectoryChanged(previous: Map<string, string>, current: Map<string, string>, directoryPath: string): boolean {
+  const directoryKey = normalizeFsKey(directoryPath);
+  const prefix = directoryKey.endsWith(path.sep) ? directoryKey : `${directoryKey}${path.sep}`;
+  for (const [key, signature] of previous) {
+    if (key !== directoryKey && !key.startsWith(prefix)) continue;
+    if (current.get(key) !== signature) return true;
+  }
+  for (const key of current.keys()) {
+    if (!previous.has(key)) return true;
+  }
+  return false;
+}
+
+async function hasWatchedPathChanged(stats: Map<string, string>, ctx: RefreshContext, absolutePath: string): Promise<boolean> {
+  const key = normalizeFsKey(absolutePath);
+  const stat = await fs.stat(absolutePath).catch(() => null);
+  if (!stat) return stats.has(key) || hasWatchedFileUnder(stats, absolutePath);
+  if (stat.isDirectory()) {
+    if (!hasWatchedFileUnder(stats, absolutePath)) {
+      const current = await collectCurrentStatsUnderDirectory(absolutePath, ctx);
+      return current.size > 0;
+    }
+    const current = await collectCurrentStatsUnderDirectory(absolutePath, ctx);
+    return watchedDirectoryChanged(stats, current, absolutePath);
+  }
+  if (!stat.isFile()) return false;
+  if (!stats.has(key) && !isRelevantRefreshFile(absolutePath, ctx)) return false;
+  return stats.get(key) !== watchedFileSignature(stat);
+}
+
+async function mapWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  mapper: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  const cappedLimit = Math.max(1, Math.min(limit, items.length));
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await mapper(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: cappedLimit }, () => worker()));
 }
 
 export function createExtensionRefreshRuntime(args: {
@@ -142,6 +333,9 @@ export function createExtensionRefreshRuntime(args: {
     refreshTimer: NodeJS.Timeout | null;
     refreshInFlight: Promise<ExtensionRefreshResult> | null;
     refreshAgainRequested: boolean;
+    scheduledRefreshAfterInFlight: boolean;
+    watchedFileStats: Map<string, string>;
+    pendingWatcherPaths: Set<string>;
     refreshGeneration: number;
     watchers: vscode.FileSystemWatcher[];
     watcherKey: string | null;
@@ -158,6 +352,9 @@ export function createExtensionRefreshRuntime(args: {
     refreshTimer: NodeJS.Timeout | null;
     refreshInFlight: Promise<ExtensionRefreshResult> | null;
     refreshAgainRequested: boolean;
+    scheduledRefreshAfterInFlight: boolean;
+    watchedFileStats: Map<string, string>;
+    pendingWatcherPaths: Set<string>;
     refreshGeneration: number;
     watchers: vscode.FileSystemWatcher[];
     watcherKey: string | null;
@@ -170,6 +367,9 @@ export function createExtensionRefreshRuntime(args: {
     refreshTimer: null,
     refreshInFlight: null,
     refreshAgainRequested: false,
+    scheduledRefreshAfterInFlight: false,
+    watchedFileStats: new Map(),
+    pendingWatcherPaths: new Set(),
     refreshGeneration: 0,
     watchers: [],
     watcherKey: null,
@@ -182,8 +382,54 @@ export function createExtensionRefreshRuntime(args: {
     if (runtime.refreshTimer) clearTimeout(runtime.refreshTimer);
     runtime.refreshTimer = setTimeout(() => {
       runtime.refreshTimer = null;
+      if (runtime.refreshInFlight) {
+        if (runtime.scheduledRefreshAfterInFlight) return;
+        runtime.scheduledRefreshAfterInFlight = true;
+        void runtime.refreshInFlight.finally(() => {
+          runtime.scheduledRefreshAfterInFlight = false;
+          scheduleRefresh(runtime);
+        });
+        return;
+      }
       void refresh(runtime);
-    }, 150);
+    }, WATCHER_REFRESH_DEBOUNCE_MS);
+  };
+
+  const watcherRefreshNeeded = async (runtime: RuntimeState): Promise<boolean> => {
+    const pendingPaths = [...runtime.pendingWatcherPaths];
+    runtime.pendingWatcherPaths.clear();
+    if (pendingPaths.length === 0) return false;
+    if (runtime.watchedFileStats.size === 0) return true;
+    const ctx = args.resolveContext();
+    for (const pendingPath of pendingPaths) {
+      if (await hasWatchedPathChanged(runtime.watchedFileStats, ctx, pendingPath)) return true;
+    }
+    return false;
+  };
+
+  const runScheduledWatcherRefresh = async (runtime: RuntimeState): Promise<void> => {
+    runtime.refreshTimer = null;
+    if (runtime.refreshInFlight) {
+      if (runtime.scheduledRefreshAfterInFlight) return;
+      runtime.scheduledRefreshAfterInFlight = true;
+      void runtime.refreshInFlight.finally(() => {
+        runtime.scheduledRefreshAfterInFlight = false;
+        scheduleWatcherRefresh(runtime);
+      });
+      return;
+    }
+    if (!(await watcherRefreshNeeded(runtime))) return;
+    await refresh(runtime);
+  };
+
+  const scheduleWatcherRefresh = (runtime: RuntimeState, uri?: vscode.Uri): void => {
+    if (uri) runtime.pendingWatcherPaths.add(uri.fsPath);
+    if (runtime.refreshTimer) clearTimeout(runtime.refreshTimer);
+    runtime.refreshTimer = setTimeout(() => {
+      void runScheduledWatcherRefresh(runtime).catch((error) => {
+        args.output.appendLine(`[Refresh:watcher] ${args.toUserError(error)}`);
+      });
+    }, WATCHER_REFRESH_DEBOUNCE_MS);
   };
 
   const flushWorkspaceAutoSync = async (runtime: RuntimeState): Promise<void> => {
@@ -367,7 +613,7 @@ export function createExtensionRefreshRuntime(args: {
       runtime.watchers = args.createWatchers(ctx.workspacePath, ctx.centralRepoPath);
       runtime.watcherKey = watcherKey;
       const onWatcherEvent = (uri: vscode.Uri): void => {
-        scheduleRefresh(runtime);
+        scheduleWatcherRefresh(runtime, uri);
         const changed = args.getWorkspaceChangedSkillFolder(uri.fsPath);
         if (!changed) return;
         if (!args.getAutoSyncWorkspaceAgents().includes(changed.tool)) return;
@@ -380,12 +626,21 @@ export function createExtensionRefreshRuntime(args: {
       }
     }
     const watchersMs = Date.now() - watchersStartedAt;
+    const fingerprintStartedAt = Date.now();
+    runtime.watchedFileStats = await buildWatchedFileStats({
+      ctx,
+      workspaceSkills: args.state.workspaceSkills,
+      centralSkills: args.state.centralSkills,
+      workspaceInstructions: args.state.workspaceInstructions,
+      centralInstructions: args.state.centralInstructions
+    });
+    const fingerprintMs = Date.now() - fingerprintStartedAt;
 
     const groupCounts = args.countGroups(args.filterGroupsByTab(args.state.groups, args.state.activeTab));
     const totalMs = Date.now() - startedAt;
     args.output.appendLine(`[Refresh] completed in ${totalMs}ms - workspace=${args.state.workspaceSkills.length}, central=${args.state.centralSkills.length}`);
     args.output.appendLine(`[Refresh:visible] completed=${totalMs}ms workspace=${args.state.workspaceSkills.length} central=${args.state.centralSkills.length}`);
-    args.output.appendLine(`[Refresh:timing] scan=${scanMs}ms inventory+meta=${inventoryMs}ms providers+diagnostics=${providerMs}ms groups+chrome=${groupsMs}ms watchers=${watchersMs}ms`);
+    args.output.appendLine(`[Refresh:timing] scan=${scanMs}ms inventory+meta=${inventoryMs}ms providers+diagnostics=${providerMs}ms groups+chrome=${groupsMs}ms watchers=${watchersMs}ms fingerprint=${fingerprintMs}ms`);
     args.output.appendLine(
       `[Refresh:scan] workspaceSkills=${workspaceSkillScan.ms}ms/${workspaceSkills.length} centralSkills=${centralSkillScan.ms}ms/${centralSkills.length} workspaceInstructions=${workspaceInstructionScan.ms}ms/${workspaceInstructions.length} centralInstructions=${centralInstructionScan.ms}ms/${centralInstructions.length} agents=${ctx.agents.length}`
     );
@@ -427,7 +682,7 @@ export function createExtensionRefreshRuntime(args: {
   };
 
   const registerWatcherEvent = (runtime: RuntimeState, uri: vscode.Uri): void => {
-    scheduleRefresh(runtime);
+    scheduleWatcherRefresh(runtime, uri);
     const changed = args.getWorkspaceChangedSkillFolder(uri.fsPath);
     if (!changed) return;
     if (!args.getAutoSyncWorkspaceAgents().includes(changed.tool)) return;

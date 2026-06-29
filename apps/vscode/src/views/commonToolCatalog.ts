@@ -130,14 +130,6 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Set Central Library Folder", "중앙 라이브러리 폴더 설정"),
-        description: localize(language, "Common · choose library path", "공통 · 라이브러리 경로 선택"),
-        command: "skillBridge.setPersonalHome",
-        icon: "home"
-      },
-      {
-        kind: "command",
-        sectionId: "common",
         label: localize(language, "Reset Central Library Folder", "중앙 라이브러리 폴더 초기화"),
         description: localize(language, "Common · restore default path", "공통 · 기본 경로 복원"),
         command: "skillBridge.resetPersonalHome",
@@ -197,6 +189,14 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
         description: localize(language, "Central only · library files", "중앙 전용 · 라이브러리 파일"),
         command: "skillBridge.openCentralFolder",
         icon: "folder-library"
+      },
+      {
+        kind: "command",
+        sectionId: "central",
+        label: localize(language, "Set Central Library Folder", "중앙 라이브러리 폴더 설정"),
+        description: localize(language, "Central only · choose library path", "중앙 전용 · 라이브러리 경로 선택"),
+        command: "skillBridge.setPersonalHome",
+        icon: "home"
       },
       {
         kind: "command",

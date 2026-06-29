@@ -85,19 +85,22 @@ export async function diagnoseEnvironment(args: {
       return;
     }
 
-    const picked = await vscode.window.showInformationMessage(
-      warned.length > 0
-        ? args.tr(
-          `Skill Bridge setup check completed: ${warned.length} warning. Results were written to the Output panel.`,
-          `Skill Bridge 환경 진단 완료: 주의 ${warned.length}개. 결과를 Output 패널에 기록했습니다.`
-        )
-        : args.tr(
-          "Skill Bridge setup check completed: the current Central environment is usable.",
-          "Skill Bridge 환경 진단 완료: 현재 Central 환경을 사용할 수 있습니다."
-        ),
-      args.tr("Repair User-Home Central", "사용자 홈 Central 재정비"),
-      args.tr("Show Results", "결과 보기")
-    );
+    const message = warned.length > 0
+      ? args.tr(
+        `Skill Bridge setup check completed: ${warned.length} warning. Results were written to the Output panel.`,
+        `Skill Bridge 환경 진단 완료: 주의 ${warned.length}개. 결과를 Output 패널에 기록했습니다.`
+      )
+      : args.tr(
+        "Skill Bridge setup check completed: the current Central environment is usable.",
+        "Skill Bridge 환경 진단 완료: 현재 Central 환경을 사용할 수 있습니다."
+      );
+    const picked = shouldOfferUserHomeRepair(diagnosis)
+      ? await vscode.window.showInformationMessage(
+        message,
+        args.tr("Repair User-Home Central", "사용자 홈 Central 재정비"),
+        args.tr("Show Results", "결과 보기")
+      )
+      : await vscode.window.showInformationMessage(message, args.tr("Show Results", "결과 보기"));
     if (picked === args.tr("Repair User-Home Central", "사용자 홈 Central 재정비")) {
       await repairUserCentralHome({
         ...args.repairUserCentralHomeArgs,
@@ -218,11 +221,24 @@ async function repairUserCentralHome(args: {
   output: vscode.OutputChannel;
   compactPathForDisplay: (value: string) => string;
 }): Promise<void> {
+  const defaultCentralExists = await pathExists(args.diagnosis.defaultCentralPath);
+  const alreadyUsingDefault = isSamePath(args.diagnosis.centralRepoPath, args.diagnosis.defaultCentralPath);
+  const confirmMessage = alreadyUsingDefault
+    ? args.tr(
+      `Ensure the current user-home Central library folders and set this path globally?\n\n${args.diagnosis.defaultCentralPath}`,
+      `현재 사용자 홈 Central 폴더 구조를 확인하고 이 경로를 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
+    )
+    : defaultCentralExists
+      ? args.tr(
+        `Use the existing user-home Central library and set it globally?\n\n${args.diagnosis.defaultCentralPath}`,
+        `이미 있는 사용자 홈 Central을 사용하고 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
+      )
+      : args.tr(
+        `Create a user-home Central library and set it globally?\n\n${args.diagnosis.defaultCentralPath}`,
+        `사용자 홈 Central을 만들고 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
+      );
   const ok = await vscode.window.showWarningMessage(
-    args.tr(
-      `Create a user-home Central library and set it globally?\n\n${args.diagnosis.defaultCentralPath}`,
-      `사용자 홈 Central을 만들고 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
-    ),
+    confirmMessage,
     { modal: true },
     args.tr("Repair", "복구")
   );
@@ -242,6 +258,23 @@ async function repairUserCentralHome(args: {
     `User-home Central repaired: ${args.compactPathForDisplay(result.centralRepoPath)}`,
     `사용자 홈 Central 복구 완료: ${args.compactPathForDisplay(result.centralRepoPath)}`
   ));
+}
+
+function shouldOfferUserHomeRepair(diagnosis: EnvironmentDiagnosis): boolean {
+  if (!isSamePath(diagnosis.centralRepoPath, diagnosis.defaultCentralPath)) return true;
+  return diagnosis.checks.some((check) =>
+    check.status === "fail"
+    || (check.status === "warn" && (check.label === "Central" || check.label.includes("Central layout") || check.label.includes("Central 레이아웃")))
+  );
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function writeEnvironmentDiagnosis(output: vscode.OutputChannel, diagnosis: EnvironmentDiagnosis, tr: TranslatePair): void {
@@ -415,6 +448,14 @@ function isPathUnderHome(targetPath: string): boolean {
   const normalizedTarget = process.platform === "win32" ? target.toLowerCase() : target;
   const relative = path.relative(normalizedHome, normalizedTarget);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isSamePath(left: string, right: string): boolean {
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  return process.platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
 }
 
 function platformAdvice(tr: TranslatePair): string[] {

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SkillFile, SkillTreeNode, ToolType } from "./types";
+import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 
 type TranslationFn = (english: string, korean: string) => string;
@@ -7,6 +7,13 @@ type TranslationFn = (english: string, korean: string) => string;
 type PresetOverviewRow = ProjectPreset & {
   missingCount: number;
   agentCount: number;
+};
+
+type SkillGroupSection = {
+  id: string;
+  name: string;
+  tool: ToolType;
+  targets: GroupTarget[];
 };
 
 export function createProjectPresetOverviewTools(args: {
@@ -18,6 +25,7 @@ export function createProjectPresetOverviewTools(args: {
     centralRepoPath: string;
     centralSkills: SkillFile[];
     centralProjectPresets: ProjectPreset[];
+    groups: SelectionGroup[];
   };
   loadProjectPresets: (centralRepoPath: string) => Promise<{ file: ProjectPresetsFile; migratedFromLegacy: boolean }>;
   saveProjectPresets: (centralRepoPath: string, file: ProjectPresetsFile) => Promise<void>;
@@ -43,7 +51,13 @@ export function createProjectPresetOverviewTools(args: {
       );
       const render = async (): Promise<void> => {
         panel.title = args.tr("Project Presets", "프로젝트 프리셋");
-        panel.webview.html = renderProjectPresetOverviewHtml(buildRows(args), args.state.centralSkills, activePresetId, args.getUiLanguage());
+        panel.webview.html = renderProjectPresetOverviewHtml(
+          buildRows(args),
+          args.state.centralSkills,
+          args.state.groups.filter((group) => group.side === "central"),
+          activePresetId,
+          args.getUiLanguage()
+        );
       };
       panel.webview.onDidReceiveMessage(async (message: unknown) => {
         try {
@@ -99,10 +113,11 @@ async function savePresetFromOverview(
 ): Promise<string> {
   const name = message.name.trim();
   if (!name) throw new Error(args.tr("Enter a preset name.", "프리셋 이름을 입력하세요."));
-  const targets = message.targets
+  const parsedTargets = message.targets
     .map(parseTargetKey)
     .filter((target): target is GroupTarget => target !== null)
     .filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
+  const targets = [...new Map(parsedTargets.map((target) => [targetKey(target), target])).values()];
   if (targets.length === 0) throw new Error(args.tr("Choose at least one Central skill.", "Central 스킬을 하나 이상 선택하세요."));
   const loaded = await args.loadProjectPresets(args.state.centralRepoPath);
   const previous = loaded.file.presets.find((preset) => preset.id === message.id);
@@ -128,7 +143,13 @@ async function savePresetFromOverview(
   return id;
 }
 
-function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkills: SkillFile[], activePresetId: string, language: UiLanguage): string {
+function renderProjectPresetOverviewHtml(
+  rows: PresetOverviewRow[],
+  centralSkills: SkillFile[],
+  centralGroups: SelectionGroup[],
+  activePresetId: string,
+  language: UiLanguage
+): string {
   const isKo = language === "ko";
   const t = (en: string, ko: string): string => isKo ? ko : en;
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -136,7 +157,12 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
   const activeTargets = new Set((active?.targets ?? []).map(targetKey));
   const skillOptions = centralSkillFolderTargets(centralSkills);
   const rowHtml = rows.map((row) => renderPresetRow(row, t, row.id === active?.id)).join("");
-  const optionHtml = skillOptions.map((target) => renderSkillOption(target, activeTargets.has(targetKey(target)))).join("");
+  const activeSkillTool = getInitialSkillTool(skillOptions, activeTargets);
+  const skillSections = buildSkillGroupSections(skillOptions, centralGroups);
+  const activeGroupIds = getInitialGroupIdsByTool(skillSections, activeTargets);
+  const optionHtml = renderSkillGroupSections(skillSections, activeTargets, activeSkillTool, activeGroupIds);
+  const skillTabHtml = renderSkillToolTabs(skillOptions, activeTargets, activeSkillTool);
+  const groupTabHtml = renderSkillGroupTabs(skillSections, activeTargets, activeSkillTool, activeGroupIds, t);
   const filterHtml = renderFilterOptions(rows, t);
   const missingText = active && active.missingCount > 0
     ? `<span class="badge danger">${active.missingCount} ${esc(t("missing", "누락"))}</span>`
@@ -152,6 +178,7 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
     .wrap { height: 100vh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; padding: 10px; overflow: hidden; }
     .top, .toolbar, .actions, .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .top { justify-content: space-between; }
+    .toolbar { align-items: flex-end; }
     h1, h2 { margin: 0; font-size: 15px; line-height: 1.35; }
     .summary, .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
     input, textarea, select { width: 100%; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 5px; padding: 6px 8px; }
@@ -163,20 +190,32 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
     button:disabled { opacity: .55; cursor: not-allowed; }
     button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .toolbar-field { min-width: 180px; max-width: 220px; }
-    .toolbar-search { flex: 1 1 260px; }
+    .toolbar-search { flex: 1 1 260px; align-self: flex-end; min-height: 30px; }
     .content { min-height: 0; display: grid; grid-template-columns: minmax(280px, 36%) minmax(0, 1fr); gap: 10px; }
-    .panel { min-height: 0; border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; }
+    .panel { min-height: 0; border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: hidden; }
+    .table-panel { overflow: auto; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
     th, td { text-align: left; padding: 7px; border-top: 1px solid var(--vscode-panel-border); vertical-align: top; }
     th { position: sticky; top: 0; z-index: 1; color: var(--vscode-descriptionForeground); background: var(--vscode-sideBar-background); font-weight: 500; }
     .preset-row { cursor: pointer; }
     .preset-row.active { background: color-mix(in oklab, var(--vscode-editor-background) 84%, var(--vscode-focusBorder) 16%); }
     .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .detail { display: grid; gap: 9px; padding: 10px; }
+    .detail { height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto auto auto auto auto auto minmax(0, 1fr); gap: 9px; padding: 10px; overflow: hidden; }
     .form-grid { display: grid; grid-template-columns: minmax(160px, 240px) minmax(220px, 1fr); gap: 8px; align-items: start; }
     .badge { display: inline-flex; min-height: 20px; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; font-size: 11px; white-space: nowrap; }
     .badge.danger { color: var(--vscode-errorForeground); border-color: var(--vscode-errorForeground); }
-    .skills { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+    .skill-tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .skill-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; }
+    .skill-tab.active { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border-color: var(--vscode-button-background); }
+    .skill-tab-count { color: inherit; opacity: .74; font-size: 11px; }
+    .group-tabs { display: flex; gap: 6px; align-items: center; align-content: flex-start; flex-wrap: wrap; max-height: 74px; min-height: 0; overflow: auto; padding-right: 2px; }
+    .group-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; min-height: 26px; }
+    .group-tab.active { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border-color: var(--vscode-button-background); }
+    .group-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .group-tab-count { flex: 0 0 auto; color: inherit; opacity: .74; font-size: 11px; }
+    .skills { min-height: 0; overflow: auto; padding-right: 2px; }
+    .skill-group { min-height: 0; }
+    .skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
     .skill { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 7px; }
     .skill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status-bar { min-height: 24px; display: flex; align-items: center; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; }
@@ -198,7 +237,7 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
       <button data-language type="button">${esc(isKo ? "English" : "한국어")}</button>
     </div>
     <main class="content">
-      <section class="panel">
+      <section class="panel table-panel">
         <table>
           <thead><tr><th>${esc(t("Preset", "프리셋"))}</th><th style="width:74px">${esc(t("Skills", "스킬"))}</th><th style="width:74px">${esc(t("Agents", "에이전트"))}</th></tr></thead>
           <tbody>${rowHtml || `<tr><td colspan="3"><div class="muted">${esc(t("No project presets yet.", "프로젝트 프리셋이 아직 없습니다."))}</div></td></tr>`}</tbody>
@@ -226,6 +265,8 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
             <span>${esc(t("Applied", "적용"))}: ${esc(formatTimestamp(active.lastAppliedAt, t))}</span>
           </div>
           <div class="muted">${esc(t("Choose Central skills included in this preset.", "이 프리셋에 포함할 Central 스킬을 선택하세요."))}</div>
+          ${skillTabHtml}
+          ${groupTabHtml}
           <div class="skills">${optionHtml || `<div class="muted">${esc(t("No Central skills available.", "사용 가능한 Central 스킬이 없습니다."))}</div>`}</div>
         </article>` : `<div class="detail muted">${esc(t("Create a project preset to start.", "프로젝트 프리셋을 만들어 시작하세요."))}</div>`}
       </section>
@@ -249,6 +290,16 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
     document.body.addEventListener("click", (event)=>{
       const target = event.target;
       if(!(target instanceof Element)) return;
+      const skillTab = target.closest("[data-skill-tab]");
+      if(skillTab instanceof HTMLElement){
+        setSkillTab(skillTab.getAttribute("data-skill-tab") || "");
+        return;
+      }
+      const groupTab = target.closest("[data-group-tab]");
+      if(groupTab instanceof HTMLElement){
+        setActiveGroup(groupTab.getAttribute("data-tool") || "", groupTab.getAttribute("data-group-tab") || "");
+        return;
+      }
       const row = target.closest("[data-preset-id]");
       if(row instanceof HTMLElement) post({type:"select", id: row.getAttribute("data-preset-id") || ""}, "${esc(t("Opening preset...", "프리셋 여는 중..."))}");
       const apply = target.closest("[data-apply]");
@@ -288,6 +339,37 @@ function renderProjectPresetOverviewHtml(rows: PresetOverviewRow[], centralSkill
     }
     search?.addEventListener("input", applyFilters);
     filter?.addEventListener("change", applyFilters);
+    function setSkillTab(tool){
+      if(!tool) return;
+      document.querySelectorAll("[data-skill-tab]").forEach((tab)=>{
+        const isActive = tab.getAttribute("data-skill-tab") === tool;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      document.querySelectorAll("[data-group-tab]").forEach((tab)=>{
+        tab.classList.toggle("hidden", tab.getAttribute("data-tool") !== tool);
+      });
+      const activeGroup = findActiveGroup(tool);
+      setActiveGroup(tool, activeGroup);
+    }
+    function findActiveGroup(tool){
+      const tabs = Array.from(document.querySelectorAll("[data-group-tab]")).filter((tab)=>tab.getAttribute("data-tool") === tool);
+      const active = tabs.find((tab)=>tab.classList.contains("active"));
+      return (active || tabs[0])?.getAttribute("data-group-tab") || "";
+    }
+    function setActiveGroup(tool, groupId){
+      if(!tool || !groupId) return;
+      document.querySelectorAll("[data-group-tab]").forEach((tab)=>{
+        if(tab.getAttribute("data-tool") !== tool) return;
+        const isActive = tab.getAttribute("data-tool") === tool && tab.getAttribute("data-group-tab") === groupId;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      document.querySelectorAll(".skill-group[data-tool]").forEach((group)=>{
+        const isVisible = group.getAttribute("data-tool") === tool && group.getAttribute("data-group-id") === groupId;
+        group.classList.toggle("hidden", !isVisible);
+      });
+    }
   </script>
 </body>
 </html>`;
@@ -316,9 +398,124 @@ function formatTimestamp(value: string | undefined, t: (en: string, ko: string) 
   return value?.trim() ? value : t("Never", "없음");
 }
 
+function renderSkillGroupSections(
+  sections: SkillGroupSection[],
+  activeTargets: Set<string>,
+  activeTool: ToolType | null,
+  activeGroupIds: Map<ToolType, string>
+): string {
+  return sections.map((section) => {
+    const visible = section.tool === activeTool && section.id === activeGroupIds.get(section.tool);
+    return `<section class="skill-group ${visible ? "" : "hidden"}" data-tool="${escAttr(section.tool)}" data-group-id="${escAttr(section.id)}">
+      <div class="skill-grid">${section.targets.map((target) => renderSkillOption(target, activeTargets.has(targetKey(target)))).join("")}</div>
+    </section>`;
+  }).join("");
+}
+
+function renderSkillGroupTabs(
+  sections: SkillGroupSection[],
+  activeTargets: Set<string>,
+  activeTool: ToolType | null,
+  activeGroupIds: Map<ToolType, string>,
+  t: (en: string, ko: string) => string
+): string {
+  const tabs = sections.map((section) => {
+    const selectedCount = section.targets.filter((target) => activeTargets.has(targetKey(target))).length;
+    const countText = `${selectedCount}/${section.targets.length}`;
+    const name = section.id.startsWith("ungrouped:") ? t("Ungrouped", "그룹 없음") : section.name;
+    const active = section.tool === activeTool && section.id === activeGroupIds.get(section.tool);
+    const visible = section.tool === activeTool;
+    return `<button class="group-tab ${active ? "active" : ""} ${visible ? "" : "hidden"}" data-tool="${escAttr(section.tool)}" data-group-tab="${escAttr(section.id)}" type="button" role="tab" aria-selected="${active ? "true" : "false"}" title="${escAttr(name)}"><span class="group-tab-name">${esc(name)}</span><span class="group-tab-count">${esc(countText)}</span></button>`;
+  }).join("");
+  return tabs ? `<div class="group-tabs" role="tablist">${tabs}</div>` : "";
+}
+
+function renderSkillToolTabs(targets: GroupTarget[], activeTargets: Set<string>, activeTool: ToolType | null): string {
+  const counts = new Map<ToolType, { total: number; selected: number }>();
+  for (const target of targets) {
+    const previous = counts.get(target.tool) ?? { total: 0, selected: 0 };
+    counts.set(target.tool, {
+      total: previous.total + 1,
+      selected: previous.selected + (activeTargets.has(targetKey(target)) ? 1 : 0)
+    });
+  }
+  const tabs = ALL_TOOLS
+    .filter((tool) => counts.has(tool))
+    .map((tool) => {
+      const count = counts.get(tool);
+      if (!count) return "";
+      const active = tool === activeTool;
+      const countText = count.selected > 0 ? `${count.selected}/${count.total}` : `${count.total}`;
+      return `<button class="skill-tab ${active ? "active" : ""}" data-skill-tab="${escAttr(tool)}" type="button" role="tab" aria-selected="${active ? "true" : "false"}"><span>${esc(tool)}</span><span class="skill-tab-count">${esc(countText)}</span></button>`;
+    })
+    .join("");
+  return tabs ? `<div class="skill-tabs" role="tablist">${tabs}</div>` : "";
+}
+
+function getInitialSkillTool(targets: GroupTarget[], activeTargets: Set<string>): ToolType | null {
+  const selectedTool = ALL_TOOLS.find((tool) => targets.some((target) => target.tool === tool && activeTargets.has(targetKey(target))));
+  if (selectedTool) return selectedTool;
+  return ALL_TOOLS.find((tool) => targets.some((target) => target.tool === tool)) ?? null;
+}
+
+function getInitialGroupIdsByTool(sections: SkillGroupSection[], activeTargets: Set<string>): Map<ToolType, string> {
+  const activeIds = new Map<ToolType, string>();
+  for (const tool of ALL_TOOLS) {
+    const toolSections = sections.filter((section) => section.tool === tool);
+    const selectedSection = toolSections.find((section) => section.targets.some((target) => activeTargets.has(targetKey(target))));
+    const firstSection = selectedSection ?? toolSections[0];
+    if (firstSection) activeIds.set(tool, firstSection.id);
+  }
+  return activeIds;
+}
+
 function renderSkillOption(target: GroupTarget, checked: boolean): string {
   const key = targetKey(target);
-  return `<label class="skill"><input type="checkbox" data-target="${escAttr(key)}" ${checked ? "checked" : ""} /><span title="${escAttr(key)}">${esc(key)}</span></label>`;
+  return `<label class="skill"><input type="checkbox" data-target="${escAttr(key)}" ${checked ? "checked" : ""} /><span title="${escAttr(key)}">${esc(target.relativePath)}</span></label>`;
+}
+
+function buildSkillGroupSections(targets: GroupTarget[], groups: SelectionGroup[]): SkillGroupSection[] {
+  const sections: SkillGroupSection[] = [];
+  for (const tool of ALL_TOOLS) {
+    const toolTargets = targets.filter((target) => target.tool === tool);
+    if (toolTargets.length === 0) continue;
+    const assignedKeys = new Set<string>();
+    const toolGroups = groups.filter((group) => group.targets.some((target) => target.tool === tool));
+    for (const group of toolGroups) {
+      const groupTargets = toolTargets.filter((target) =>
+        !assignedKeys.has(targetKey(target)) && group.targets.some((groupTarget) => isTargetInGroup(groupTarget, target))
+      );
+      if (groupTargets.length === 0) continue;
+      for (const target of groupTargets) assignedKeys.add(targetKey(target));
+      sections.push({
+        id: group.id,
+        name: group.name,
+        tool,
+        targets: groupTargets.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+      });
+    }
+    const ungroupedTargets = toolTargets.filter((target) => !assignedKeys.has(targetKey(target)));
+    if (ungroupedTargets.length > 0) {
+      sections.push({
+        id: `ungrouped:${tool}`,
+        name: "Ungrouped",
+        tool,
+        targets: ungroupedTargets.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+      });
+    }
+  }
+  return sections;
+}
+
+function isTargetInGroup(groupTarget: GroupTarget, skillTarget: GroupTarget): boolean {
+  if (groupTarget.tool !== skillTarget.tool) return false;
+  return skillFolderRelativePath(groupTarget.relativePath) === skillTarget.relativePath;
+}
+
+function skillFolderRelativePath(relativePath: string): string | null {
+  const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts[0] !== "skills" || !parts[1]) return null;
+  return `skills/${parts[1]}`;
 }
 
 function centralSkillFolderTargets(files: SkillFile[]): GroupTarget[] {
@@ -385,6 +582,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isToolType(value: string): value is ToolType {
   return (["claude", "codex", "gemini", "cursor", "antigravity", "agents"] as string[]).includes(value);
 }
+const ALL_TOOLS: ToolType[] = ["agents", "claude", "codex", "gemini", "cursor", "antigravity"];
 function esc(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
