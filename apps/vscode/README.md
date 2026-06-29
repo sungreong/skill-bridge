@@ -2,13 +2,50 @@
 
 Skill Bridge is the VS Code extension for browsing, reviewing, and moving AI agent skills between the current Workspace and a configured Central skill library.
 
-![Skill Bridge compare view showing Workspace and Central skills side by side](resources/screenshots/skill-library-compare.png)
+Use it when a good skill should become reusable, but the user still needs a clear checkpoint before files move.
 
-Skill Bridge gives users a clear review point before skill files move. Workspace and Central skills stay side by side, changed files are marked, and group or NPX library workflows remain visible without turning the extension into a Git GUI or skill runner.
+- **Find:** browse Workspace skills, Central skills, groups, and Project Presets together.
+- **Review:** inspect changed files, risk hints, and diffs before overwriting anything.
+- **Apply:** bring selected skills, groups, or presets into the current project.
+- **Update with agents:** install the bundled Skill Manager skill so an AI agent can help find, import, and refresh the right skills from the Central library.
 
-| Downloadable libraries | Reusable groups |
-| --- | --- |
-| ![NPX Skill Library for downloading and updating reusable skill packs](resources/screenshots/npx-skill-library.png) | ![Group Overview for managing reusable skill groups](resources/screenshots/group-overview.png) |
+![Skill Bridge compare view showing Workspace and Central skills side by side](https://raw.githubusercontent.com/sungreong/skill-bridge/main/apps/vscode/resources/screenshots/skill-library-compare.png)
+
+_The Skill Library keeps Workspace and Central state side by side, so users can choose what should move._
+
+Skill Bridge gives users a visible review point before skill files move. Changed files are marked, reusable groups and NPX library workflows stay close at hand, and Project Presets make repeated project setup easier without turning the extension into a Git GUI or skill runner.
+
+The extension also includes a bundled **Skill Manager** skill. After installing it into a workspace, users can ask their AI agent to search the Central library, choose the skills they need, bring them into `.agents`, `.codex`, `.claude`, `.gemini`, `.cursor`, or `.antigravity`, and update those skills later through the same reviewed Skill Bridge workflow.
+
+## Library, Groups, And Presets
+
+Reusable skills can come from downloaded packs, curated groups, or project-ready presets. All three resolve back to the same Central library, so users can refresh a project later without remembering which folders were copied by hand.
+
+### Downloadable Libraries
+
+![NPX Skill Library for downloading and updating reusable skill packs](https://raw.githubusercontent.com/sungreong/skill-bridge/main/apps/vscode/resources/screenshots/npx-skill-library.png)
+
+The NPX Skill Library view lists installed external skill packs and lets users download or update reusable skills before bringing them into a workspace.
+
+### Reusable Groups
+
+![Group Overview for managing reusable skill groups](https://raw.githubusercontent.com/sungreong/skill-bridge/main/apps/vscode/resources/screenshots/group-overview.png)
+
+Groups collect related skills across agents, making repeat transfers easier to inspect and apply.
+
+### Project Presets
+
+![Project Presets screen for selecting reusable project setup templates](https://raw.githubusercontent.com/sungreong/skill-bridge/main/apps/vscode/resources/screenshots/project-presets.png)
+
+Project Presets turn a known-good skill set into a reusable setup template for new workspaces.
+
+## Review Before Transfer
+
+Transfer Review is the safety checkpoint for promote and import flows. It separates new, changed, same, deleted, and conflict-like rows; shows sensitive-content and script hints; and keeps apply actions explicit.
+
+![Transfer Review showing selected rows, risk hints, and expected apply results](https://raw.githubusercontent.com/sungreong/skill-bridge/main/apps/vscode/resources/screenshots/transfer.png)
+
+_Users see the expected result before applying selected rows._
 
 ## Core Concepts
 
@@ -17,6 +54,7 @@ Skill Bridge gives users a clear review point before skill files move. Workspace
 - **Transfer Review:** review screen used before copying changed files between Workspace and Central.
 - **Groups:** named skill selections saved for repeated transfer or organization.
 - **Project Presets:** Central-only project setup templates saved in `.skillbridge/project-presets.json`.
+- **Bundled Skill Manager:** an included `skill-manager` skill that helps AI agents find, import, organize, and update skills through Skill Bridge.
 - **Quick Tools:** configurable command shortcuts shown at the top of the tree.
 
 ## Tree Views
@@ -93,6 +131,7 @@ The extension supports:
 - copying skills between agent folders
 - installing skills with the NPX skill flow
 - downloading or updating Central skills from a source
+- installing the bundled Skill Manager skill so an AI agent can help pull selected skills from Central and refresh them later
 
 ## Workspace Quality Gate
 

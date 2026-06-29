@@ -1,6 +1,6 @@
 {
-  "displayName": "Skill Bridge",
-  "description": "Browse, group, and sync workspace skills with a central library.",
+  "displayName": "Skill Bridge: AI Skill Library",
+  "description": "Browse, review, import, and update AI agent skills from a central library.",
   "config.title": "Skill Bridge",
   "config.centralRepoPath.description": "Personal central skill library path. Supports ${userHome}, ${workspaceFolder}, ${workspaceRoot}, and ${env:NAME} variables.",
   "config.defaultAgents.description": "Agent folders managed by Skill Bridge.",

@@ -2,14 +2,28 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.13",
-  "private": true,
-  "publisher": "skill-bridge",
+  "version": "0.2.15",
+  "publisher": "datanewbie-labs",
+  "license": "MIT",
+  "icon": "resources/skill-bridge-icon.png",
+  "keywords": [
+    "ai",
+    "agent",
+    "skills",
+    "codex",
+    "claude",
+    "gemini",
+    "cursor"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/sungreong/skill-bridge.git",
     "directory": "apps/vscode"
   },
+  "bugs": {
+    "url": "https://github.com/sungreong/skill-bridge/issues"
+  },
+  "homepage": "https://github.com/sungreong/skill-bridge#readme",
   "engines": {
     "vscode": "^1.90.0"
   },

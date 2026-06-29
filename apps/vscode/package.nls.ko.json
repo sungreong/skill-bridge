@@ -1,6 +1,6 @@
 {
-  "displayName": "Skill Bridge",
-  "description": "작업공간 스킬을 둘러보고 그룹화하고 중앙 라이브러리와 동기화합니다.",
+  "displayName": "Skill Bridge: AI Skill Library",
+  "description": "중앙 라이브러리에서 AI 에이전트 스킬을 검토하고 가져오고 업데이트합니다.",
   "config.title": "Skill Bridge",
   "config.centralRepoPath.description": "개인 중앙 스킬 라이브러리 경로입니다. ${userHome}, ${workspaceFolder}, ${workspaceRoot}, ${env:NAME} 변수를 지원합니다.",
   "config.defaultAgents.description": "Skill Bridge가 관리하는 에이전트 폴더입니다.",

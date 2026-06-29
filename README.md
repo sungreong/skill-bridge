@@ -1,24 +1,53 @@
 # Skill Bridge
 
-Skill Bridge is a VS Code extension workspace for managing AI agent skill assets between a local workspace and a central Git-backed skill library.
+한국어 문서는 [README.ko.md](README.ko.md)에서 볼 수 있습니다.
 
-It is built for users who want to reuse good agent skills without learning Git commands or manually copying folders between projects.
+[Install from Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=datanewbie-labs.skill-bridge-vscode)
+
+Skill Bridge is a VS Code extension for managing AI agent skill assets between a local workspace and a central Git-backed skill library.
+
+It is built for users who want to reuse good agent skills without learning Git commands or manually copying folders between projects. A skill can start in one Workspace, move into Central after review, and come back into another project as a selected skill, group, or Project Preset.
+
+**The core loop is simple.**
+
+- **Find:** see Workspace and Central skills, groups, and presets together.
+- **Review:** inspect changed files, risk hints, and diffs before anything is overwritten.
+- **Apply:** bring selected skills or a Project Preset into the current project.
+- **Update with agents:** install the bundled Skill Manager skill so an AI agent can help find, import, and refresh the right skills from Central.
 
 ![Skill Bridge compare view showing Workspace and Central skills side by side](apps/vscode/resources/screenshots/skill-library-compare.png)
 
+_Compare Workspace and Central side by side before sending or bringing skills._
+
 ## Why It Matters
 
-Skill Bridge makes reusable agent skills visible, reviewable, and movable. Users can see what is only in the Workspace, what already exists in Central, what changed, and which skills are safe to send or bring back before any file is overwritten.
+Agent skills improve as projects evolve, but they are easy to lose in local folders or overwrite by accident. Skill Bridge makes reusable skills visible, reviewable, and movable without becoming a skill runner, Git GUI, or auto-merge tool.
 
-| Library review | Skill groups |
-| --- | --- |
-| ![NPX Skill Library for downloading and updating reusable skill packs](apps/vscode/resources/screenshots/npx-skill-library.png) | ![Group Overview for managing reusable skill groups](apps/vscode/resources/screenshots/group-overview.png) |
+Users can see what is only in the Workspace, what already exists in Central, what changed, and which skills are safe to send or bring back before any file is overwritten.
+
+The extension also includes a bundled **Skill Manager** skill. Once installed into a workspace, users can ask their AI agent to search the Central library, pick the skills needed for the project, bring them into `.agents`, `.codex`, `.claude`, `.gemini`, `.cursor`, or `.antigravity`, and update those skills later through the same reviewed Skill Bridge workflow.
+
+| Downloadable skills | Reusable groups | Project presets |
+| --- | --- | --- |
+| ![NPX Skill Library for downloading and updating reusable skill packs](apps/vscode/resources/screenshots/npx-skill-library.png) | ![Group Overview for managing reusable skill groups](apps/vscode/resources/screenshots/group-overview.png) | ![Project Presets screen for selecting reusable project setup templates](apps/vscode/resources/screenshots/project-presets.png) |
+
+_Organize external skill packs, curated groups, and repeatable project setups around the Central library._
 
 ## Example: Bring The Right Skills Into This Project
 
 > "Download the skills I need, then bring the right ones into this project."
 
-Skill Bridge turns that into a reviewable workflow: find reusable skills in Central, download or update them, apply a Project Preset or selected skills to the current Workspace, and leave the result as a `Preset: <name>` group so the project can be refreshed later.
+Skill Bridge turns that into a reviewable workflow:
+
+1. Compare Central and Workspace status in **Skill Library**.
+2. Download or update reusable packs in **NPX Skill Library**.
+3. Pick a project-ready bundle in **Project Presets**.
+4. Check new files, changed files, risk hints, and expected results in **Transfer Review**.
+5. Apply the selected rows and keep the result as a `Preset: <name>` group for later refreshes.
+
+![Transfer Review showing selected rows, risk hints, and expected apply results](apps/vscode/resources/screenshots/transfer.png)
+
+_Transfer Review provides the last visible checkpoint before files move._
 
 ## What It Does
 
@@ -28,21 +57,25 @@ Skill Bridge turns that into a reviewable workflow: find reusable skills in Cent
 - Compare Workspace and Central versions before copying.
 - Manage reusable skill groups.
 - Create and apply Project Presets for repeatable project setup.
+- Install the bundled Skill Manager skill so an AI agent can help search Central, import selected skills, organize groups, and update them later.
 - Inspect quality warnings such as missing `SKILL.md`, sensitive-looking text, scripts, broken links, and workspace-specific paths.
 - Customize the Skill Bridge tree so beginners see only core tools while advanced users can enable more actions.
 
 Skill Bridge is not a skill runner, not a Git GUI, and not an automatic merge tool. It is a skill asset bridge.
 
-## Current Highlights
+## Current Highlights At A Glance
 
-- **Two-side tree:** Workspace Skills and Central Skills are shown side by side in the Skill Bridge view.
-- **Transfer review:** Promote and import flows open a review screen before overwriting changed files.
-- **Project Presets:** Central stores reusable project setup templates in `.skillbridge/project-presets.json`; applying a preset creates or updates a Workspace group named `Preset: <name>`.
-- **Quick Tools management:** The default tree shows only core actions. Use `Manage Quick Tools` to choose which tool commands appear.
-- **Multi-agent view:** `Switch Agent View` supports selecting one or more agents, and the selection is remembered in `skillBridge.visibleAgents`.
-- **Quality diagnostics:** actionable warnings appear in the native VS Code Problems view.
-- **Agent instructions:** root instruction files and supported rule files are shown separately from transferable skill folders.
-- **Central-first library:** Central groups and presets are stored in the configured Central library folder.
+| Capability | Why it matters |
+| --- | --- |
+| Two-side tree | Compare Workspace Skills and Central Skills in one view. |
+| Transfer review | Confirm changed files before promoting or importing skills. |
+| Project Presets | Store repeatable project setups in `.skillbridge/project-presets.json`. |
+| Bundled Skill Manager | Let an AI agent help find, import, organize, and update skills from Central. |
+| Quick Tools management | Keep the tree beginner-friendly while allowing advanced commands. |
+| Multi-agent view | Manage multiple agent roots with the same review model. |
+| Quality diagnostics | Surface actionable warnings in the native VS Code Problems view. |
+| Agent instructions | Show instruction files separately from transferable skill folders. |
+| Central-first library | Keep groups and presets in the configured Central library folder. |
 
 ## Supported Layouts
 
