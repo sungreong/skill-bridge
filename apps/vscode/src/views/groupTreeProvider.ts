@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
 import { ALL_AGENTS, type GroupTreeNode, type SelectionGroup, type ToolType } from "../types";
+import type { UiLanguage } from "../uiLanguage";
+
+function localize(language: UiLanguage, english: string, korean: string): string {
+  return language === "ko" ? korean : english;
+}
 
 export class GroupTreeItem extends vscode.TreeItem {
-  constructor(public readonly node: GroupTreeNode) {
+  constructor(public readonly node: GroupTreeNode, private readonly language: UiLanguage) {
     super(
       node.label,
       node.kind === "root"
@@ -17,19 +22,21 @@ export class GroupTreeItem extends vscode.TreeItem {
         ? `skillBridge.groupTool.${node.side}`
         : `skillBridge.group.${node.side}`;
     if (node.kind === "group") {
-      this.description = node.selected ? `선택됨 · ${node.count}개` : `${node.count}개`;
-      this.tooltip = `${node.label} (${node.count}개)`;
+      this.description = node.selected
+        ? localize(this.language, `selected · targets ${node.count}`, `선택됨 · 대상 ${node.count}`)
+        : localize(this.language, `targets ${node.count}`, `대상 ${node.count}`);
+      this.tooltip = localize(this.language, `${node.label} (targets ${node.count})`, `${node.label} (대상 ${node.count})`);
     } else if (node.kind === "tool") {
-      this.description = `${node.count}개`;
-      this.tooltip = `${node.label} 그룹`;
+      this.description = localize(this.language, `groups ${node.count}`, `그룹 ${node.count}`);
+      this.tooltip = localize(this.language, `${node.label} groups ${node.count}`, `${node.label} 그룹 ${node.count}`);
     } else {
-      this.description = `${node.count}개`;
-      this.tooltip = node.label;
+      this.description = localize(this.language, `groups ${node.count}`, `그룹 ${node.count}`);
+      this.tooltip = localize(this.language, `${node.label} (groups ${node.count})`, `${node.label} (그룹 ${node.count})`);
     }
     if (node.kind === "group") {
       this.command = {
         command: "skillBridge.selectGroup",
-        title: "Select Group",
+        title: localize(this.language, "Select Group", "그룹 선택"),
         arguments: [node]
       };
     }
@@ -46,14 +53,21 @@ export class GroupTreeProvider implements vscode.TreeDataProvider<GroupTreeItem>
   private roots: GroupTreeNode[] = [];
   private groups: SelectionGroup[] = [];
   private selectedGroupId: string | null = null;
+  private language: UiLanguage = "en";
 
   readonly onDidChangeTreeData = this.emitter.event;
 
   constructor(private readonly sideFilter?: "workspace" | "central") {}
 
+  setLanguage(language: UiLanguage): void {
+    this.language = language;
+    this.roots = buildGroupTree(this.groups, this.sideFilter, this.language);
+    this.emitter.fire(undefined);
+  }
+
   setGroups(groups: SelectionGroup[]): void {
     this.groups = groups;
-    this.roots = buildGroupTree(groups, this.sideFilter);
+    this.roots = buildGroupTree(groups, this.sideFilter, this.language);
     this.emitter.fire(undefined);
   }
 
@@ -71,7 +85,7 @@ export class GroupTreeProvider implements vscode.TreeDataProvider<GroupTreeItem>
   }
 
   getChildren(element?: GroupTreeItem): GroupTreeItem[] {
-    if (!element) return this.roots.map((node) => new GroupTreeItem(node));
+    if (!element) return this.roots.map((node) => new GroupTreeItem(node, this.language));
     if (element.node.kind === "root") {
       const buckets = buildToolBuckets(this.groups, element.node.side);
       const orderedTools: Array<ToolType | "mixed"> = [...ALL_AGENTS, "mixed"];
@@ -83,10 +97,10 @@ export class GroupTreeProvider implements vscode.TreeDataProvider<GroupTreeItem>
             id: `${element.node.side}:${tool}`,
             kind: "tool",
             side: element.node.side,
-            label: toolLabel(element.node.side, tool),
+            label: toolLabel(tool, this.language),
             count: groups.length,
             tool
-          });
+          }, this.language);
         });
     }
     if (element.node.kind === "tool") {
@@ -102,7 +116,7 @@ export class GroupTreeProvider implements vscode.TreeDataProvider<GroupTreeItem>
           label: group.name,
           count: group.targets.length,
           selected: group.id === this.selectedGroupId
-        })
+        }, this.language)
       );
     }
     return [];
@@ -111,7 +125,8 @@ export class GroupTreeProvider implements vscode.TreeDataProvider<GroupTreeItem>
 
 function buildGroupTree(
   groups: SelectionGroup[],
-  sideFilter?: "workspace" | "central"
+  sideFilter?: "workspace" | "central",
+  language: UiLanguage = "en"
 ): GroupTreeNode[] {
   if (sideFilter) {
     const buckets = buildToolBuckets(groups, sideFilter);
@@ -124,7 +139,7 @@ function buildGroupTree(
           id: `${sideFilter}:${tool}`,
           kind: "tool" as const,
           side: sideFilter,
-          label: toolLabel(sideFilter, tool),
+          label: toolLabel(tool, language),
           count: sideGroups.length,
           tool
         };
@@ -139,14 +154,14 @@ function buildGroupTree(
       id: "workspace",
       kind: "root",
       side: "workspace",
-      label: "Workspace 그룹",
+      label: localize(language, "Workspace Groups", "작업공간 그룹"),
       count: workspaceCount
     },
     {
       id: "central",
       kind: "root",
       side: "central",
-      label: "Central 그룹",
+      label: localize(language, "Central Groups", "중앙 그룹"),
       count: centralCount
     }
   ];
@@ -168,7 +183,7 @@ function buildToolBuckets(
   return map;
 }
 
-function toolLabel(side: "workspace" | "central", tool: ToolType | "mixed"): string {
-  if (tool === "mixed") return "혼합";
+function toolLabel(tool: ToolType | "mixed", language: UiLanguage): string {
+  if (tool === "mixed") return localize(language, "Mixed", "혼합");
   return tool;
 }

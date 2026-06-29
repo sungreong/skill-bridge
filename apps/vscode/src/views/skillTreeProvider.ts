@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type {
   GroupTreeNode,
   InstructionFile,
+  ProjectPreset,
   SelectionGroup,
   SkillAssetTreeMeta,
   SkillFile,
@@ -10,15 +11,18 @@ import type {
   SkillTreeNode,
   ToolType
 } from "../types";
+import { localize, type UiLanguage } from "../uiLanguage";
+import { buildEmbeddedCommonTools } from "./embeddedCommonTools";
+import { buildPresetRoot } from "./projectPresetTree";
 
-type SourceTab = "all" | ToolType;
+type SourceTab = "all" | ToolType[];
 
 export class SkillTreeItem extends vscode.TreeItem {
-  constructor(public readonly node: SkillTreeNode, commandId: string) {
+  constructor(public readonly node: SkillTreeNode, commandId: string, private readonly language: UiLanguage) {
     super(node.label, collapsibleStateOf(node));
     this.contextValue = resolveContextValue(node);
-    this.description = resolveDescription(node);
-    this.tooltip = resolveTooltip(node);
+    this.description = resolveDescription(node, this.language);
+    this.tooltip = resolveTooltip(node, this.language);
 
     if ((node.kind === "group" || node.kind === "skillGroup") && node.groupId) {
       const payload: GroupTreeNode = {
@@ -31,13 +35,24 @@ export class SkillTreeItem extends vscode.TreeItem {
       };
       this.command = {
         command: "skillBridge.selectGroup",
-        title: "Select Group",
+        title: localize(this.language, "Select Group", "그룹 선택"),
         arguments: [payload]
       };
-    } else if (node.kind === "file" || node.kind === "folder" || node.kind === "instructionFile") {
+    } else if (node.kind === "preset" && node.presetId) {
+      this.command = {
+        command: "skillBridge.openProjectPresetOverview",
+        title: localize(this.language, "Open Project Preset Overview", "프로젝트 프리셋 Overview 열기"),
+        arguments: [node]
+      };
+    } else if (node.kind === "toolCommand" && node.commandId) {
+      this.command = {
+        command: node.commandId,
+        title: node.label
+      };
+    } else if (node.kind === "file" || node.kind === "folder" || node.kind === "instructionFolder" || node.kind === "instructionFile") {
       this.command = {
         command: commandId,
-        title: "Select",
+        title: localize(this.language, "Select", "선택"),
         arguments: [node]
       };
     }
@@ -51,12 +66,17 @@ function collapsibleStateOf(node: SkillTreeNode): vscode.TreeItemCollapsibleStat
   if (node.kind === "skillGroup") {
     return node.children.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
   }
-  if (node.kind === "file" || node.kind === "instructionFile" || node.kind === "group") return vscode.TreeItemCollapsibleState.None;
-  if (node.kind === "groupRoot" || node.kind === "groupTool") return vscode.TreeItemCollapsibleState.Expanded;
+  if (node.kind === "file" || node.kind === "instructionFile" || node.kind === "group" || node.kind === "preset" || node.kind === "toolCommand") return vscode.TreeItemCollapsibleState.None;
+  if (node.kind === "toolSection") return node.collapsed ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
+  if (node.kind === "groupRoot" || node.kind === "groupTool" || node.kind === "presetRoot") return vscode.TreeItemCollapsibleState.Expanded;
   return vscode.TreeItemCollapsibleState.Collapsed;
 }
 
 function resolveContextValue(node: SkillTreeNode): string {
+  if (node.kind === "toolSection") return "skillBridge.embeddedToolSection";
+  if (node.kind === "toolCommand") return "skillBridge.embeddedToolCommand";
+  if (node.kind === "presetRoot") return "skillBridge.presetRoot.central";
+  if (node.kind === "preset") return "skillBridge.preset.central";
   if (node.kind === "skillGroup") {
     return node.groupId
       ? `skillBridge.group.${node.side === "central" ? "central" : "workspace"}`
@@ -66,6 +86,7 @@ function resolveContextValue(node: SkillTreeNode): string {
   if (node.kind === "groupTool") return `skillBridge.groupTool.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "group") return `skillBridge.group.${node.side === "central" ? "central" : "workspace"}`;
   if (node.kind === "instructionRoot") return "skillBridge.instructionRoot";
+  if (node.kind === "instructionFolder") return "skillBridge.instructionFolder";
   if (node.kind === "instructionFile") return "skillBridge.instructionFile";
   if (node.kind === "file") return "skillBridge.file";
   const rel = node.relativePath.replace(/\\/g, "/");
@@ -74,58 +95,103 @@ function resolveContextValue(node: SkillTreeNode): string {
   return "skillBridge.folder";
 }
 
-function resolveDescription(node: SkillTreeNode): string | undefined {
+function resolveDescription(node: SkillTreeNode, language: UiLanguage): string | undefined {
+  if (node.kind === "toolSection" || node.kind === "toolCommand") {
+    return node.description;
+  }
   if (node.kind === "file") {
-    return `${node.tool} · ${shortParentPath(node.relativePath)}`;
+    return `${node.tool} · ${shortParentPath(node.relativePath, language)}`;
   }
   if (node.kind === "instructionFile") {
-    return shortParentPath(node.relativePath);
+    return shortParentPath(node.relativePath, language);
+  }
+  if (node.kind === "instructionFolder") {
+    return localize(language, `files ${countFiles(node)}`, `파일 ${countFiles(node)}`);
   }
   if (node.kind === "skillGroup") {
-    return node.selected ? `선택됨 · ${node.count ?? 0}개` : `${node.count ?? 0}개`;
+    return node.selected
+      ? localize(language, `selected · skills ${node.count ?? 0}`, `선택됨 · 스킬 ${node.count ?? 0}`)
+      : localize(language, `skills ${node.count ?? 0}`, `스킬 ${node.count ?? 0}`);
   }
   if (node.kind === "group") {
-    return node.selected ? `선택됨 · ${node.count ?? 0}개` : `${node.count ?? 0}개`;
+    return node.selected
+      ? localize(language, `selected · targets ${node.count ?? 0}`, `선택됨 · 대상 ${node.count ?? 0}`)
+      : localize(language, `targets ${node.count ?? 0}`, `대상 ${node.count ?? 0}`);
   }
   if (node.kind === "groupTool" || node.kind === "groupRoot") {
-    return `${node.count ?? 0}개`;
+    return localize(language, `groups ${node.count ?? 0}`, `그룹 ${node.count ?? 0}`);
+  }
+  if (node.kind === "presetRoot") {
+    return localize(language, `presets ${node.count ?? 0}`, `프리셋 ${node.count ?? 0}`);
+  }
+  if (node.kind === "preset") {
+    const skills = node.count ?? 0;
+    const agents = node.assetFileCount ?? 0;
+    return localize(language, `skills ${skills} · agents ${agents}`, `스킬 ${skills} · 에이전트 ${agents}`);
   }
   if (node.relativePath === "") {
-    return `${countFiles(node)}개`;
+    return formatSkillTreeCount(node, language);
+  }
+  if (node.relativePath === "skills") {
+    return formatSkillTreeCount(node, language);
   }
   if (node.assetStatus) {
     const labels: Record<string, string> = {
-      same: "동일",
-      new: "새 스킬",
-      changed: "변경",
-      missingSkillMd: "SKILL.md 없음",
-      risk: "주의",
-      recent: "최근"
+      same: localize(language, "same", "동일"),
+      new: localize(language, "new skill", "새 스킬"),
+      changed: localize(language, "changed", "변경"),
+      missingSkillMd: localize(language, "missing SKILL.md", "SKILL.md 없음"),
+      risk: localize(language, "warning", "경고"),
+      recent: localize(language, "recent", "최근")
     };
     return labels[node.assetStatus] ?? node.assetStatus;
   }
   return undefined;
 }
 
-function resolveTooltip(node: SkillTreeNode): string {
+function resolveTooltip(node: SkillTreeNode, language: UiLanguage): string {
+  if (node.kind === "toolSection" || node.kind === "toolCommand") {
+    return node.description ? `${node.label} - ${node.description}` : node.label;
+  }
   if (node.kind === "skillGroup") {
-    const label = node.groupId ? "그룹" : "미분류";
-    return `${label}: ${node.label} (${node.count ?? 0}개)`;
+    const label = node.groupId
+      ? localize(language, "Group", "그룹")
+      : localize(language, "Ungrouped", "미분류");
+    return localize(language, `${label}: ${node.label} (skills ${node.count ?? 0})`, `${label}: ${node.label} (스킬 ${node.count ?? 0})`);
   }
   if (node.kind === "group") {
-    return `${node.label} (${node.count ?? 0}개)`;
+    return localize(language, `${node.label} (targets ${node.count ?? 0})`, `${node.label} (대상 ${node.count ?? 0})`);
   }
   if (node.kind === "groupTool") {
-    return `${node.label} 그룹`;
+    return localize(language, `${node.label} groups ${node.count ?? 0}`, `${node.label} 그룹 ${node.count ?? 0}`);
   }
   if (node.kind === "groupRoot") {
-    return node.side === "central" ? "Central 그룹" : "Workspace 그룹";
+    return localize(
+      language,
+      `${node.side === "central" ? "Central" : "Workspace"} groups ${node.count ?? 0}`,
+      `${node.side === "central" ? "중앙" : "작업공간"} 그룹 ${node.count ?? 0}`
+    );
+  }
+  if (node.kind === "presetRoot") {
+    return localize(language, `Central project presets ${node.count ?? 0}`, `중앙 프로젝트 프리셋 ${node.count ?? 0}`);
+  }
+  if (node.kind === "preset") {
+    return node.description
+      ? `${node.label}\n${node.description}`
+      : localize(language, `Project preset: ${node.label}`, `프로젝트 프리셋: ${node.label}`);
   }
   if (node.kind === "instructionRoot") {
-    return `${node.side === "central" ? "Central" : "Workspace"} instruction files (${node.count ?? countFiles(node)}개)`;
+    return localize(
+      language,
+      `${node.side === "central" ? "Central" : "Workspace"} instruction files ${node.count ?? countFiles(node)}`,
+      `${node.side === "central" ? "중앙" : "작업공간"} instruction 파일 ${node.count ?? countFiles(node)}`
+    );
+  }
+  if (node.kind === "instructionFolder") {
+    return localize(language, `instruction folder: ${node.relativePath} (files ${countFiles(node)})`, `instruction 폴더: ${node.relativePath} (파일 ${countFiles(node)})`);
   }
   if (node.kind === "instructionFile") {
-    return `instruction/${node.relativePath}`;
+    return `${localize(language, "instructions", "지침")}/${node.relativePath}${node.absolutePath ? `\n${node.absolutePath}` : ""}`;
   }
   const tool = node.tool;
   const rel = node.relativePath;
@@ -133,21 +199,28 @@ function resolveTooltip(node: SkillTreeNode): string {
     ? `\n\n${node.assetWarnings.map((warning) => `- ${warning.message}`).join("\n")}`
     : "";
   const asset = node.assetStatus
-    ? `\n상태: ${assetStatusLabel(node.assetStatus)} · 파일 ${node.assetFileCount ?? countFiles(node)}개`
+    ? localize(
+      language,
+      `\nStatus: ${assetStatusLabel(node.assetStatus, language)} · files ${node.assetFileCount ?? countFiles(node)}`,
+      `\n상태: ${assetStatusLabel(node.assetStatus, language)} · 파일 ${node.assetFileCount ?? countFiles(node)}`
+    )
     : "";
   return `${tool}/${rel}${asset}${warnings}`;
 }
 
-function assetStatusLabel(status: SkillAssetTreeMeta["status"]): string {
-  if (status === "same") return "동일";
-  if (status === "new") return "새 스킬";
-  if (status === "changed") return "변경";
-  if (status === "missingSkillMd") return "SKILL.md 없음";
-  if (status === "risk") return "주의";
-  return "최근";
+function assetStatusLabel(status: SkillAssetTreeMeta["status"], language: UiLanguage): string {
+  if (status === "same") return localize(language, "same", "동일");
+  if (status === "new") return localize(language, "new skill", "새 스킬");
+  if (status === "changed") return localize(language, "changed", "변경");
+  if (status === "missingSkillMd") return localize(language, "missing SKILL.md", "SKILL.md 없음");
+  if (status === "risk") return localize(language, "warning", "경고");
+  return localize(language, "recent", "최근");
 }
 
 function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined): vscode.ThemeIcon {
+  if (node.kind === "toolSection" || node.kind === "toolCommand") {
+    return new vscode.ThemeIcon(node.icon ?? "tools");
+  }
   if (node.kind === "skillGroup") {
     if (!node.groupId) return new vscode.ThemeIcon("folder-library");
     return new vscode.ThemeIcon("tag", node.selected ? new vscode.ThemeColor("charts.green") : undefined);
@@ -159,7 +232,10 @@ function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined):
   if (node.kind === "group") {
     return new vscode.ThemeIcon("tag", node.selected ? new vscode.ThemeColor("charts.green") : undefined);
   }
+  if (node.kind === "presetRoot") return new vscode.ThemeIcon("library");
+  if (node.kind === "preset") return new vscode.ThemeIcon("package");
   if (node.kind === "instructionRoot") return new vscode.ThemeIcon("book");
+  if (node.kind === "instructionFolder") return new vscode.ThemeIcon("folder-library", color);
   if (node.kind === "instructionFile") return new vscode.ThemeIcon("markdown", color);
   if (node.kind === "folder") {
     if (node.assetStatus === "missingSkillMd" || node.assetStatus === "risk") {
@@ -179,18 +255,19 @@ function resolveIcon(node: SkillTreeNode, color: vscode.ThemeColor | undefined):
   return new vscode.ThemeIcon("file", color);
 }
 
-function shortParentPath(relativePath: string): string {
+function shortParentPath(relativePath: string, language: UiLanguage): string {
   const normalized = relativePath.replace(/\\/g, "/");
   const parent = normalized.includes("/") ? normalized.slice(0, normalized.lastIndexOf("/")) : "";
-  if (!parent) return "root";
+  if (!parent) return localize(language, "root", "루트");
   if (parent.length <= 24) return parent;
   return `...${parent.slice(-24)}`;
 }
 
 function countFiles(node: SkillTreeNode): number {
+  if (typeof node.treeFileCount === "number") return node.treeFileCount;
   const seen = new Set<string>();
   const walk = (entry: SkillTreeNode): void => {
-    if (entry.kind === "file") {
+    if (entry.kind === "file" || entry.kind === "instructionFile") {
       seen.add(`${entry.tool}:${entry.relativePath}`);
       return;
     }
@@ -198,6 +275,25 @@ function countFiles(node: SkillTreeNode): number {
   };
   walk(node);
   return seen.size;
+}
+
+function countSkillFolders(node: SkillTreeNode): number {
+  if (typeof node.treeSkillCount === "number") return node.treeSkillCount;
+  const seen = new Set<string>();
+  const walk = (entry: SkillTreeNode): void => {
+    const skillFolder = getSkillFolderRelativePath(entry.relativePath);
+    if (skillFolder) seen.add(`${entry.tool}:${skillFolder}`);
+    for (const child of entry.children) walk(child);
+  };
+  walk(node);
+  return seen.size;
+}
+
+function formatSkillTreeCount(node: SkillTreeNode, language: UiLanguage): string {
+  const skillCount = countSkillFolders(node);
+  const fileCount = countFiles(node);
+  if (skillCount === 0) return localize(language, `files ${fileCount}`, `파일 ${fileCount}`);
+  return localize(language, `skills ${skillCount} · files ${fileCount}`, `스킬 ${skillCount} · 파일 ${fileCount}`);
 }
 
 export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem> {
@@ -208,11 +304,15 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   private skills: SkillFile[] = [];
   private instructions: InstructionFile[] = [];
   private groups: SelectionGroup[] = [];
+  private projectPresets: ProjectPreset[] = [];
   private selectedGroupId: string | null = null;
   private activeTab: SourceTab = "all";
   private assetMeta = new Map<string, SkillAssetTreeMeta>();
   private missingSkillFolders: Array<{ tool: ToolType; relativePath: string }> = [];
   private filterMode: SkillTreeFilterMode = "all";
+  private language: UiLanguage = "en";
+  private batchDepth = 0;
+  private needsRebuild = false;
 
   readonly onDidChangeTreeData = this.emitter.event;
 
@@ -221,44 +321,79 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
     private readonly side: "workspace" | "central"
   ) {}
 
+  setLanguage(language: UiLanguage): void {
+    this.language = language;
+    this.requestRebuild();
+  }
+
   setSkills(skills: SkillFile[]): void {
     this.skills = skills;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setInstructions(instructions: InstructionFile[]): void {
     this.instructions = instructions;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setGroups(groups: SelectionGroup[]): void {
     this.groups = groups.filter((group) => group.side === this.side);
-    this.rebuild();
+    this.requestRebuild();
+  }
+
+  setProjectPresets(presets: ProjectPreset[]): void {
+    this.projectPresets = this.side === "central" ? presets : [];
+    this.requestRebuild();
   }
 
   setAssetMeta(meta: Map<string, SkillAssetTreeMeta>): void {
     this.assetMeta = meta;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setMissingSkillFolders(folders: Array<{ tool: ToolType; relativePath: string }>): void {
     this.missingSkillFolders = folders;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setFilterMode(filterMode: SkillTreeFilterMode): void {
     this.filterMode = filterMode;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setSelectedGroup(groupId: string | null): void {
     this.selectedGroupId = groupId;
-    this.rebuild();
+    this.requestRebuild();
   }
 
   setActiveTab(tab: SourceTab): void {
     this.activeTab = tab;
-    this.rebuild();
+    this.requestRebuild();
+  }
+
+  updateState(input: {
+    activeTab?: SourceTab;
+    assetMeta?: Map<string, SkillAssetTreeMeta>;
+    filterMode?: SkillTreeFilterMode;
+    groups?: SelectionGroup[];
+    instructions?: InstructionFile[];
+    missingSkillFolders?: Array<{ tool: ToolType; relativePath: string }>;
+    projectPresets?: ProjectPreset[];
+    selectedGroupId?: string | null;
+    skills?: SkillFile[];
+  }): void {
+    this.batch(() => {
+      if (input.activeTab !== undefined) this.activeTab = input.activeTab;
+      if (input.assetMeta !== undefined) this.assetMeta = input.assetMeta;
+      if (input.filterMode !== undefined) this.filterMode = input.filterMode;
+      if (input.groups !== undefined) this.groups = input.groups.filter((group) => group.side === this.side);
+      if (input.instructions !== undefined) this.instructions = input.instructions;
+      if (input.missingSkillFolders !== undefined) this.missingSkillFolders = input.missingSkillFolders;
+      if (input.projectPresets !== undefined) this.projectPresets = this.side === "central" ? input.projectPresets : [];
+      if (input.selectedGroupId !== undefined) this.selectedGroupId = input.selectedGroupId;
+      if (input.skills !== undefined) this.skills = input.skills;
+      this.requestRebuild();
+    });
   }
 
   setHighlight(highlight: Set<string>): void {
@@ -278,7 +413,7 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   getSelectionsFromNode(node: SkillTreeNode | null): SkillSelection[] {
     if (!node) return [];
     if (node.kind === "skillGroup") return flattenFiles([node]);
-    if (node.kind === "group" || node.kind === "groupRoot" || node.kind === "groupTool" || node.kind === "instructionRoot" || node.kind === "instructionFile") return [];
+    if (node.kind === "group" || node.kind === "groupRoot" || node.kind === "groupTool" || node.kind === "presetRoot" || node.kind === "preset" || node.kind === "instructionRoot" || node.kind === "instructionFolder" || node.kind === "instructionFile") return [];
     if (node.kind === "file") {
       if (!node.tool || !node.relativePath) return [];
       return [{ tool: node.tool, relativePath: node.relativePath }];
@@ -313,21 +448,42 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
   }
 
   getChildren(element?: SkillTreeItem): SkillTreeItem[] {
-    if (!element) return this.roots.map((node) => new SkillTreeItem(node, this.commandId));
-    return element.node.children.map((child) => new SkillTreeItem(child, this.commandId));
+    if (!element) return this.roots.map((node) => new SkillTreeItem(node, this.commandId, this.language));
+    return element.node.children.map((child) => new SkillTreeItem(child, this.commandId, this.language));
+  }
+
+  private batch(callback: () => void): void {
+    this.batchDepth += 1;
+    try {
+      callback();
+    } finally {
+      this.batchDepth -= 1;
+      if (this.batchDepth === 0 && this.needsRebuild) {
+        this.needsRebuild = false;
+        this.rebuild();
+      }
+    }
+  }
+
+  private requestRebuild(): void {
+    if (this.batchDepth > 0) {
+      this.needsRebuild = true;
+      return;
+    }
+    this.rebuild();
   }
 
   private rebuild(): void {
     const visibleSkills = this.activeTab === "all"
       ? this.skills
-      : this.skills.filter((item) => item.tool === this.activeTab);
+      : this.skills.filter((item) => sourceTabIncludes(this.activeTab, item.tool));
     const visibleMissing = this.activeTab === "all"
       ? this.missingSkillFolders
-      : this.missingSkillFolders.filter((item) => item.tool === this.activeTab);
+      : this.missingSkillFolders.filter((item) => sourceTabIncludes(this.activeTab, item.tool));
     const visibleGroups = this.activeTab === "all"
       ? this.groups
-      : this.groups.filter((group) => group.targets.some((target) => target.tool === this.activeTab));
-    const visibleInstructions = this.activeTab === "all" || this.activeTab === "agents"
+      : this.groups.filter((group) => group.targets.some((target) => sourceTabIncludes(this.activeTab, target.tool)));
+    const visibleInstructions = this.activeTab === "all" || sourceTabIncludes(this.activeTab, "agents")
       ? this.instructions
       : [];
     const skillRoots = buildSkillTree(
@@ -337,18 +493,52 @@ export class SkillTreeProvider implements vscode.TreeDataProvider<SkillTreeItem>
       this.filterMode,
       this.side,
       visibleGroups,
-      this.selectedGroupId
+      this.selectedGroupId,
+      this.language
     );
-    const instructionRoot = buildInstructionRoot(visibleInstructions, this.side);
-    const groupRoot = buildGroupRoot(visibleGroups, this.side, this.selectedGroupId);
+    const instructionRoot = buildInstructionRoot(visibleInstructions, this.side, this.language);
+    const groupRoot = buildGroupRoot(visibleGroups, this.side, this.selectedGroupId, this.language);
+    const commonToolRoot = buildEmbeddedCommonTools(this.language, this.side);
+    const presetRoot = this.side === "central" ? buildPresetRoot(this.projectPresets, this.language) : null;
     this.roots = [
+      ...(commonToolRoot ? [commonToolRoot] : []),
+      ...(presetRoot ? [presetRoot] : []),
       ...skillRoots,
       ...(instructionRoot ? [instructionRoot] : []),
       ...(groupRoot ? [groupRoot] : [])
     ];
+    annotateTreeCounts(this.roots);
     applyHighlight(this.roots, this.highlight);
     this.emitter.fire(undefined);
   }
+}
+
+function sourceTabIncludes(tab: SourceTab, tool: ToolType): boolean {
+  return tab === "all" || tab.includes(tool);
+}
+
+function annotateTreeCounts(nodes: SkillTreeNode[]): void {
+  for (const node of nodes) annotateTreeCount(node);
+}
+
+function annotateTreeCount(node: SkillTreeNode): { files: Set<string>; skills: Set<string> } {
+  const files = new Set<string>();
+  const skills = new Set<string>();
+  if (node.kind === "file" || node.kind === "instructionFile") {
+    files.add(`${node.tool}:${node.relativePath}`);
+  }
+  const skillFolder = getSkillFolderRelativePath(node.relativePath);
+  if (skillFolder) {
+    skills.add(`${node.tool}:${skillFolder}`);
+  }
+  for (const child of node.children) {
+    const childCounts = annotateTreeCount(child);
+    for (const file of childCounts.files) files.add(file);
+    for (const skill of childCounts.skills) skills.add(skill);
+  }
+  node.treeFileCount = files.size;
+  node.treeSkillCount = skills.size;
+  return { files, skills };
 }
 
 function buildSkillTree(
@@ -358,7 +548,8 @@ function buildSkillTree(
   filterMode: SkillTreeFilterMode,
   side: "workspace" | "central",
   groups: SelectionGroup[],
-  selectedGroupId: string | null
+  selectedGroupId: string | null,
+  language: UiLanguage
 ): SkillTreeNode[] {
   const roots = new Map<string, SkillTreeNode>();
 
@@ -420,7 +611,7 @@ function buildSkillTree(
       warnings: [{
         code: "missing-skill-md" as const,
         severity: "danger" as const,
-        message: "SKILL.md가 없습니다.",
+        message: localize(language, "SKILL.md is missing.", "SKILL.md가 없습니다."),
         relativePath: normalized
       }],
       fileCount: 0,
@@ -444,7 +635,7 @@ function buildSkillTree(
 
   const list = [...roots.values()];
   sortNodes(list);
-  applySkillGroupBuckets(list, side, groups, selectedGroupId);
+  applySkillGroupBuckets(list, side, groups, selectedGroupId, language);
   return list;
 }
 
@@ -452,7 +643,8 @@ function applySkillGroupBuckets(
   roots: SkillTreeNode[],
   side: "workspace" | "central",
   groups: SelectionGroup[],
-  selectedGroupId: string | null
+  selectedGroupId: string | null,
+  language: UiLanguage
 ): void {
   const groupsByTool = new Map<ToolType, SelectionGroup[]>();
   for (const group of groups) {
@@ -510,16 +702,22 @@ function applySkillGroupBuckets(
       });
     }
 
+    const projectedFolderPaths = collectSkillGroupFolderPaths(groupNodes);
     const ungrouped = [...foldersByPath.entries()]
       .filter(([relativePath]) => !assigned.has(relativePath))
       .map(([, node]) => cloneTreeNode(node, `skill-group:${side}:${root.tool}:ungrouped`));
+    for (const [relativePath, node] of foldersByPath.entries()) {
+      if (projectedFolderPaths.has(relativePath)) continue;
+      if (ungrouped.some((entry) => entry.relativePath === relativePath)) continue;
+      ungrouped.push(cloneTreeNode(node, `skill-group:${side}:${root.tool}:ungrouped-fallback`));
+    }
     if (ungrouped.length > 0) {
       groupNodes.push({
         key: `skill-group:${side}:${root.tool}:ungrouped`,
         kind: "skillGroup",
         tool: root.tool,
         relativePath: "__skill_groups__/ungrouped",
-        label: "미분류",
+        label: localize(language, "Ungrouped", "미분류"),
         children: ungrouped,
         side,
         count: ungrouped.length
@@ -548,6 +746,21 @@ function cloneTreeNode(node: SkillTreeNode, keyPrefix: string): SkillTreeNode {
     key: `${keyPrefix}:${node.relativePath}`,
     children: node.children.map((child) => cloneTreeNode(child, keyPrefix))
   };
+}
+
+function collectSkillGroupFolderPaths(nodes: SkillTreeNode[]): Set<string> {
+  const paths = new Set<string>();
+  const walk = (entries: SkillTreeNode[]): void => {
+    for (const entry of entries) {
+      const skillFolder = entry.kind === "folder" ? getSkillFolderRelativePath(entry.relativePath) : null;
+      if (skillFolder && skillFolder === entry.relativePath) {
+        paths.add(skillFolder);
+      }
+      walk(entry.children);
+    }
+  };
+  walk(nodes);
+  return paths;
 }
 
 function ensureFolderNode(
@@ -602,36 +815,79 @@ function getSkillFolderRelativePath(relativePath: string): string | null {
   return `skills/${parts[1]}`;
 }
 
-function buildInstructionRoot(instructions: InstructionFile[], side: "workspace" | "central"): SkillTreeNode | null {
+function buildInstructionRoot(instructions: InstructionFile[], side: "workspace" | "central", language: UiLanguage): SkillTreeNode | null {
   if (instructions.length === 0) return null;
-  return {
+  const root: SkillTreeNode = {
     key: `instructions:${side}`,
     kind: "instructionRoot",
     tool: "agents",
     relativePath: "__instructions__",
-    label: "instructions",
+    label: localize(language, "instructions", "지침"),
     side,
     count: instructions.length,
-    children: instructions
-      .slice()
-      .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
-      .map((item) => ({
-        key: `instruction:${side}:${item.relativePath}`,
-        kind: "instructionFile",
-        tool: "agents",
-        relativePath: item.relativePath,
-        absolutePath: item.absolutePath,
-        label: item.relativePath,
-        side,
-        children: []
-      }))
+    children: []
+  };
+
+  const sorted = instructions
+    .slice()
+    .sort((a, b) => (a.displayPath ?? a.relativePath).localeCompare(b.displayPath ?? b.relativePath));
+
+  for (const item of sorted) {
+    const displayPath = (item.displayPath ?? item.relativePath).replace(/\\/g, "/");
+    const parts = displayPath.split("/").filter(Boolean);
+    let cursor = root;
+    let displaySoFar = "";
+
+    for (let index = 0; index < parts.length; index += 1) {
+      const part = parts[index];
+      const isLast = index === parts.length - 1;
+      displaySoFar = displaySoFar ? `${displaySoFar}/${part}` : part;
+
+      if (isLast) {
+        cursor.children.push({
+          key: `instruction:${side}:${displaySoFar}:${item.profileId ?? ""}:${item.relativePath}`,
+          kind: "instructionFile",
+          tool: "agents",
+          relativePath: item.relativePath,
+          absolutePath: item.absolutePath,
+          label: part,
+          side,
+          instructionProfile: item.profileId,
+          children: []
+        });
+        continue;
+      }
+
+      let folder = cursor.children.find((child) => child.kind === "instructionFolder" && child.relativePath === displaySoFar);
+      if (!folder) {
+        folder = {
+          key: `instruction-folder:${side}:${displaySoFar}`,
+          kind: "instructionFolder",
+          tool: "agents",
+          relativePath: displaySoFar,
+          label: part,
+          side,
+          instructionProfile: item.profileId,
+          children: []
+        };
+        cursor.children.push(folder);
+      }
+      cursor = folder;
+    }
+  }
+
+  sortNodes(root.children);
+  return {
+    ...root,
+    children: root.children
   };
 }
 
 function buildGroupRoot(
   groups: SelectionGroup[],
   side: "workspace" | "central",
-  selectedGroupId: string | null
+  selectedGroupId: string | null,
+  language: UiLanguage
 ): SkillTreeNode | null {
   if (groups.length === 0) return null;
   const groupedByTool = new Map<ToolType | "mixed", SelectionGroup[]>();
@@ -653,7 +909,7 @@ function buildGroupRoot(
         kind: "groupTool",
         tool: tool === "mixed" ? "agents" : tool,
         relativePath: `__groups__/${tool}`,
-        label: tool === "mixed" ? "혼합" : tool,
+        label: tool === "mixed" ? localize(language, "Mixed", "혼합") : tool,
         side,
         count: toolGroups.length,
         children: toolGroups.map((group) => ({
@@ -676,7 +932,7 @@ function buildGroupRoot(
     kind: "groupRoot",
     tool: "agents",
     relativePath: "__groups__",
-    label: "groups",
+    label: localize(language, "groups", "그룹"),
     side,
     count: groups.length,
     children: toolNodes

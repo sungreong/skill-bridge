@@ -11,6 +11,8 @@ export type SkillFile = {
 export type InstructionFile = {
   relativePath: string;
   absolutePath: string;
+  displayPath?: string;
+  profileId?: string;
 };
 
 export type SkillAssetWarningSeverity = "info" | "warning" | "danger";
@@ -42,20 +44,41 @@ export type SkillTreeFilterMode = "all" | "changed" | "new" | "risk" | "missingS
 
 export type SkillTreeNode = {
   key: string;
-  kind: "file" | "folder" | "instructionRoot" | "instructionFile" | "groupRoot" | "groupTool" | "group" | "skillGroup";
+  kind:
+    | "file"
+    | "folder"
+    | "instructionRoot"
+    | "instructionFolder"
+    | "instructionFile"
+    | "groupRoot"
+    | "groupTool"
+    | "group"
+    | "skillGroup"
+    | "presetRoot"
+    | "preset"
+    | "toolSection"
+    | "toolCommand";
   tool: ToolType;
   relativePath: string;
   absolutePath?: string;
   label: string;
   children: SkillTreeNode[];
+  description?: string;
   highlighted?: boolean;
   assetStatus?: SkillAssetTreeStatus;
   assetWarnings?: SkillAssetWarning[];
   assetFileCount?: number;
   assetUpdatedAt?: string | null;
+  treeFileCount?: number;
+  treeSkillCount?: number;
   side?: "workspace" | "central";
+  instructionProfile?: string;
   groupId?: string;
+  presetId?: string;
+  commandId?: string;
+  icon?: string;
   count?: number;
+  collapsed?: boolean;
   selected?: boolean;
 };
 
@@ -73,13 +96,17 @@ export type GroupTarget = {
 export type SelectionGroup = {
   id: string;
   name: string;
+  description?: string;
   side: "workspace" | "central";
   targets: GroupTarget[];
   meta?: {
-    source?: "manual" | "npx";
+    source?: "manual" | "npx" | "mixed";
+    tool?: ToolType;
     repoKey?: string;
     repoUrl?: string;
     lastInstalledAt?: string;
+    installCwd?: string;
+    installSkills?: string[];
     mirroredFrom?: string;
   };
 };
@@ -89,13 +116,23 @@ export type WorkspaceGroupFile = {
   groups: SelectionGroup[];
 };
 
-export type PersonalSkillPack = {
+export type ProjectPreset = {
   id: string;
   name: string;
   description: string;
   targets: GroupTarget[];
   createdAt: string;
   updatedAt: string;
+  lastAppliedAt?: string;
+};
+
+export type ProjectPresetsFile = {
+  version: 1;
+  updatedAt: string;
+  presets: ProjectPreset[];
+};
+
+export type PersonalSkillPack = ProjectPreset & {
   lastHydratedAt?: string;
 };
 
@@ -140,6 +177,12 @@ export type TransferPlan = {
   mode: "workspaceToCentral" | "centralToWorkspace";
   items: TransferPlanItem[];
   summary: TransferPlanSummary;
+  scopeContext?: {
+    type: "all" | "selection" | "group";
+    label: string;
+    count: number;
+    expandable: boolean;
+  };
   groupContext?: {
     id: string;
     name: string;
