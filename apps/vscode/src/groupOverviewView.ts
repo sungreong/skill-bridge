@@ -575,25 +575,26 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
     .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 10px; padding: 12px; overflow: hidden; }
     .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
-    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
     h1, h2, h3 { margin: 0; font-weight: 600; }
-    h1 { font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    h1 { min-width: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     h2 { font-size: 14px; }
     h3 { font-size: 13px; }
     .summary { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
     .toolbar, .agent-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     input, textarea, button { font: inherit; border: 1px solid var(--vscode-panel-border); border-radius: 5px; }
     input, textarea { background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 6px 8px; }
-    #search { width: min(520px, 100%); }
+    #search { width: min(520px, 100%); min-width: 0; flex: 1 1 260px; }
     button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 5px 9px; cursor: pointer; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
     .chip { min-height: 28px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 5px 10px; background: var(--vscode-input-background); color: var(--vscode-descriptionForeground); }
     .chip.active { border-color: #60a5fa; color: var(--vscode-foreground); box-shadow: inset 0 0 0 1px rgba(96,165,250,.28); }
-    .content { min-height: 0; display: grid; grid-template-rows: minmax(160px, 42vh) minmax(0, 1fr); gap: 10px; }
+    .content { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(160px, 42vh) minmax(0, 1fr); gap: 10px; }
     .group-list, .detail-shell { min-height: 0; border: 1px solid var(--vscode-panel-border); border-radius: 8px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
     .group-list { overflow: auto; }
     .detail-shell { overflow: auto; }
+    .group-list table { min-width: 1040px; }
     .group-row { cursor: pointer; }
     .group-row:hover { background: color-mix(in oklab, var(--vscode-editor-background) 92%, #60a5fa 8%); }
     .group-row.active { background: color-mix(in oklab, var(--vscode-editor-background) 86%, #60a5fa 14%); }
@@ -617,10 +618,10 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
     .edit { display: grid; grid-template-columns: minmax(160px, 220px) minmax(220px, 1fr) auto; gap: 7px; align-items: start; }
     textarea { min-height: 32px; resize: vertical; }
     .skill-folders { display: grid; gap: 6px; padding-top: 8px; }
-    .skill-folder { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
+    .skill-folder { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
     .skill-folder > summary { display: flex; gap: 8px; align-items: center; padding: 7px 9px; cursor: pointer; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
     .skill-folder input[type="checkbox"] { flex: 0 0 auto; }
-    .folder-name { font-weight: 700; }
+    .folder-name { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .folder-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .folder-summary { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 9px; border-top: 1px solid var(--vscode-panel-border); }
     table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
@@ -628,14 +629,19 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
     th, td { text-align: left; padding: 6px 7px; border-top: 1px solid var(--vscode-panel-border); vertical-align: top; }
     th { color: var(--vscode-descriptionForeground); font-weight: 500; }
     .path { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .skill-desc { max-width: 420px; }
+    .skill-folder table { min-width: 900px; }
+    .skill-desc { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
     .empty { padding: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; }
     .hidden { display: none; }
-    @media (max-width: 720px) {
+    @media (max-width: 960px) {
+      .top { align-items: flex-start; flex-wrap: wrap; }
+      .top-actions { justify-content: flex-start; }
+      .toolbar { align-items: stretch; }
+      #search { flex-basis: 100%; }
       .content { grid-template-rows: minmax(180px, 42vh) minmax(0, 1fr); }
       .group-head, .edit { grid-template-columns: 1fr; }
+      .actions { justify-content: flex-start; }
       .path { max-width: 68vw; }
-      table { min-width: 780px; }
     }
   </style>
 </head>

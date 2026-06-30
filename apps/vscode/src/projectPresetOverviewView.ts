@@ -177,9 +177,9 @@ function renderProjectPresetOverviewHtml(
     body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
     .wrap { height: 100vh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; padding: 10px; overflow: hidden; }
     .top, .toolbar, .actions, .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .top { justify-content: space-between; }
+    .top { justify-content: space-between; min-width: 0; }
     .toolbar { align-items: flex-end; }
-    h1, h2 { margin: 0; font-size: 15px; line-height: 1.35; }
+    h1, h2 { min-width: 0; margin: 0; font-size: 15px; line-height: 1.35; }
     .summary, .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
     input, textarea, select { width: 100%; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 5px; padding: 6px 8px; }
     textarea { min-height: 58px; resize: vertical; }
@@ -220,7 +220,12 @@ function renderProjectPresetOverviewHtml(
     .skill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status-bar { min-height: 24px; display: flex; align-items: center; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; }
     .hidden { display: none; }
-    @media (max-width: 760px) { .content { grid-template-columns: 1fr; grid-template-rows: minmax(160px, 38vh) minmax(0, 1fr); } .form-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      .top { align-items: flex-start; }
+      .content { grid-template-columns: 1fr; grid-template-rows: minmax(160px, 38vh) minmax(0, 1fr); }
+      .form-grid { grid-template-columns: 1fr; }
+      .table-panel table { min-width: 640px; }
+    }
   </style>
 </head>
 <body>

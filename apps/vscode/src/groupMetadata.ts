@@ -181,7 +181,7 @@ export function renderGroupInfoHtml(
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto auto minmax(0, 1fr); }
-    .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
     .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
@@ -190,7 +190,7 @@ export function renderGroupInfoHtml(
     .desc { border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 8px 10px; color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.5; }
     .desc b { color: var(--vscode-foreground); }
     input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
-    input { min-width: min(360px, 58vw); }
+    input { min-width: min(360px, 58vw); max-width: 100%; }
     input[type="checkbox"] { min-width: 0; }
     button { cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
@@ -205,6 +205,12 @@ export function renderGroupInfoHtml(
     .path { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
     .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
     .hidden-row { display: none; }
+    @media (max-width: 760px) {
+      .controls { align-items: stretch; }
+      input { min-width: 100%; }
+      table { min-width: 900px; }
+      .path { max-width: 56vw; }
+    }
   </style>
 </head>
 <body>

@@ -121,14 +121,14 @@ export function renderFolderDiffSummaryHtml(
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
-    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
     h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
     .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
     .pill strong { color: var(--vscode-foreground); }
     .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
-    input { min-width: min(360px, 58vw); }
+    input { min-width: min(360px, 58vw); max-width: 100%; }
     input[type="checkbox"] { min-width: 0; }
     button { cursor: pointer; }
     .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
@@ -145,6 +145,12 @@ export function renderFolderDiffSummaryHtml(
     .path { display: inline-block; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
     .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
     .hidden-row { display: none; }
+    @media (max-width: 760px) {
+      .controls { align-items: stretch; }
+      input { min-width: 100%; }
+      table { min-width: 820px; }
+      .path { max-width: 56vw; }
+    }
   </style>
 </head>
 <body>
@@ -262,14 +268,14 @@ export function renderFolderTransferDiffHtml(
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
-    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
     h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
     .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
     .pill strong { color: var(--vscode-foreground); }
     .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
-    input { min-width: min(360px, 58vw); }
+    input { min-width: min(360px, 58vw); max-width: 100%; }
     input[type="checkbox"] { min-width: 0; }
     button { cursor: pointer; }
     .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
@@ -284,6 +290,12 @@ export function renderFolderTransferDiffHtml(
     .path { display: inline-block; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
     .copy { margin-left: 6px; padding: 2px 6px; font-size: 11px; }
     .hidden-row { display: none; }
+    @media (max-width: 760px) {
+      .controls { align-items: stretch; }
+      input { min-width: 100%; }
+      table { min-width: 820px; }
+      .path { max-width: 56vw; }
+    }
   </style>
 </head>
 <body>
@@ -399,14 +411,14 @@ export function renderTypeChangedTransferDiffHtml(
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
-    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; }
+    .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
     h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pills { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-gutter: stable; }
     .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 8px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
     .pill strong { color: var(--vscode-foreground); }
     .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     input, button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 8px; font: inherit; }
-    input { min-width: min(360px, 58vw); }
+    input { min-width: min(360px, 58vw); max-width: 100%; }
     button { cursor: pointer; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
     .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; min-height: 0; }
@@ -419,6 +431,10 @@ export function renderTypeChangedTransferDiffHtml(
     .hidden-row { display: none; }
     @media (max-width: 860px) {
       .grid { grid-template-columns: 1fr; }
+      .controls { align-items: stretch; }
+      input { min-width: 100%; }
+      table { min-width: 680px; }
+      .path { max-width: 56vw; }
     }
   </style>
 </head>

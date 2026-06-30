@@ -59,6 +59,7 @@ export function registerExtensionCommands(args: {
   showSmartActions: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   runNodeCrud: (side: TreeSide, action: "rename" | "delete" | "duplicate", node?: SkillTreeNode) => Promise<void>;
   copyNodesToClipboard: (side: TreeSide, node?: SkillTreeNode) => void;
+  copyNodePathToClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   pasteNodesFromClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   installSkills: (node?: SkillTreeNode) => Promise<void>;
   runAgentCopyWizard: (side?: TreeSide, node?: SkillTreeNode) => Promise<void>;
@@ -556,6 +557,12 @@ export function registerExtensionCommands(args: {
   });
   args.register("skillBridge.copyCentralNode", async (node?: SkillTreeNode) => {
     args.copyNodesToClipboard("central", args.unwrapSkillNode(node));
+  });
+  args.register("skillBridge.copyWorkspaceNodePath", async (node?: SkillTreeNode) => {
+    await args.copyNodePathToClipboard("workspace", args.unwrapSkillNode(node));
+  });
+  args.register("skillBridge.copyCentralNodePath", async (node?: SkillTreeNode) => {
+    await args.copyNodePathToClipboard("central", args.unwrapSkillNode(node));
   });
   args.register("skillBridge.pasteWorkspaceNode", async (node?: SkillTreeNode) => {
     await args.pasteNodesFromClipboard("workspace", args.unwrapSkillNode(node));

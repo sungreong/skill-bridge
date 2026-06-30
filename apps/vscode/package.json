@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",
@@ -62,6 +62,7 @@
     "onCommand:skillBridge.quickWorkspaceCrud",
     "onCommand:skillBridge.smartWorkspaceActions",
     "onCommand:skillBridge.copyWorkspaceNode",
+    "onCommand:skillBridge.copyWorkspaceNodePath",
     "onCommand:skillBridge.pasteWorkspaceNode",
     "onCommand:skillBridge.renameWorkspaceNode",
     "onCommand:skillBridge.deleteWorkspaceNode",
@@ -72,6 +73,7 @@
     "onCommand:skillBridge.quickCentralCrud",
     "onCommand:skillBridge.smartCentralActions",
     "onCommand:skillBridge.copyCentralNode",
+    "onCommand:skillBridge.copyCentralNodePath",
     "onCommand:skillBridge.pasteCentralNode",
     "onCommand:skillBridge.copyBetweenAgents",
     "onCommand:skillBridge.copyWorkspaceBetweenAgents",
@@ -362,6 +364,12 @@
         "category": "Skill Bridge"
       },
       {
+        "command": "skillBridge.copyWorkspaceNodePath",
+        "title": "%command.copyWorkspaceNodePath%",
+        "category": "Skill Bridge",
+        "icon": "$(copy)"
+      },
+      {
         "command": "skillBridge.pasteWorkspaceNode",
         "title": "%command.pasteWorkspaceNode%",
         "category": "Skill Bridge"
@@ -410,6 +418,12 @@
         "command": "skillBridge.copyCentralNode",
         "title": "%command.copyCentralNode%",
         "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.copyCentralNodePath",
+        "title": "%command.copyCentralNodePath%",
+        "category": "Skill Bridge",
+        "icon": "$(copy)"
       },
       {
         "command": "skillBridge.pasteCentralNode",
@@ -834,6 +848,11 @@
           "group": "navigation@0"
         },
         {
+          "command": "skillBridge.copyWorkspaceNodePath",
+          "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@0.1"
+        },
+        {
           "command": "skillBridge.createWorkspaceGroupFromNode",
           "when": "view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
           "group": "navigation@1.2"
@@ -902,6 +921,11 @@
           "command": "skillBridge.openCentralFolder",
           "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)",
           "group": "navigation@0"
+        },
+        {
+          "command": "skillBridge.copyCentralNodePath",
+          "when": "view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)",
+          "group": "navigation@0.1"
         },
         {
           "command": "skillBridge.createCentralGroupFromNode",
@@ -1072,6 +1096,11 @@
           "group": "3_clipboard@1"
         },
         {
+          "command": "skillBridge.copyWorkspaceNodePath",
+          "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
+          "group": "3_clipboard@1.1"
+        },
+        {
           "command": "skillBridge.copyWorkspaceBetweenAgents",
           "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
           "group": "3_clipboard@1.5"
@@ -1117,6 +1146,11 @@
           "command": "skillBridge.copyCentralNode",
           "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
           "group": "3_clipboard@1"
+        },
+        {
+          "command": "skillBridge.copyCentralNodePath",
+          "when": "viewItem == skillBridge.file || viewItem == skillBridge.folder",
+          "group": "3_clipboard@1.1"
         },
         {
           "command": "skillBridge.copyCentralBetweenAgents",
@@ -1338,6 +1372,10 @@
           "when": "false"
         },
         {
+          "command": "skillBridge.copyWorkspaceNodePath",
+          "when": "false"
+        },
+        {
           "command": "skillBridge.pasteWorkspaceNode",
           "when": "false"
         },
@@ -1375,6 +1413,10 @@
         },
         {
           "command": "skillBridge.copyCentralNode",
+          "when": "false"
+        },
+        {
+          "command": "skillBridge.copyCentralNodePath",
           "when": "false"
         },
         {
@@ -1441,12 +1483,12 @@
       {
         "command": "skillBridge.renameWorkspaceNode",
         "key": "f2",
-        "when": "listFocus && view == skillBridge.workspaceSkills"
+        "when": "listFocus && view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.renameCentralNode",
         "key": "f2",
-        "when": "listFocus && view == skillBridge.centralSkills"
+        "when": "listFocus && view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.renameGroup",
@@ -1456,12 +1498,12 @@
       {
         "command": "skillBridge.deleteWorkspaceNode",
         "key": "delete",
-        "when": "listFocus && view == skillBridge.workspaceSkills"
+        "when": "listFocus && view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.deleteCentralNode",
         "key": "delete",
-        "when": "listFocus && view == skillBridge.centralSkills"
+        "when": "listFocus && view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.deleteGroup",
@@ -1471,32 +1513,32 @@
       {
         "command": "skillBridge.duplicateWorkspaceNode",
         "key": "ctrl+d",
-        "when": "listFocus && view == skillBridge.workspaceSkills"
+        "when": "listFocus && view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.duplicateCentralNode",
         "key": "ctrl+d",
-        "when": "listFocus && view == skillBridge.centralSkills"
+        "when": "listFocus && view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.copyWorkspaceNode",
         "key": "ctrl+c",
-        "when": "listFocus && view == skillBridge.workspaceSkills"
+        "when": "listFocus && view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.copyCentralNode",
         "key": "ctrl+c",
-        "when": "listFocus && view == skillBridge.centralSkills"
+        "when": "listFocus && view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)"
       },
       {
         "command": "skillBridge.pasteWorkspaceNode",
         "key": "ctrl+v",
-        "when": "listFocus && view == skillBridge.workspaceSkills"
+        "when": "listFocus && view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)"
       },
       {
         "command": "skillBridge.pasteCentralNode",
         "key": "ctrl+v",
-        "when": "listFocus && view == skillBridge.centralSkills"
+        "when": "listFocus && view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)"
       },
       {
         "command": "skillBridge.openLibraryManager",
