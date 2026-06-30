@@ -26,8 +26,11 @@ export function renderLibraryManagerStyles(): string {
       flex: 0 0 auto;
     }
     .title {
+      min-width: 0;
       font-size: 14px;
       font-weight: 760;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     input, select, button {
@@ -300,6 +303,11 @@ export function renderLibraryManagerStyles(): string {
       .summary, .detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .action-col, .count-col { width: auto; }
       table { min-width: 760px; }
+    }
+    @media (max-width: 640px) {
+      .summary, .detail-summary { grid-template-columns: minmax(0, 1fr); }
+      .tabs, .subtabs, .filters, .actions, .row-actions, .chips, .button-strip { align-items: stretch; }
+      .status { white-space: normal; }
     }
   `;
 }

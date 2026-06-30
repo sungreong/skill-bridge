@@ -19,9 +19,9 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { padding: 12px; display: grid; gap: 8px; height: 100vh; box-sizing: border-box; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr) auto auto; }
-    .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .head { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .meta { font-size: 12px; opacity: 0.9; display: flex; gap: 12px; flex-wrap: wrap; }
-    .direction-panel { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 9px 10px; display: grid; grid-template-columns: minmax(220px, auto) 1fr auto; gap: 10px; align-items: center; background: color-mix(in oklab, var(--vscode-editor-background) 88%, #2563eb 12%); }
+    .direction-panel { min-width: 0; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 9px 10px; display: grid; grid-template-columns: minmax(220px, auto) minmax(0, 1fr) auto; gap: 10px; align-items: center; background: color-mix(in oklab, var(--vscode-editor-background) 88%, #2563eb 12%); }
     .direction-panel.import { background: color-mix(in oklab, var(--vscode-editor-background) 88%, #16a34a 12%); }
     .direction-title { font-weight: 800; font-size: 14px; white-space: nowrap; }
     .direction-title .arrow { padding: 0 6px; color: #93c5fd; }
@@ -92,9 +92,18 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .btn:disabled { opacity: .42; cursor: default; transform: none; box-shadow: none; }
     .btn-primary:disabled { background: color-mix(in oklab, var(--vscode-button-background, var(--vscode-input-background)) 34%, #22c55e 14%); color: color-mix(in oklab, var(--vscode-disabledForeground, var(--vscode-descriptionForeground)) 90%, #f8fafc 10%); border-color: var(--vscode-panel-border); }
     @media (max-width: 960px) {
+      .direction-panel { grid-template-columns: minmax(0, 1fr); align-items: start; }
+      .direction-title { white-space: normal; }
+      .scope-chip { max-width: 100%; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .foot { grid-template-columns: 1fr; }
       .foot-actions { justify-content: stretch; }
       .foot-actions .btn { flex: 1 1 0; }
+    }
+    @media (max-width: 640px) {
+      .summary { grid-template-columns: minmax(0, 1fr); }
+      .toolbar input { min-width: 100%; }
+      .foot-title, .foot-note { white-space: normal; }
     }
   </style>
 </head>

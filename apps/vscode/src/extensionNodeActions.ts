@@ -61,6 +61,7 @@ export function createNodeActionTools(args: {
   openFolderInOs: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   runNodeCrud: (side: TreeSide, action: NodeCrudAction, node?: SkillTreeNode) => Promise<void>;
   copyNodesToClipboard: (side: TreeSide, node?: SkillTreeNode) => void;
+  copyNodePathToClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   pasteNodesFromClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   openSkillMarkdown: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   showQuickSkillCrud: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
@@ -138,6 +139,13 @@ export function createNodeActionTools(args: {
     label: path.posix.basename(relativePath),
     children: []
   });
+
+  const isPathCopyableNode = (node: SkillTreeNode | null | undefined): node is SkillTreeNode & { kind: "file" | "folder" } => {
+    if (!node || (node.kind !== "file" && node.kind !== "folder")) return false;
+    const relativePath = normalizeRel(node.relativePath);
+    if (!relativePath || !isManagedSkillPath(relativePath)) return false;
+    return relativePath.toLowerCase() !== "skills";
+  };
 
   const createSkillItem = async (side: TreeSide, kind: "file" | "folder", node?: SkillTreeNode): Promise<void> => {
     try {
@@ -299,6 +307,30 @@ export function createNodeActionTools(args: {
     vscode.window.setStatusBarMessage(args.tr(`Skill Bridge: Copied ${normalized.length} file/folder item(s).`, `Skill Bridge: 파일/폴더 항목 ${normalized.length}개를 복사했습니다.`), 1800);
   };
 
+  const copyNodePathToClipboard = async (side: TreeSide, node?: SkillTreeNode): Promise<void> => {
+    try {
+      if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
+      const targetNode = node ?? providerFor(side).getSelected();
+      if (!isPathCopyableNode(targetNode)) {
+        vscode.window.showWarningMessage(args.tr("Only skill files and folders have paths to copy.", "스킬 파일/폴더만 복사할 경로가 있습니다."));
+        return;
+      }
+      const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
+      const absolutePath = resolveSkillPath(basePath, targetNode.tool, targetNode.relativePath, side);
+      if (!(await args.exists(absolutePath))) {
+        vscode.window.showWarningMessage(args.tr("Could not find the target path.", "대상 경로를 찾을 수 없습니다."));
+        return;
+      }
+      await vscode.env.clipboard.writeText(absolutePath);
+      vscode.window.setStatusBarMessage(
+        args.tr(`Skill Bridge: Copied path ${args.compactPathForDisplay(absolutePath)}`, `Skill Bridge: 경로 복사 ${args.compactPathForDisplay(absolutePath)}`),
+        2200
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(args.toUserError(error));
+    }
+  };
+
   const pasteNodesFromClipboard = async (side: TreeSide, node?: SkillTreeNode): Promise<void> => {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
@@ -390,9 +422,14 @@ export function createNodeActionTools(args: {
       if (target) {
         actions.push(
           { label: args.tr("Open Selected Folder", "선택 항목 폴더 열기"), value: "openFolder" },
-          { label: args.tr("Rename Selected Item", "선택 항목 이름 변경"), value: "renameNode" },
-          { label: args.tr("Duplicate Selected Item", "선택 항목 복제"), value: "duplicateNode" },
-          { label: args.tr("Delete Selected Item", "선택 항목 삭제"), value: "deleteNode" }
+          ...(isPathCopyableNode(target)
+            ? [
+              { label: args.tr("Copy Selected Path", "선택 항목 경로 복사"), value: "copyPath", description: `${target.tool}/${target.relativePath}` },
+              { label: args.tr("Rename Selected Item", "선택 항목 이름 변경"), value: "renameNode" },
+              { label: args.tr("Duplicate Selected Item", "선택 항목 복제"), value: "duplicateNode" },
+              { label: args.tr("Delete Selected Item", "선택 항목 삭제"), value: "deleteNode" }
+            ]
+            : [])
         );
       }
       const pick = await vscode.window.showQuickPick(actions, { title, matchOnDescription: true });
@@ -402,6 +439,7 @@ export function createNodeActionTools(args: {
       if (pick.value === "createFolder") return await createSkillItem(side, "folder", target ?? undefined);
       if (pick.value === "openSkillMd") return await openSkillMarkdown(side, skillNode);
       if (pick.value === "openFolder") return await openFolderInOs(side, target ?? undefined);
+      if (pick.value === "copyPath") return await copyNodePathToClipboard(side, target ?? undefined);
       if (pick.value === "renameSkill") return await runNodeCrud(side, "rename", skillNode);
       if (pick.value === "duplicateSkill") return await runNodeCrud(side, "duplicate", skillNode);
       if (pick.value === "deleteSkill") return await runNodeCrud(side, "delete", skillNode);
@@ -459,11 +497,16 @@ export function createNodeActionTools(args: {
           value: "openFolder",
           description: baseNode ? `${baseNode.tool}/${baseNode.relativePath || "."}` : args.tr("Open the root folder in the OS file explorer", "루트 폴더를 OS 탐색기로 열기")
         },
-        {
+        ...(isPathCopyableNode(baseNode) ? [{
+          label: args.tr("Copy Selected Path", "선택 항목 경로 복사"),
+          value: "copyPath",
+          description: `${baseNode.tool}/${baseNode.relativePath}`
+        }] : []),
+        ...(isPathCopyableNode(baseNode) ? [{
           label: side === "workspace" ? args.tr("Copy This to Another Workspace Agent", "이 항목을 다른 작업공간 에이전트로 복사") : args.tr("Copy This to Another Central Agent", "이 항목을 다른 중앙 에이전트로 복사"),
           value: "copyAgent",
           description: args.tr("Copy the clicked skill or folder between configured agents on this side", "이 side의 설정된 다른 에이전트로 클릭한 스킬/폴더 복사")
-        },
+        }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
           label: isScopedAgentAutoSyncEnabled
             ? args.tr(`Turn Off Auto Sync for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 sync 끄기`)
@@ -522,6 +565,7 @@ export function createNodeActionTools(args: {
       if (pick.value === "createGroup") return await args.createGroupFromSelection(side, groupedNodes);
       if (pick.value === "addToGroup") return await args.addSelectionToExistingGroup(side, baseNode);
       if (pick.value === "copyAgent") return await args.runAgentCopyWizard(side, baseNode);
+      if (pick.value === "copyPath") return await copyNodePathToClipboard(side, baseNode);
       if (pick.value === "toggleAutoSync" && scopedAgentTool) {
         const enabled = await args.toggleWorkspaceAgentAutoSync(scopedAgentTool);
         vscode.window.showInformationMessage(enabled
@@ -553,6 +597,7 @@ export function createNodeActionTools(args: {
     openFolderInOs,
     runNodeCrud,
     copyNodesToClipboard,
+    copyNodePathToClipboard,
     pasteNodesFromClipboard,
     openSkillMarkdown,
     showQuickSkillCrud,
