@@ -2,6 +2,7 @@ import { existsSync, promises as fs } from "node:fs";
 import * as vscode from "vscode";
 import { resolveSkillPath } from "./skillPaths";
 import {
+  createFileUriFromAbsolutePath,
   containsWorkspaceSpecificPath,
   dedupeTreeWarnings,
   findBrokenMarkdownLinkWarnings,
@@ -348,7 +349,11 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
     }
 
     for (const [absolutePath, diagnostics] of byUri.entries()) {
-      args.skillDiagnostics.set(vscode.Uri.file(absolutePath), diagnostics);
+      try {
+        args.skillDiagnostics.set(createFileUriFromAbsolutePath(absolutePath), diagnostics);
+      } catch {
+        continue;
+      }
     }
     return counts;
   };

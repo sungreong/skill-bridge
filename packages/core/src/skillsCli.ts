@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -67,7 +68,7 @@ export async function runSkillsCli(req: SkillsCliRequest): Promise<SkillsCliResu
       }
     }
 
-    const spawned = await runSkillsCliWithSpawn(args, execOpts);
+    const spawned = await runSkillsCliWithRetry(args, execOpts);
     if (spawned.code !== 0) {
       const mirrorNote = req.action === "add" ? await mirrorInstalledSkillsIfCentralLayout(req.cwd) : "";
       return {
@@ -107,6 +108,37 @@ async function runSkillsCliWithSpawn(args: string[], opts: SkillsCliExecOptions)
     stdout: "",
     stderr: "npx 실행 파일을 찾을 수 없습니다. Node.js/npm 설치와 PATH 설정을 확인해주세요."
   };
+}
+
+async function runSkillsCliWithRetry(args: string[], opts: SkillsCliExecOptions): Promise<{ code: number; stdout: string; stderr: string }> {
+  const firstRun = await runSkillsCliWithSpawn(args, opts);
+  if (firstRun.code === 0 || !isBrokenNpxSkillsCliCache(firstRun.stdout, firstRun.stderr)) {
+    return firstRun;
+  }
+
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "skill-bridge-npm-cache-"));
+  try {
+    const retry = await runSkillsCliWithSpawn(args, {
+      ...opts,
+      env: {
+        ...opts.env,
+        npm_config_cache: cacheDir,
+        npm_config_prefer_online: "true",
+        npm_config_audit: "false",
+        npm_config_fund: "false"
+      }
+    });
+    const retryNote = retry.code === 0
+      ? "깨진 npm npx 캐시를 감지해 임시 npm cache로 재시도했고 성공했습니다."
+      : "깨진 npm npx 캐시를 감지해 임시 npm cache로 재시도했지만 다시 실패했습니다. 로컬 터미널에서 `npm cache clean --force` 실행 후 다시 시도해주세요.";
+    return {
+      code: retry.code,
+      stdout: joinMessages(firstRun.stdout, retry.stdout),
+      stderr: joinMessages(firstRun.stderr, retryNote, retry.stderr)
+    };
+  } finally {
+    await fs.rm(cacheDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 async function spawnNpx(args: string[], opts: SkillsCliExecOptions): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -165,11 +197,14 @@ async function mirrorInstalledSkillsIfCentralLayout(cwd: string): Promise<string
   return `중앙 레이아웃 동기화: ${copiedCount}개 항목`;
 }
 
-function joinMessages(a: string, b: string): string {
-  const first = a.trim();
-  const second = b.trim();
-  if (first && second) return `${first}\n${second}`;
-  return first || second;
+function joinMessages(...messages: string[]): string {
+  return messages.map((message) => message.trim()).filter(Boolean).join("\n");
+}
+
+function isBrokenNpxSkillsCliCache(stdout: string, stderr: string): boolean {
+  const output = `${stdout}\n${stderr}`;
+  return output.includes("ERR_MODULE_NOT_FOUND")
+    && /node_modules[\\/]+skills[\\/]+dist[\\/]+cli\.mjs/i.test(output);
 }
 
 function getNpxExecFileCandidates(): string[] {

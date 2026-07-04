@@ -3,6 +3,12 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import * as vscode from "vscode";
+import {
+  formatCentralPathIssue,
+  resolveHostPath,
+  type CentralPathIssueCode,
+  type ResolvedCentralRepoPath
+} from "./centralPath";
 import type { ToolType } from "./types";
 import { skillBridgeStateDir } from "./storagePaths";
 
@@ -20,6 +26,8 @@ export type EnvironmentDiagnosis = {
   centralRepoPath: string;
   defaultCentralPath: string;
   configScope: string;
+  configuredCentralRepoPath: string | null;
+  configuredCentralIssue: CentralPathIssueCode | null;
   checks: EnvironmentCheck[];
 };
 
@@ -120,12 +128,18 @@ export async function collectEnvironmentDiagnosis(args: {
   allAgents: readonly ToolType[];
   workspacePath: string;
   centralRepoPath: string;
+  configuredCentralRepoPath: string | null;
+  configuredCentralResolution: ResolvedCentralRepoPath | null;
   defaultCentralPath: string;
   getWritableSkillRoot: (basePath: string, tool: ToolType, mode: "central") => string;
   settingsSection: string;
 }): Promise<EnvironmentDiagnosis> {
   const checks: EnvironmentCheck[] = [];
   const osLabel = `${platformLabel()} ${process.arch}`;
+  const effectiveCentralPath = args.configuredCentralResolution?.ok ? args.configuredCentralResolution.absolutePath : args.centralRepoPath;
+  const configuredCentralIssue = args.configuredCentralResolution && !args.configuredCentralResolution.ok
+    ? args.configuredCentralResolution.issue
+    : null;
 
   checks.push({
     label: args.tr("OS / user home", "OS / 사용자 홈"),
@@ -133,22 +147,33 @@ export async function collectEnvironmentDiagnosis(args: {
     detail: os.homedir() ? `${osLabel} · home=${os.homedir()}` : `${osLabel} · ${args.tr("user home is unavailable.", "사용자 홈을 확인할 수 없습니다.")}`
   });
   checks.push(await checkPathAccess(args.tr, args.exists, "Workspace", args.workspacePath, { mustExist: true, writable: false }));
-  checks.push({
-    label: args.tr("Central setting", "Central 설정"),
-    status: isPathUnderHome(args.centralRepoPath) ? "ok" : "warn",
-    detail: `${args.centralRepoPath} · scope=${getCentralConfigScope(args.settingsSection)}${isPathUnderHome(args.centralRepoPath) ? "" : ` · ${args.tr("outside user home; OS permissions or removable drive state may affect access.", "사용자 홈 밖 경로라 OS 권한/이동식 드라이브 영향이 있을 수 있습니다.")}`}`
-  });
-  checks.push(await checkPathAccess(args.tr, args.exists, "Central", args.centralRepoPath, { mustExist: false, writable: true }));
-  checks.push(await checkCentralLayout(args.tr, args.exists, args.centralRepoPath, args.allAgents, args.getWritableSkillRoot));
+  if (args.configuredCentralResolution && !args.configuredCentralResolution.ok) {
+    checks.push({
+      label: args.tr("Central setting", "Central 설정"),
+      status: "fail",
+      detail: `${formatCentralPathIssue(args.configuredCentralResolution)} ${args.tr("Central must be reachable from the same host as the current VS Code session.", "Central은 현재 VS Code 세션과 같은 호스트에서 접근 가능한 경로여야 합니다.")} · scope=${getCentralConfigScope(args.settingsSection)}`
+    });
+    checks.push(await checkPathAccess(args.tr, args.exists, args.tr("Fallback Central", "대체 Central"), effectiveCentralPath, { mustExist: false, writable: true }));
+  } else {
+    checks.push({
+      label: args.tr("Central setting", "Central 설정"),
+      status: isPathUnderHome(effectiveCentralPath) ? "ok" : "warn",
+      detail: `${effectiveCentralPath} · scope=${getCentralConfigScope(args.settingsSection)}${isPathUnderHome(effectiveCentralPath) ? "" : ` · ${args.tr("outside user home; OS permissions or removable drive state may affect access.", "사용자 홈 밖 경로라 OS 권한/이동식 드라이브 영향이 있을 수 있습니다.")}`}`
+    });
+    checks.push(await checkPathAccess(args.tr, args.exists, "Central", effectiveCentralPath, { mustExist: false, writable: true }));
+  }
+  checks.push(await checkCentralLayout(args.tr, args.exists, effectiveCentralPath, args.allAgents, args.getWritableSkillRoot));
   checks.push(await checkGitCommand(args.tr, args.toUserError));
   checks.push(await checkNpxCommand(args.tr, args.toUserError));
 
   return {
     osLabel,
     workspacePath: args.workspacePath,
-    centralRepoPath: args.centralRepoPath,
+    centralRepoPath: effectiveCentralPath,
     defaultCentralPath: args.defaultCentralPath,
     configScope: getCentralConfigScope(args.settingsSection),
+    configuredCentralRepoPath: args.configuredCentralRepoPath,
+    configuredCentralIssue,
     checks
   };
 }
@@ -184,7 +209,9 @@ export async function resetPersonalSkillHome(args: {
       getWritableSkillRoot: args.getWritableSkillRoot
     });
     const result = await args.refresh();
-    const moved = path.normalize(beforePath) !== path.normalize(result.centralRepoPath);
+    const beforeResolved = resolveHostPath(beforePath);
+    const afterResolved = resolveHostPath(result.centralRepoPath);
+    const moved = !beforeResolved.ok || !afterResolved.ok || !isSamePath(beforeResolved.absolutePath, afterResolved.absolutePath);
     const normalization = result.groupNormalization.changed
       ? args.tr(` · groups normalized: removed ${result.groupNormalization.removedGroupCount}, removed targets ${result.groupNormalization.removedTargetCount}`, ` · 그룹 정리: 제거 ${result.groupNormalization.removedGroupCount}개, 대상 제거 ${result.groupNormalization.removedTargetCount}개`)
       : args.tr(" · no group changes", " · 그룹 변경 없음");
@@ -261,6 +288,7 @@ async function repairUserCentralHome(args: {
 }
 
 function shouldOfferUserHomeRepair(diagnosis: EnvironmentDiagnosis): boolean {
+  if (diagnosis.configuredCentralIssue) return true;
   if (!isSamePath(diagnosis.centralRepoPath, diagnosis.defaultCentralPath)) return true;
   return diagnosis.checks.some((check) =>
     check.status === "fail"
@@ -283,6 +311,12 @@ function writeEnvironmentDiagnosis(output: vscode.OutputChannel, diagnosis: Envi
   output.appendLine(`OS: ${diagnosis.osLabel}`);
   output.appendLine(`Workspace: ${diagnosis.workspacePath}`);
   output.appendLine(`Central: ${diagnosis.centralRepoPath}`);
+  if (diagnosis.configuredCentralRepoPath) {
+    output.appendLine(`Configured Central raw: ${diagnosis.configuredCentralRepoPath}`);
+  }
+  if (diagnosis.configuredCentralIssue) {
+    output.appendLine(`Configured Central issue: ${diagnosis.configuredCentralIssue}`);
+  }
   output.appendLine(`Default user Central: ${diagnosis.defaultCentralPath}`);
   output.appendLine(`Config scope: ${diagnosis.configScope}`);
   for (const check of diagnosis.checks) {

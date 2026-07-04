@@ -39,7 +39,7 @@ export function registerExtensionCommands(args: {
     setGroups: (groups: SelectionGroup[]) => void;
     setFilterMode: (mode: SkillTreeFilterMode) => void;
   };
-  unwrapSkillNode: (node?: SkillTreeNode) => SkillTreeNode | undefined;
+  unwrapSkillNode: (node?: unknown) => SkillTreeNode | undefined;
   openNodeIfFile: (basePath: string, node: SkillTreeNode, mode: TreeSide) => Promise<void>;
   openFolderInOs: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   showGroupActions: (node?: GroupTreeNode) => Promise<void>;
@@ -57,7 +57,7 @@ export function registerExtensionCommands(args: {
   createSkillFolder: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   showQuickSkillCrud: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   showSmartActions: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
-  runNodeCrud: (side: TreeSide, action: "rename" | "delete" | "duplicate", node?: SkillTreeNode) => Promise<void>;
+  runNodeCrud: (side: TreeSide, action: "rename" | "delete" | "duplicate", node?: SkillTreeNode, selectedNodes?: SkillTreeNode[]) => Promise<void>;
   copyNodesToClipboard: (side: TreeSide, node?: SkillTreeNode) => void;
   copyNodePathToClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   pasteNodesFromClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
@@ -238,6 +238,16 @@ export function registerExtensionCommands(args: {
     } catch (error) {
       vscode.window.showErrorMessage(args.toUserError(error));
     }
+  };
+
+  const unwrapSkillNodes = (items: unknown): SkillTreeNode[] => {
+    if (!Array.isArray(items)) return [];
+    const nodes: SkillTreeNode[] = [];
+    for (const item of items) {
+      const node = args.unwrapSkillNode(item);
+      if (node) nodes.push(node);
+    }
+    return nodes;
   };
 
   const deleteSelectedGroup = async (node?: GroupTreeNode): Promise<void> => {
@@ -540,11 +550,11 @@ export function registerExtensionCommands(args: {
   args.register("skillBridge.renameCentralNode", async (node?: SkillTreeNode) => {
     await args.runNodeCrud("central", "rename", args.unwrapSkillNode(node));
   });
-  args.register("skillBridge.deleteWorkspaceNode", async (node?: SkillTreeNode) => {
-    await args.runNodeCrud("workspace", "delete", args.unwrapSkillNode(node));
+  args.register("skillBridge.deleteWorkspaceNode", async (node?: unknown, selectedItems?: unknown) => {
+    await args.runNodeCrud("workspace", "delete", args.unwrapSkillNode(node), unwrapSkillNodes(selectedItems));
   });
-  args.register("skillBridge.deleteCentralNode", async (node?: SkillTreeNode) => {
-    await args.runNodeCrud("central", "delete", args.unwrapSkillNode(node));
+  args.register("skillBridge.deleteCentralNode", async (node?: unknown, selectedItems?: unknown) => {
+    await args.runNodeCrud("central", "delete", args.unwrapSkillNode(node), unwrapSkillNodes(selectedItems));
   });
   args.register("skillBridge.duplicateWorkspaceNode", async (node?: SkillTreeNode) => {
     await args.runNodeCrud("workspace", "duplicate", args.unwrapSkillNode(node));

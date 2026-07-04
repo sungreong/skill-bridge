@@ -128,7 +128,7 @@ Preset을 적용하면 Workspace에 `Preset: <name>` 그룹으로 결과가 남�
 
 | 설정 | 설명 |
 | --- | --- |
-| `skillBridge.centralRepoPath` | Central 스킬 라이브러리 경로입니다. `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, `${env:NAME}` 변수를 지원합니다. |
+| `skillBridge.centralRepoPath` | Central 스킬 라이브러리 경로입니다. `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, `${env:NAME}` 변수를 지원합니다. 확장이 실행 중인 같은 호스트에서 접근 가능한 경로여야 합니다. |
 | `skillBridge.defaultAgents` | Skill Bridge가 관리할 agent 목록입니다. |
 | `skillBridge.visibleAgents` | 트리에 표시할 agent 목록입니다. 비어 있으면 전체를 표시합니다. |
 | `skillBridge.visibleQuickTools` | Quick Tools에 표시할 명령 목록입니다. 비어 있으면 기본 핵심 도구 세트를 표시합니다. |

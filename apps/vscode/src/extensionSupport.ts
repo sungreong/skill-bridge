@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
 import { ALL_AGENTS, type GroupTarget, type InstructionFile, type SelectionGroup, type SkillAssetTreeMeta, type SkillAssetWarning, type SkillFile, type SkillSelection, type SkillTreeFilterMode, type SkillTreeNode, type ToolType } from "./types";
+import { formatHostPathIssue, resolveHostPath } from "./centralPath";
 import { INSTRUCTION_ROOT, INSTRUCTION_RULE_DIRS, NESTED_INSTRUCTION_FILES, resolveSkillPath, ROOT_INSTRUCTION_FILES } from "./skillPaths";
 import {
   GROUP_MARKDOWN_FILE,
@@ -398,6 +399,14 @@ export function toUserError(error: unknown): string {
   return String(error);
 }
 
+export function createFileUriFromAbsolutePath(absolutePath: string): vscode.Uri {
+  const resolved = resolveHostPath(absolutePath);
+  if (!resolved.ok) {
+    throw new Error(formatHostPathIssue(resolved.issue, absolutePath));
+  }
+  return vscode.Uri.file(resolved.absolutePath);
+}
+
 export async function openNodeIfFile(basePath: string, node: SkillTreeNode, mode: "workspace" | "central"): Promise<void> {
   if (node.kind !== "file" && node.kind !== "instructionFile") return;
   if (!basePath) return;
@@ -406,7 +415,7 @@ export async function openNodeIfFile(basePath: string, node: SkillTreeNode, mode
       ? node.absolutePath
       : resolveSkillPath(basePath, node.tool, node.relativePath, mode);
     if (!absolutePath) return;
-    const uri = vscode.Uri.file(absolutePath);
+    const uri = createFileUriFromAbsolutePath(absolutePath);
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, { preview: true });
   } catch {

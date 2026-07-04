@@ -2,7 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import * as vscode from "vscode";
 import { getSkillRoot, getWritableSkillRoot, resolveOpenFolderTarget, resolveSkillPath } from "./skillPaths";
-import { isManagedSkillPath, normalizeRel } from "./extensionSupport";
+import { createFileUriFromAbsolutePath, isManagedSkillPath, isWithinPath, normalizeRel } from "./extensionSupport";
 import type { SkillTreeNode, ToolType } from "./types";
 
 type TranslationFn = (english: string, korean: string) => string;
@@ -59,7 +59,7 @@ export function createNodeActionTools(args: {
 }): {
   createSkillItem: (side: TreeSide, kind: "file" | "folder", node?: SkillTreeNode) => Promise<void>;
   openFolderInOs: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
-  runNodeCrud: (side: TreeSide, action: NodeCrudAction, node?: SkillTreeNode) => Promise<void>;
+  runNodeCrud: (side: TreeSide, action: NodeCrudAction, node?: SkillTreeNode, selectedNodes?: SkillTreeNode[]) => Promise<void>;
   copyNodesToClipboard: (side: TreeSide, node?: SkillTreeNode) => void;
   copyNodePathToClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   pasteNodesFromClipboard: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
@@ -99,6 +99,25 @@ export function createNodeActionTools(args: {
       if (!covered) kept.push(node);
     }
     return kept;
+  };
+
+  const isEditableNode = (node: SkillTreeNode | null | undefined): node is SkillTreeNode & { kind: "file" | "folder" } =>
+    !!node && (node.kind === "file" || node.kind === "folder");
+
+  const resolveDeleteNodes = (
+    side: TreeSide,
+    node?: SkillTreeNode,
+    selectedNodes?: SkillTreeNode[]
+  ): SkillTreeNode[] => {
+    const explicitSelection = (selectedNodes ?? []).filter(isEditableNode);
+    const stateSelection = (side === "workspace" ? args.state.workspaceSelection : args.state.centralSelection).filter(isEditableNode);
+    const targetNode = node ?? providerFor(side).getSelected();
+    if (explicitSelection.length > 0) {
+      if (!targetNode || explicitSelection.some((item) => item.key === targetNode.key)) return explicitSelection;
+      return isEditableNode(targetNode) ? [targetNode] : explicitSelection;
+    }
+    if (!targetNode) return stateSelection;
+    return stateSelection.some((item) => item.key === targetNode.key) ? stateSelection : [targetNode];
   };
 
   const getUniqueCopyRelativePath = async (
@@ -201,7 +220,7 @@ export function createNodeActionTools(args: {
       }
       const stat = await fs.stat(targetPath);
       const folderPath = stat.isDirectory() ? targetPath : path.dirname(targetPath);
-      await vscode.env.openExternal(vscode.Uri.file(folderPath));
+      await vscode.env.openExternal(createFileUriFromAbsolutePath(folderPath));
       vscode.window.setStatusBarMessage(
         args.tr(`Skill Bridge: Opened ${side === "workspace" ? "Workspace" : "Central"} folder ${args.compactPathForDisplay(folderPath)}`, `Skill Bridge: ${side === "workspace" ? "Workspace" : "Central"} 폴더 열기 ${args.compactPathForDisplay(folderPath)}`),
         2500
@@ -211,9 +230,70 @@ export function createNodeActionTools(args: {
     }
   };
 
-  const runNodeCrud = async (side: TreeSide, action: NodeCrudAction, node?: SkillTreeNode): Promise<void> => {
+  const runNodeCrud = async (side: TreeSide, action: NodeCrudAction, node?: SkillTreeNode, selectedNodes?: SkillTreeNode[]): Promise<void> => {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
+      if (action === "delete") {
+        const deleteNodes = collapseCopyNodes(resolveDeleteNodes(side, node, selectedNodes));
+        if (deleteNodes.length === 0) {
+          vscode.window.showWarningMessage(args.tr("Select a target file or folder first.", "먼저 대상 파일 또는 폴더를 선택하세요."));
+          return;
+        }
+        const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
+        const deleteTargets: Array<{ node: SkillTreeNode; absolutePath: string; relativePath: string }> = [];
+        for (const deleteNode of deleteNodes) {
+          const relativePath = normalizeRel(deleteNode.relativePath);
+          if (!relativePath) {
+            vscode.window.showWarningMessage(args.tr(`The agent root (${deleteNode.tool}) cannot be edited. Work inside the skills folder.`, `에이전트 루트(${deleteNode.tool})는 수정할 수 없습니다. skills 하위 항목에서 작업해주세요.`));
+            return;
+          }
+          if (!isManagedSkillPath(relativePath) || relativePath.split("/").includes("..")) {
+            vscode.window.showWarningMessage(args.tr(`Only items under the skills folder can be edited. (Current: ${deleteNode.tool}/${deleteNode.relativePath})`, `skills 폴더 하위 항목만 수정할 수 있습니다. (현재: ${deleteNode.tool}/${deleteNode.relativePath})`));
+            return;
+          }
+          if (relativePath.toLowerCase() === "skills") {
+            vscode.window.showWarningMessage(args.tr("The skills root cannot be changed.", "skills 루트는 변경할 수 없습니다."));
+            return;
+          }
+          const sourceRoot = getSkillRoot(basePath, deleteNode.tool, side);
+          const sourceAbs = path.join(sourceRoot, relativePath);
+          if (!isWithinPath(sourceRoot, sourceAbs)) {
+            vscode.window.showWarningMessage(args.tr("Only paths under the skills folder are allowed.", "skills 폴더 하위만 허용됩니다."));
+            return;
+          }
+          deleteTargets.push({ node: deleteNode, absolutePath: sourceAbs, relativePath });
+        }
+
+        const deleteLabel = args.tr("Delete", "삭제");
+        const preview = deleteTargets.slice(0, 6).map((target) => `${target.node.tool}/${target.relativePath}`).join("\n");
+        const more = deleteTargets.length > 6 ? args.tr(`\n...and ${deleteTargets.length - 6} more`, `\n...외 ${deleteTargets.length - 6}개`) : "";
+        const ok = await vscode.window.showWarningMessage(
+          deleteTargets.length === 1
+            ? args.tr(`Delete ${deleteTargets[0].node.kind} "${deleteTargets[0].relativePath}"?`, `${deleteTargets[0].node.kind === "folder" ? "폴더" : "파일"} "${deleteTargets[0].relativePath}"을(를) 삭제할까요?`)
+            : args.tr(`Delete ${deleteTargets.length} selected items?\n\n${preview}${more}`, `선택한 항목 ${deleteTargets.length}개를 삭제할까요?\n\n${preview}${more}`),
+          { modal: true },
+          deleteLabel
+        );
+        if (ok !== deleteLabel) return;
+
+        let deleted = 0;
+        let skipped = 0;
+        for (const target of deleteTargets) {
+          if (!(await args.exists(target.absolutePath))) {
+            skipped += 1;
+            continue;
+          }
+          await fs.rm(target.absolutePath, { recursive: true, force: true });
+          deleted += 1;
+        }
+        await args.refresh();
+        if (deleteTargets.length === 1 && deleted === 1 && skipped === 0) {
+          vscode.window.showInformationMessage(args.tr("Deleted.", "삭제 완료"));
+          return;
+        }
+        vscode.window.showInformationMessage(args.tr(`Delete completed: deleted ${deleted}, skipped ${skipped}.`, `삭제 완료: 삭제 ${deleted}개, 건너뜀 ${skipped}개.`));
+        return;
+      }
       const targetNode = node ?? providerFor(side).getSelected();
       if (!targetNode) {
         vscode.window.showWarningMessage(args.tr("Select a target file or folder first.", "먼저 대상 파일 또는 폴더를 선택하세요."));
@@ -236,19 +316,6 @@ export function createNodeActionTools(args: {
       const sourceAbs = path.join(sourceRoot, targetNode.relativePath);
       if (!(await args.exists(sourceAbs))) {
         vscode.window.showWarningMessage(args.tr("Could not find the target path.", "대상 경로를 찾을 수 없습니다."));
-        return;
-      }
-      if (action === "delete") {
-        const deleteLabel = args.tr("Delete", "삭제");
-        const ok = await vscode.window.showWarningMessage(
-          args.tr(`Delete ${targetNode.kind} "${targetNode.relativePath}"?`, `${targetNode.kind === "folder" ? "폴더" : "파일"} "${targetNode.relativePath}"을(를) 삭제할까요?`),
-          { modal: true },
-          deleteLabel
-        );
-        if (ok !== deleteLabel) return;
-        await fs.rm(sourceAbs, { recursive: true, force: true });
-        await args.refresh();
-        vscode.window.showInformationMessage(args.tr("Deleted.", "삭제 완료"));
         return;
       }
       const currentName = path.posix.basename(targetNode.relativePath);
@@ -395,7 +462,7 @@ export function createNodeActionTools(args: {
       await fs.writeFile(fileAbs, "", "utf8");
       await args.refresh();
     }
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fileAbs));
+    const doc = await vscode.workspace.openTextDocument(createFileUriFromAbsolutePath(fileAbs));
     await vscode.window.showTextDocument(doc, { preview: true });
   };
 

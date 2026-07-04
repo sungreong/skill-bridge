@@ -1,6 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
+import {
+  DEFAULT_CENTRAL_REPO_PATH_SETTING,
+  formatCentralPathIssue,
+  resolveCentralRepoPath,
+  type ResolvedCentralRepoPath
+} from "./centralPath";
+import { createFileUriFromAbsolutePath } from "./extensionSupport";
 import type { GroupTarget, SelectionGroup, SkillAssetTreeMeta, SkillFile, SkillTreeFilterMode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 import type { WizardAssetPick } from "./extensionAddMoveWizard";
@@ -11,6 +18,8 @@ type TreeSide = "workspace" | "central";
 type ProjectContext = {
   workspacePath: string;
   centralRepoPath: string;
+  configuredCentralRepoPath: string | null;
+  centralResolution: ResolvedCentralRepoPath;
 };
 
 export function createExtensionProjectActions(args: {
@@ -51,7 +60,7 @@ export function createExtensionProjectActions(args: {
   transferSelections: (side: TreeSide, selections: Array<{ tool: ToolType; relativePath: string }>, options?: { scopeHints?: Array<{ tool: ToolType; relativePath: string; kind: "folder" }> }) => Promise<{ copied: number; deleted: number; unchanged: number; affectedGroupIds: string[] }>;
   uniqueSelections: (selections: Array<{ tool: ToolType; relativePath: string }>) => Array<{ tool: ToolType; relativePath: string }>;
   mirrorGroupsByIds: (side: TreeSide, groupIds: string[]) => Promise<number>;
-  resolveContext: () => ProjectContext | undefined;
+  resolveContext: () => { workspacePath: string; centralRepoPath: string } | undefined;
   ensurePersonalSkillHome: (args: {
     basePath: string;
     allAgents: ToolType[];
@@ -97,15 +106,12 @@ export function createExtensionProjectActions(args: {
     return typeof configured === "string" && configured.trim() ? configured.trim() : undefined;
   };
 
-  const resolveProjectContext = async (): Promise<ProjectContext> => {
+  const resolveProjectContext = async (options?: { allowCentralFallback?: boolean }): Promise<ProjectContext> => {
     const stateWorkspacePath = args.state.workspacePath.trim();
     let workspacePath = stateWorkspacePath || args.getActiveWorkspacePath();
-    let centralRepoPath = args.state.centralRepoPath.trim();
-
-    if (!workspacePath || !centralRepoPath) {
+    if (!workspacePath) {
       const resolved = args.resolveContext();
       workspacePath = workspacePath || resolved?.workspacePath || "";
-      centralRepoPath = centralRepoPath || resolved?.centralRepoPath || "";
     }
 
     if (!workspacePath) {
@@ -113,6 +119,11 @@ export function createExtensionProjectActions(args: {
     }
 
     const configuredCentralRepoPath = getConfiguredCentralRepoPath();
+    let centralResolution = configuredCentralRepoPath
+      ? resolveCentralRepoPath(configuredCentralRepoPath, workspacePath, "configured")
+      : resolveCentralRepoPath(args.defaultCentralRepoPathSetting, workspacePath, "default");
+    let centralRepoPath = centralResolution.ok ? centralResolution.absolutePath : centralResolution.fallbackPath;
+
     if (!configuredCentralRepoPath) {
       centralRepoPath = args.getDefaultCentralRepoPath(workspacePath);
       await args.ensurePersonalSkillHome({
@@ -122,9 +133,12 @@ export function createExtensionProjectActions(args: {
       });
       await vscode.workspace
         .getConfiguration(args.settingsSection)
-        .update("centralRepoPath", args.defaultCentralRepoPathSetting, vscode.ConfigurationTarget.Global);
+        .update("centralRepoPath", DEFAULT_CENTRAL_REPO_PATH_SETTING, vscode.ConfigurationTarget.Global);
       await args.clearCentralRepoPathOverrides();
       args.output.appendLine(`[EnvironmentContext] centralRepoPath missing; set default=${centralRepoPath}`);
+      centralResolution = resolveCentralRepoPath(DEFAULT_CENTRAL_REPO_PATH_SETTING, workspacePath, "default");
+    } else if (!centralResolution.ok && !options?.allowCentralFallback) {
+      throw new Error(formatCentralPathIssue(centralResolution));
     }
 
     if (!centralRepoPath) {
@@ -132,8 +146,15 @@ export function createExtensionProjectActions(args: {
     }
 
     args.state.workspacePath = workspacePath;
-    args.state.centralRepoPath = centralRepoPath;
-    return { workspacePath, centralRepoPath };
+    if (centralResolution.ok) {
+      args.state.centralRepoPath = centralRepoPath;
+    }
+    return {
+      workspacePath,
+      centralRepoPath,
+      configuredCentralRepoPath: configuredCentralRepoPath ?? null,
+      centralResolution
+    };
   };
 
   const runNewSkillWizard = async (): Promise<void> => {
@@ -201,13 +222,16 @@ export function createExtensionProjectActions(args: {
 
   const setPersonalSkillHome = async (): Promise<void> => {
     try {
-      const current = (await resolveProjectContext()).centralRepoPath;
+      const projectContext = await resolveProjectContext({ allowCentralFallback: true });
+      const current = projectContext.centralResolution.ok
+        ? projectContext.centralRepoPath
+        : projectContext.centralResolution.fallbackPath;
       const picked = await vscode.window.showOpenDialog({
         title: args.tr("Choose Central Library Folder", "Central 라이브러리 폴더 선택"),
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        defaultUri: vscode.Uri.file(current)
+        defaultUri: createFileUriFromAbsolutePath(current)
       });
       const folder = picked?.[0]?.fsPath;
       if (!folder) return;
@@ -227,7 +251,7 @@ export function createExtensionProjectActions(args: {
   };
 
   const runEnvironmentDiagnosis = async (): Promise<void> => {
-    const projectContext = await resolveProjectContext();
+    const projectContext = await resolveProjectContext({ allowCentralFallback: true });
     await args.diagnoseEnvironment({
       tr: args.tr,
       output: args.output,
@@ -237,6 +261,8 @@ export function createExtensionProjectActions(args: {
         allAgents: args.allAgents,
         workspacePath: projectContext.workspacePath,
         centralRepoPath: projectContext.centralRepoPath,
+        configuredCentralRepoPath: projectContext.configuredCentralRepoPath,
+        configuredCentralResolution: projectContext.centralResolution,
         defaultCentralPath: args.getDefaultCentralRepoPath(projectContext.workspacePath),
         getWritableSkillRoot: args.getWritableSkillRootForEnv,
         settingsSection: args.settingsSection
@@ -255,13 +281,15 @@ export function createExtensionProjectActions(args: {
   };
 
   const runResetPersonalSkillHome = async (): Promise<void> => {
-    const projectContext = await resolveProjectContext();
+    const projectContext = await resolveProjectContext({ allowCentralFallback: true });
     await args.resetPersonalSkillHome({
       tr: args.tr,
       output: args.output,
       toUserError: args.toUserError,
       stateWorkspacePath: projectContext.workspacePath,
-      stateCentralRepoPath: projectContext.centralRepoPath,
+      stateCentralRepoPath: projectContext.centralResolution.ok
+        ? projectContext.centralRepoPath
+        : projectContext.centralResolution.rawValue,
       getActiveWorkspacePath: args.getActiveWorkspacePath,
       resolveContext: args.resolveContext,
       getDefaultCentralRepoPath: args.getDefaultCentralRepoPath,

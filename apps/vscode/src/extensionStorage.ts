@@ -17,6 +17,13 @@ import type {
 } from "./types";
 import { renderSkillGroupMarkdown, sanitizeGroupMeta } from "./groupMetadata";
 import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLanguage";
+import {
+  compactPathForDisplay as compactCentralPathForDisplay,
+  DEFAULT_CENTRAL_REPO_PATH_SETTING,
+  formatCentralPathIssue,
+  getDefaultCentralRepoPath as resolveDefaultCentralRepoPath,
+  resolveCentralRepoPath
+} from "./centralPath";
 import { mapWithConcurrency } from "./extensionSupport";
 import { scanSkillFiles } from "./skillScanner";
 import {
@@ -43,7 +50,7 @@ import {
 } from "./storagePaths";
 
 const SETTINGS_SECTION = "skillBridge";
-const DEFAULT_CENTRAL_REPO_PATH = "${userHome}/skill-bridge-repo";
+const DEFAULT_CENTRAL_REPO_PATH = DEFAULT_CENTRAL_REPO_PATH_SETTING;
 const CONFIGURABLE_TOOLS: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
 const execFileAsync = promisify(execFile);
 
@@ -80,14 +87,7 @@ export function resolveContext(): { workspacePath: string; centralRepoPath: stri
 }
 
 export function compactPathForDisplay(value: string): string {
-  const home = os.homedir();
-  const normalizedValue = path.resolve(value);
-  const normalizedHome = path.resolve(home);
-  if (normalizedValue === normalizedHome) return "~";
-  if (normalizedValue.startsWith(normalizedHome + path.sep)) {
-    return `~${path.sep}${normalizedValue.slice(normalizedHome.length + 1)}`;
-  }
-  return value;
+  return compactCentralPathForDisplay(value);
 }
 
 export function getActiveWorkspacePath(): string {
@@ -96,16 +96,16 @@ export function getActiveWorkspacePath(): string {
 }
 
 export function getDefaultCentralRepoPath(workspacePath: string): string {
-  return resolveConfiguredPath(DEFAULT_CENTRAL_REPO_PATH, workspacePath);
+  return resolveDefaultCentralRepoPath(workspacePath);
 }
 
 function resolveSharedCentralRepoPath(workspacePath: string): string {
   const raw = vscode.workspace.getConfiguration(SETTINGS_SECTION).get<string>("centralRepoPath", DEFAULT_CENTRAL_REPO_PATH);
-  return resolveConfiguredPath(raw, workspacePath);
-}
-
-function resolveConfiguredPath(raw: string, workspacePath: string): string {
-  return path.resolve(expandConfiguredPath(raw, workspacePath));
+  const resolved = resolveCentralRepoPath(raw, workspacePath, raw === DEFAULT_CENTRAL_REPO_PATH ? "default" : "configured");
+  if (!resolved.ok) {
+    throw new Error(formatCentralPathIssue(resolved));
+  }
+  return resolved.absolutePath;
 }
 
 export async function clearCentralRepoPathOverrides(): Promise<void> {
@@ -117,15 +117,6 @@ export async function clearCentralRepoPathOverrides(): Promise<void> {
   if (inspect?.workspaceFolderValue !== undefined) {
     await config.update("centralRepoPath", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   }
-}
-
-function expandConfiguredPath(raw: string, workspacePath: string): string {
-  const home = os.homedir();
-  return raw
-    .replace(/\$\{userHome\}/g, home)
-    .replace(/\$\{workspaceFolder\}/g, workspacePath)
-    .replace(/\$\{workspaceRoot\}/g, workspacePath)
-    .replace(/\$\{env:([^}]+)\}/g, (_match, name: string) => process.env[name] ?? "");
 }
 
 export async function ensureSkillBridgeState(workspacePath: string, centralRepoPath: string): Promise<SkillBridgeStateRepairResult> {
@@ -498,21 +489,44 @@ export async function runSkillsAdd(
   const args = ["-y", "skills", "add", repo, ...skillArgs, "--yes"];
   const command = formatCommandForDisplay("npx", args);
   const maxBuffer = 12 * 1024 * 1024;
+  const firstRun = await runSkillsAddOnce(args, cwd, maxBuffer);
+  if (firstRun.ok || !isBrokenNpxSkillsCliCache(firstRun.stdout, firstRun.stderr)) {
+    return { ...firstRun, command };
+  }
+
+  const retry = await runSkillsAddWithIsolatedCache(args, cwd, maxBuffer);
+  const retryNote = retry.ok
+    ? "Detected a broken npm npx cache for the skills CLI, then retried with an isolated temporary npm cache successfully."
+    : "Detected a broken npm npx cache for the skills CLI and retried with an isolated temporary npm cache, but the retry also failed. Run `npm cache clean --force` in a local terminal, then try again.";
+  return {
+    ok: retry.ok,
+    command,
+    stdout: joinMessages(firstRun.stdout, retry.stdout),
+    stderr: joinMessages(firstRun.stderr, retryNote, retry.stderr)
+  };
+}
+
+async function runSkillsAddOnce(
+  args: string[],
+  cwd: string,
+  maxBuffer: number,
+  env?: NodeJS.ProcessEnv
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   for (const cmd of getNpxExecFileCandidates()) {
     try {
       const { stdout, stderr } = await execFileAsync(cmd, args, {
         cwd,
         windowsHide: process.platform === "win32",
-        maxBuffer
+        maxBuffer,
+        env
       });
-      return { ok: true, command, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") };
+      return { ok: true, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") };
     } catch (error) {
       const execError = error as { code?: number | string; stdout?: string; stderr?: string };
       if (execError.code === "ENOENT") continue;
       if (typeof execError.code === "number") {
         return {
           ok: false,
-          command,
           stdout: String(execError.stdout ?? ""),
           stderr: String(execError.stderr ?? "")
         };
@@ -520,10 +534,9 @@ export async function runSkillsAdd(
     }
   }
   try {
-    const spawned = await runSkillsAddWithSpawn(args, cwd);
+    const spawned = await runSkillsAddWithSpawn(args, cwd, env);
     return {
       ok: spawned.code === 0,
-      command,
       stdout: spawned.stdout,
       stderr: spawned.stderr
     };
@@ -532,11 +545,30 @@ export async function runSkillsAdd(
     const message = spawnError.code === "ENOENT"
       ? "Could not find the npx executable. Check the Node.js/npm installation and PATH."
       : String(spawnError.message ?? error);
-    return { ok: false, command, stdout: "", stderr: message };
+    return { ok: false, stdout: "", stderr: message };
   }
 }
 
-async function runSkillsAddWithSpawn(args: string[], cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+async function runSkillsAddWithIsolatedCache(
+  args: string[],
+  cwd: string,
+  maxBuffer: number
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "skill-bridge-npm-cache-"));
+  try {
+    return await runSkillsAddOnce(args, cwd, maxBuffer, {
+      ...process.env,
+      npm_config_cache: cacheDir,
+      npm_config_prefer_online: "true",
+      npm_config_audit: "false",
+      npm_config_fund: "false"
+    });
+  } finally {
+    await fs.rm(cacheDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function runSkillsAddWithSpawn(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<{ code: number; stdout: string; stderr: string }> {
   return await new Promise((resolve, reject) => {
     const command = process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "npx";
     const commandArgs = process.platform === "win32" ? ["/d", "/s", "/c", "npx", ...args] : args;
@@ -544,7 +576,8 @@ async function runSkillsAddWithSpawn(args: string[], cwd: string): Promise<{ cod
       cwd,
       windowsHide: process.platform === "win32",
       shell: false,
-      timeout: 180000
+      timeout: 180000,
+      env
     });
     let stdout = "";
     let stderr = "";
@@ -559,6 +592,16 @@ async function runSkillsAddWithSpawn(args: string[], cwd: string): Promise<{ cod
       resolve({ code: code ?? 1, stdout, stderr });
     });
   });
+}
+
+function isBrokenNpxSkillsCliCache(stdout: string, stderr: string): boolean {
+  const output = `${stdout}\n${stderr}`;
+  return output.includes("ERR_MODULE_NOT_FOUND")
+    && /node_modules[\\/]+skills[\\/]+dist[\\/]+cli\.mjs/i.test(output);
+}
+
+function joinMessages(...messages: string[]): string {
+  return messages.map((message) => message.trim()).filter(Boolean).join("\n");
 }
 
 function normalizeRel(p: string | undefined | null): string {

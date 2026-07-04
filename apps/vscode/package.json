@@ -30,6 +30,9 @@
   "categories": [
     "Other"
   ],
+  "extensionKind": [
+    "workspace"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:skillBridge.workspaceSkills",

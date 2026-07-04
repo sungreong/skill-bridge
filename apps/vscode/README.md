@@ -159,6 +159,8 @@ The setting supports:
 - `${workspaceRoot}`
 - `${env:NAME}`
 
+The Central path must be reachable from the same host that runs the extension. Remote, WSL, or SSH sessions cannot reuse a path from a different host.
+
 Central groups are stored in `.skillbridge/skill-workspace.json` in the Central folder.
 
 Project Presets are stored in `.skillbridge/project-presets.json` in the Central folder.

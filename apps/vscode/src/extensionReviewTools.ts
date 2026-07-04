@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import * as vscode from "vscode";
 import type { SkillAssetTreeMeta, SkillAssetWarning, SkillTreeNode, TransferPlanItem } from "./types";
 import { buildFolderDiffRows, type FolderEntryRow } from "./skillPaths";
+import { createFileUriFromAbsolutePath } from "./extensionSupport";
 import { renderFolderTransferDiffHtml, renderTypeChangedTransferDiffHtml } from "./transferDiffViews";
 import type { SkillTreeProvider } from "./views/skillTreeProvider";
 import type { UiLanguage } from "./uiLanguage";
@@ -209,8 +210,8 @@ export function createReviewTools(args: {
       }
 
       const emptyDoc = await vscode.workspace.openTextDocument({ language: "plaintext", content: "" });
-      const srcDocPromise = vscode.workspace.openTextDocument(vscode.Uri.file(item.src));
-      const dstDocPromise = vscode.workspace.openTextDocument(vscode.Uri.file(item.dst));
+      const srcDocPromise = vscode.workspace.openTextDocument(createFileUriFromAbsolutePath(item.src));
+      const dstDocPromise = vscode.workspace.openTextDocument(createFileUriFromAbsolutePath(item.dst));
       let leftDoc: vscode.TextDocument;
       let rightDoc: vscode.TextDocument;
       if (item.status === "added") {

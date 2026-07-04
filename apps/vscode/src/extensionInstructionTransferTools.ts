@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
+import { createFileUriFromAbsolutePath } from "./extensionSupport";
 import type { GroupTarget, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { TransferScopeHint } from "./extensionTransferManager";
 
@@ -118,7 +119,7 @@ export function createExtensionInstructionTransferTools(args: {
     const title = sourceSide === "workspace"
       ? `Instruction Diff: Central <- Workspace · ${relativePath}`
       : `Instruction Diff: Workspace <- Central · ${relativePath}`;
-    await vscode.commands.executeCommand("vscode.diff", vscode.Uri.file(targetPath), vscode.Uri.file(sourcePath), title, {
+    await vscode.commands.executeCommand("vscode.diff", createFileUriFromAbsolutePath(targetPath), createFileUriFromAbsolutePath(sourcePath), title, {
       preview: true,
       preserveFocus: false
     });

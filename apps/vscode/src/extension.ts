@@ -116,6 +116,7 @@ import {
   type EnvironmentCheckStatus,
   type EnvironmentDiagnosis
 } from "./extensionEnvironment";
+import { DEFAULT_CENTRAL_REPO_PATH_SETTING } from "./centralPath";
 import { createTransferExplorerTools } from "./extensionTransferExplorer";
 import { asRecord, clearCentralRepoPathOverrides, compactPathForDisplay, ensureSkillBridgeState, getActiveWorkspacePath, getDefaultCentralRepoPath, loadProjectPresets, loadSelectionGroups, loadSkillFilesBySide, parseSkillInputs, resolveContext, runSkillsAdd, saveProjectPresets, saveSelectionGroups, scanCentralInstructions, scanSkills, scanWorkspaceInstructions, slugifyPackId, slugifyProjectPresetId } from "./extensionStorage";
 import { createLibraryManagerTools } from "./extensionLibraryManager";
@@ -123,7 +124,7 @@ import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLang
 import { SkillTreeProvider } from "./views/skillTreeProvider";
 
 const SETTINGS_SECTION = "skillBridge";
-const DEFAULT_CENTRAL_REPO_PATH = "${userHome}/skill-bridge-repo";
+const DEFAULT_CENTRAL_REPO_PATH = DEFAULT_CENTRAL_REPO_PATH_SETTING;
 const BUNDLED_SKILL_MANAGER_RELATIVE_PATH = "skills/skill-manager";
 const CONFIGURABLE_TOOLS: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
 const execFileAsync = promisify(execFile);

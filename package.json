@@ -26,6 +26,7 @@
     "build:vscode": "npm --workspace apps/vscode run build",
     "test:file-ops": "npm run build && npm run test:file-ops:dist",
     "test:file-ops:dist": "node scripts/test-file-ops-cross-platform.cjs",
+    "test:central-paths": "node scripts/test-central-paths.cjs",
     "benchmark:file-ops": "npm run build && npm run benchmark:file-ops:dist",
     "benchmark:file-ops:dist": "node scripts/benchmark-file-ops.cjs",
     "benchmark:file-ops:loading": "npm run build && npm run benchmark:file-ops:dist -- --preset loading --include-control",

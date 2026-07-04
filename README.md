@@ -132,7 +132,7 @@ The selection is saved in `skillBridge.visibleAgents`.
 
 | Setting | Purpose |
 | --- | --- |
-| `skillBridge.centralRepoPath` | Central skill library path. Supports `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, and `${env:NAME}`. |
+| `skillBridge.centralRepoPath` | Central skill library path. Supports `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, and `${env:NAME}`. The path must be reachable from the same host that runs the extension. |
 | `skillBridge.defaultAgents` | Agents managed by Skill Bridge. |
 | `skillBridge.visibleAgents` | Agents currently visible in the tree. Empty means all agents. |
 | `skillBridge.visibleQuickTools` | Quick Tools commands visible in the tree. Empty means the default core tool set. |
