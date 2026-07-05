@@ -14,14 +14,14 @@ export function renderLibraryManagerStyles(): string {
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      padding: 12px;
+      gap: 6px;
+      padding: 8px 10px;
     }
     .topbar {
       min-width: 0;
       display: grid;
       grid-template-columns: auto minmax(180px, 1fr) auto auto;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
       flex: 0 0 auto;
     }
@@ -35,10 +35,10 @@ export function renderLibraryManagerStyles(): string {
     }
     input, select, button {
       max-width: 100%;
-      min-height: 30px;
+      min-height: 28px;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 6px;
-      padding: 5px 9px;
+      border-radius: 5px;
+      padding: 4px 8px;
       font: inherit;
       color: var(--vscode-input-foreground);
       background: var(--vscode-input-background);
@@ -60,16 +60,16 @@ export function renderLibraryManagerStyles(): string {
     .tabs, .subtabs, .filters, .actions, .row-actions, .chips, .button-strip {
       min-width: 0;
       display: flex;
-      gap: 6px;
+      gap: 5px;
       align-items: center;
       flex-wrap: wrap;
       flex: 0 0 auto;
     }
     .tab, .subtab, .chip {
-      min-height: 28px;
+      min-height: 26px;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 7px;
-      padding: 5px 10px;
+      border-radius: 6px;
+      padding: 4px 8px;
       background: var(--vscode-input-background);
       color: var(--vscode-descriptionForeground);
     }
@@ -85,23 +85,23 @@ export function renderLibraryManagerStyles(): string {
       justify-content: flex-end;
     }
     .subtabs {
-      padding: 8px;
+      padding: 5px 7px;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 8px;
+      border-radius: 6px;
       background: color-mix(in oklab, var(--vscode-editor-background) 95%, var(--vscode-editor-foreground) 5%);
     }
     .summary {
       display: grid;
-      grid-template-columns: repeat(4, minmax(120px, 1fr));
-      gap: 8px;
+      grid-template-columns: repeat(4, minmax(104px, 1fr));
+      gap: 5px;
       flex: 0 0 auto;
       align-items: start;
     }
     .metric {
       min-width: 0;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 8px;
-      padding: 8px 10px;
+      border-radius: 6px;
+      padding: 5px 8px;
       background: color-mix(in oklab, var(--vscode-editor-background) 96%, var(--vscode-editor-foreground) 4%);
     }
     .metric span {
@@ -114,13 +114,13 @@ export function renderLibraryManagerStyles(): string {
     }
     .metric strong {
       display: block;
-      margin-top: 3px;
-      font-size: 18px;
+      margin-top: 1px;
+      font-size: 15px;
       line-height: 1.1;
     }
     .metric-button {
       width: 100%;
-      min-height: 56px;
+      min-height: 42px;
       text-align: left;
       color: var(--vscode-foreground);
       cursor: pointer;
@@ -133,7 +133,7 @@ export function renderLibraryManagerStyles(): string {
     .panel {
       min-height: 0;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 9px;
+      border-radius: 7px;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -150,9 +150,9 @@ export function renderLibraryManagerStyles(): string {
       min-width: 0;
       display: grid;
       grid-template-columns: minmax(180px, 1fr) auto;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
-      padding: 8px 10px;
+      padding: 6px 8px;
       border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-sideBar-background);
     }
@@ -180,15 +180,15 @@ export function renderLibraryManagerStyles(): string {
     }
     .detail-summary {
       grid-template-columns: repeat(6, minmax(120px, 1fr));
-      padding: 8px 10px;
+      padding: 5px 8px;
       border-bottom: 1px solid var(--vscode-panel-border);
       background: color-mix(in oklab, var(--vscode-editor-background) 98%, var(--vscode-editor-foreground) 2%);
     }
     .detail-summary .metric {
-      padding: 7px 9px;
+      padding: 5px 7px;
     }
     .detail-summary .metric strong {
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.15;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -208,7 +208,7 @@ export function renderLibraryManagerStyles(): string {
     }
     th, td {
       border-bottom: 1px solid var(--vscode-panel-border);
-      padding: 7px 8px;
+      padding: 5px 7px;
       vertical-align: middle;
       text-align: left;
     }
@@ -289,8 +289,8 @@ export function renderLibraryManagerStyles(): string {
       min-width: 0;
       flex: 0 0 auto;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 7px;
-      padding: 6px 9px;
+      border-radius: 6px;
+      padding: 4px 7px;
       color: var(--vscode-descriptionForeground);
       overflow: hidden;
       text-overflow: ellipsis;

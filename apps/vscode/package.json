@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",

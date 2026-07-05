@@ -41,13 +41,13 @@ export function renderAddMoveWizardHtml(
   <title>${payload.language === "ko" ? "스킬 관리자" : "Skill Manager"}</title>
   <style>
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .wrap { padding: 12px; display: grid; gap: 10px; }
-    .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-    .head-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-    h1 { margin: 0; font-size: 18px; font-weight: 700; }
-    .muted { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.5; }
-    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 7px; }
-    .action { text-align: left; border: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); border-radius: 6px; padding: 8px 10px; display: grid; gap: 3px; cursor: pointer; min-height: 0; transition: border-color 120ms ease, background 120ms ease, transform 120ms ease; }
+    .wrap { padding: 8px 10px; display: grid; gap: 7px; }
+    .head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .head-actions { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    h1 { margin: 0; font-size: 16px; font-weight: 700; }
+    .muted { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.35; }
+    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); gap: 5px; }
+    .action { text-align: left; border: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); border-radius: 5px; padding: 6px 8px; display: grid; gap: 2px; cursor: pointer; min-height: 0; transition: border-color 120ms ease, background 120ms ease, transform 120ms ease; }
     .action:hover { background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
     .action:focus-visible, button.ghost:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .action:active { transform: translateY(1px); }
@@ -55,16 +55,16 @@ export function renderAddMoveWizardHtml(
     button:disabled { opacity: .58; cursor: progress; }
     .action b { font-size: 13px; }
     .action span { font-size: 12px; color: var(--vscode-descriptionForeground); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
-    .panel { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: hidden; }
-    .panel-head { padding: 8px 10px; background: var(--vscode-sideBar-background); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px; }
+    .panel { border: 1px solid var(--vscode-panel-border); border-radius: 5px; overflow: hidden; }
+    .panel-head { padding: 6px 8px; background: var(--vscode-sideBar-background); display: flex; justify-content: space-between; gap: 6px; align-items: center; }
     .panel-head b { font-size: 13px; }
     .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--vscode-panel-border); }
-    .metric { background: var(--vscode-editor-background); padding: 6px 8px; }
+    .metric { background: var(--vscode-editor-background); padding: 5px 7px; }
     .metric .k { color: var(--vscode-descriptionForeground); font-size: 11px; }
-    .metric .v { font-size: 15px; font-weight: 700; }
-    .preview { padding: 6px 8px; display: grid; gap: 5px; max-height: 150px; overflow: auto; scrollbar-gutter: stable; }
-    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12px; }
+    .metric .v { font-size: 14px; font-weight: 700; }
+    .preview { padding: 5px 7px; display: grid; gap: 4px; max-height: 128px; overflow: auto; scrollbar-gutter: stable; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; font-size: 12px; }
     .row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chip { display: inline-flex; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
     .status-new { color: #4ade80; border-color: #22c55e; }
@@ -72,8 +72,8 @@ export function renderAddMoveWizardHtml(
     .status-risk, .status-missingSkillMd { color: #fb7185; border-color: #fb7185; }
     .status-recent { color: #60a5fa; border-color: #3b82f6; }
     .foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-    button.ghost { border: 1px solid var(--vscode-input-border); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-radius: 4px; padding: 6px 9px; cursor: pointer; }
-    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+    button.ghost { border: 1px solid var(--vscode-input-border); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 7px; font-size: 12px; }
     .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
     .feedback.warn { border-color: #f59e0b; color: #fbbf24; }
     .feedback.error { border-color: #fb7185; color: #fb7185; }

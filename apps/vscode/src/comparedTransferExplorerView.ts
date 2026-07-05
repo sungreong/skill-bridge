@@ -68,11 +68,11 @@ export function renderComparedTransferExplorerHtml(
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
-    .wrap { height: 100vh; min-height: 0; padding: 10px; display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); gap: 8px; }
-    .head { display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
+    .wrap { height: 100vh; min-height: 0; padding: 8px 10px; display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); gap: 6px; }
+    .head { display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
     .title { font-size: 15px; font-weight: 700; }
-    .controls, .tabs, .mode-switch, .section-actions, .chips, .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
-    input, button { max-width: 100%; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 5px 9px; font: inherit; }
+    .controls, .tabs, .mode-switch, .section-actions, .chips, .row-actions { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; min-width: 0; }
+    input, button { max-width: 100%; min-height: 28px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 4px 8px; font: inherit; }
     input { width: min(340px, 42vw); min-width: 180px; }
     button { cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
@@ -83,25 +83,25 @@ export function renderComparedTransferExplorerHtml(
     .mode-btn.active, .tab.active { border-color: #60a5fa; color: #bfdbfe; box-shadow: inset 0 0 0 1px rgba(96,165,250,.25); }
     .hint { display: none; }
     .result-meta { font-size: 12px; color: var(--vscode-descriptionForeground); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-height: 18px; }
-    .status-tabs { display: grid; grid-template-columns: repeat(4, minmax(116px, 1fr)); gap: 6px; min-width: 0; }
-    .status-filter { min-width: 0; padding: 6px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; text-align: left; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
+    .status-tabs { display: grid; grid-template-columns: repeat(4, minmax(104px, 1fr)); gap: 5px; min-width: 0; }
+    .status-filter { min-width: 0; padding: 5px 7px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; text-align: left; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
     .status-filter.active { background: color-mix(in oklab, var(--vscode-button-background, var(--vscode-editor-background)) 16%, var(--vscode-editor-background) 84%); box-shadow: inset 0 0 0 1px rgba(96,165,250,.25); }
     .status-filter-name { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status-filter-counts { display: flex; align-items: center; gap: 5px; justify-content: flex-end; min-width: 0; }
-    .status-count { min-width: 28px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 1px 7px; font-size: 12px; font-weight: 800; text-align: center; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+    .status-count { min-width: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 0 6px; font-size: 12px; font-weight: 800; text-align: center; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
     .status-count-label { font-size: 11px; color: var(--vscode-descriptionForeground); }
-    .tabs { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 4px; }
-    .status { font-size: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 5px 8px; color: var(--vscode-descriptionForeground); }
+    .tabs { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 3px; }
+    .status { font-size: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 4px 7px; color: var(--vscode-descriptionForeground); }
     .status.warn { border-color: #f59e0b; color: #f59e0b; }
     .status.error { border-color: #ef4444; color: #ef4444; }
-    .sections { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; padding: 0 2px 4px 0; scrollbar-gutter: stable; }
+    .sections { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; padding: 0 2px 4px 0; scrollbar-gutter: stable; }
     .section { min-width: 0; border: 1px solid var(--vscode-panel-border); border-radius: 9px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
-    .section-head { padding: 9px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-panel-border); }
+    .section-head { padding: 7px 9px; display: flex; justify-content: space-between; align-items: center; gap: 7px; background: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-panel-border); }
     .section.collapsed .section-head { border-bottom: 0; }
     .section-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
     .section-name { font-weight: 700; }
     .section-desc { font-size: 12px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .section-body { padding: 8px; display: grid; gap: 8px; content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 420px; }
+    .section-body { padding: 6px; display: grid; gap: 6px; content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 420px; }
     .subsection { display: grid; gap: 6px; }
     .subsection-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
     .subsection-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--vscode-descriptionForeground); font-size: 12px; }
@@ -111,7 +111,7 @@ export function renderComparedTransferExplorerHtml(
     .agent-name { font-weight: 700; }
     .agent-count, .meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 6px; padding: 6px; align-items: start; }
-    .row { border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; background: var(--vscode-editor-background); content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 64px; }
+    .row { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px 7px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: start; background: var(--vscode-editor-background); content-visibility: auto; contain: layout paint style; contain-intrinsic-size: 60px; }
     .row-main { display: grid; gap: 3px; min-width: 0; }
     .name { font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chip, .badge { font-size: 11px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 1px 8px; }
