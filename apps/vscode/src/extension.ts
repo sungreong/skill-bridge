@@ -122,6 +122,7 @@ import { asRecord, clearCentralRepoPathOverrides, compactPathForDisplay, ensureS
 import { createLibraryManagerTools } from "./extensionLibraryManager";
 import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLanguage";
 import { SkillTreeProvider } from "./views/skillTreeProvider";
+import { createCentralPathRepairTools } from "./extensionCentralPathRepair";
 
 const SETTINGS_SECTION = "skillBridge";
 const DEFAULT_CENTRAL_REPO_PATH = DEFAULT_CENTRAL_REPO_PATH_SETTING;
@@ -960,8 +961,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     exportGroup: async (side) => await exportGroup(side)
   });
 
+  const { offerCentralPathRepair } = createCentralPathRepairTools({
+    tr,
+    output,
+    toUserError,
+    state,
+    settingsSection: SETTINGS_SECTION,
+    getActiveWorkspacePath,
+    ensurePersonalSkillHome,
+    allAgents: ALL_AGENTS,
+    getWritableSkillRoot: (basePath, tool, mode) => getWritableSkillRoot(basePath, tool, mode),
+    clearCentralRepoPathOverrides,
+    refresh,
+    compactPathForDisplay,
+    runEnvironmentDiagnosis
+  });
+
   output.appendLine(`[Activation] registered in ${Date.now() - activationStartedAt}ms; initial refresh queued`);
   void refresh().catch(async (error) => {
+    if (await offerCentralPathRepair(error)) return;
     const picked = await vscode.window.showWarningMessage(
       `${toUserError(error)} ${tr("Use Skill Bridge setup check to inspect the Central path and permissions.", "Skill Bridge 환경 진단으로 Central 경로와 권한을 확인할 수 있습니다.")}`,
       tr("Check Setup", "환경 진단")
