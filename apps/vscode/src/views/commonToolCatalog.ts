@@ -54,7 +54,7 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Open Group Overview", "그룹 Overview 열기"),
+        label: localize(language, "Open Group Overview", "그룹 개요 열기"),
         description: localize(language, "Common · manage skill groups", "공통 · 스킬 그룹 관리"),
         command: "skillBridge.openGroupOverview",
         icon: "symbol-namespace",
@@ -157,7 +157,7 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "workspace",
-        label: localize(language, "Create Project Preset from Workspace", "현재 Workspace로 프로젝트 프리셋 만들기"),
+        label: localize(language, "Create Project Preset from Workspace", "현재 작업공간으로 프로젝트 프리셋 만들기"),
         description: localize(language, "Workspace only · save as Central preset", "작업공간 전용 · 중앙 프리셋 저장"),
         command: "skillBridge.createProjectPresetFromWorkspace",
         icon: "package"
@@ -225,7 +225,7 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "central",
-        label: localize(language, "Check and Repair Central Metadata", "Central 메타데이터 점검 및 복구"),
+        label: localize(language, "Check and Repair Central Metadata", "중앙 메타데이터 점검 및 복구"),
         description: localize(language, "Central only · clean preset and group JSON", "중앙 전용 · 프리셋/그룹 JSON 정리"),
         command: "skillBridge.repairCentralMetadata",
         icon: "tools",

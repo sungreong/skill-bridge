@@ -82,7 +82,8 @@ export function createWizardAssetTools(args: {
   const pickWizardAsset = async (side: TreeSide, title: string): Promise<WizardAssetPick | undefined> => {
     const assets = getWizardAssetPicks(side);
     if (assets.length === 0) {
-      vscode.window.showWarningMessage(args.tr(`No skills are available to select from ${side === "workspace" ? "Workspace" : "Central"}.`, `${side === "workspace" ? "Workspace" : "Central"}에서 선택할 스킬이 없습니다.`));
+      const sideLabel = side === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
+      vscode.window.showWarningMessage(args.tr(`No skills are available to select from ${sideLabel}.`, `${sideLabel}에서 선택할 스킬이 없습니다.`));
       return undefined;
     }
     const pick = await vscode.window.showQuickPick(

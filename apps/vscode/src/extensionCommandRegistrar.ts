@@ -442,7 +442,7 @@ export function registerExtensionCommands(args: {
     const tools = Object.values(buildCommonToolNodes(language)).flat().filter((tool) => tool.command !== MANAGE_QUICK_TOOLS_COMMAND);
     const picks = await vscode.window.showQuickPick(
       tools.map((tool) => ({ label: tool.label, description: tool.description, detail: tool.command, picked: visible.has(tool.command), value: tool.command })),
-      { title: args.tr("Manage Quick Tools", "빠른 도구 관리"), placeHolder: args.tr("Choose the tools to show in Quick Tools.", "Quick Tools에 표시할 도구를 선택하세요."), canPickMany: true, matchOnDescription: true, matchOnDetail: true }
+      { title: args.tr("Manage Quick Tools", "빠른 도구 관리"), placeHolder: args.tr("Choose the tools to show in Quick Tools.", "빠른 도구에 표시할 도구를 선택하세요."), canPickMany: true, matchOnDescription: true, matchOnDetail: true }
     );
     if (!picks) return;
     const selected = picks.map((pick) => pick.value);

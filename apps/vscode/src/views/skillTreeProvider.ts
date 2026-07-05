@@ -41,7 +41,7 @@ export class SkillTreeItem extends vscode.TreeItem {
     } else if (node.kind === "preset" && node.presetId) {
       this.command = {
         command: "skillBridge.openProjectPresetOverview",
-        title: localize(this.language, "Open Project Preset Overview", "프로젝트 프리셋 Overview 열기"),
+        title: localize(this.language, "Open Project Preset Overview", "프로젝트 프리셋 개요 열기"),
         arguments: [node]
       };
     } else if (node.kind === "toolCommand" && node.commandId) {

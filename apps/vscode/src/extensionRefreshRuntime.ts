@@ -445,7 +445,7 @@ export function createExtensionRefreshRuntime(args: {
         if (summary.syncedFolders === 0) return;
         args.output.appendLine(args.tr(
           `[AutoSync] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups} centralFolders=${summary.centralFolders} centralFiles=${summary.centralFiles} skippedMissingSkillMd=${summary.skippedMissingSkillMd}`,
-          `[AutoSync] Workspace → Central 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹동기화=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
+          `[AutoSync] 작업공간 → 중앙 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹동기화=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
         ));
         vscode.window.setStatusBarMessage(
           args.tr(

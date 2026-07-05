@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",
@@ -1596,9 +1596,10 @@
     "watch": "tsc -p tsconfig.json --watch",
     "vendor:core": "node ../../scripts/vendor-vscode-core.cjs",
     "check:manifest": "node scripts/check-manifest.cjs",
+    "check:action-labels": "node scripts/check-action-labels.cjs",
     "check:runtime-deps": "node ../../scripts/check-vscode-runtime-deps.cjs",
     "check:vsix-runtime-deps": "node ../../scripts/check-vsix-runtime-deps.cjs",
-    "package:vsix": "npm run build:production && npm run check:manifest && npm run check:runtime-deps && npx vsce package --allow-missing-repository --no-dependencies && npm run check:vsix-runtime-deps"
+    "package:vsix": "npm run build:production && npm run check:manifest && npm run check:action-labels && npm run check:runtime-deps && npx vsce package --allow-missing-repository --no-dependencies && npm run check:vsix-runtime-deps"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0"

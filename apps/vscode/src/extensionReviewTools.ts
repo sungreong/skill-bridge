@@ -93,10 +93,11 @@ export function createReviewTools(args: {
       }
 
       const titlePath = target.relativePath || target.label;
+      const sideLabel = side === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
       const lines = [
         args.tr("# Skill Bridge Warning Reasons", "# Skill Bridge 주의 이유"),
         "",
-        args.tr(`- Location: ${side === "workspace" ? "Workspace" : "Central"}`, `- 위치: ${side === "workspace" ? "Workspace" : "Central"}`),
+        args.tr(`- Location: ${sideLabel}`, `- 위치: ${sideLabel}`),
         args.tr(`- Item: ${target.tool}/${titlePath}`, `- 항목: ${target.tool}/${titlePath}`),
         args.tr(`- Current status: ${target.assetStatus ? skillAssetStatusLabel(target.assetStatus) : "Includes child item warnings"}`, `- 현재 상태: ${target.assetStatus ? skillAssetStatusLabel(target.assetStatus) : "하위 항목 경고 포함"}`),
         args.tr(`- Warning count: ${warnings.length}`, `- 경고 수: ${warnings.length}`),

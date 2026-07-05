@@ -124,7 +124,7 @@ export function createProjectPresetTools(args: {
     await runPresetAction(async () => {
       const group = args.resolveGroup(node);
       if (!group || group.side !== "workspace") {
-        vscode.window.showWarningMessage(args.tr("Choose a Workspace group first.", "먼저 Workspace 그룹을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Choose a Workspace group first.", "먼저 작업공간 그룹을 선택하세요."));
         return;
       }
       await exportWorkspaceTargets(group.targets, group.name, group.description ?? "");
@@ -188,7 +188,7 @@ export function createProjectPresetTools(args: {
   const exportWorkspaceTargets = async (targets: GroupTarget[], defaultName?: string, defaultDescription?: string): Promise<void> => {
     const normalizedTargets = normalizeTargets(targets);
     if (normalizedTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 Workspace 스킬 폴더를 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 작업공간 스킬 폴더를 찾지 못했습니다."));
       return;
     }
     const workspaceStatuses = workspaceStatusByTarget();
@@ -201,7 +201,7 @@ export function createProjectPresetTools(args: {
     }
     const eligibleTargets = normalizedTargets.filter((target) => workspaceStatuses.get(targetKey(target)) !== "missingSkillMd");
     if (eligibleTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 Workspace 스킬 폴더를 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 작업공간 스킬 폴더를 찾지 못했습니다."));
       return;
     }
     const missingOrChangedTargets = eligibleTargets.filter((target) => {
@@ -212,21 +212,21 @@ export function createProjectPresetTools(args: {
       const selections = args.targetsToSelections(args.state.workspaceSkills, missingOrChangedTargets);
       const result = await args.transferSelections("workspace", selections, {
         scopeHints: missingOrChangedTargets,
-        repoContext: { repo: defaultName ?? args.tr("Workspace project preset", "Workspace 프로젝트 프리셋") }
+        repoContext: { repo: defaultName ?? args.tr("Workspace project preset", "작업공간 프로젝트 프리셋") }
       });
       if (isEmptyTransfer(result)) return;
       await args.refresh();
     }
     const availableTargets = eligibleTargets.filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
     if (availableTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review.", "전송 검토 후 Central에서 사용할 수 있는 선택 스킬이 없습니다."));
+      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review.", "전송 검토 후 중앙에서 사용할 수 있는 선택 스킬이 없습니다."));
       return;
     }
     if (availableTargets.length < eligibleTargets.length) {
       const ok = await vscode.window.showWarningMessage(
         args.tr(
           `Save only ${availableTargets.length}/${eligibleTargets.length} skills that exist in Central?`,
-          `Central에 있는 ${availableTargets.length}/${eligibleTargets.length}개 스킬만 저장할까요?`
+          `중앙에 있는 ${availableTargets.length}/${eligibleTargets.length}개 스킬만 저장할까요?`
         ),
         { modal: true },
         args.tr("Save available skills", "있는 스킬만 저장")

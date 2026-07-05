@@ -41,8 +41,8 @@ export function renderLibraryManagerHtml(
     </div>
 
     <div class="subtabs compare-pane">
-      <button class="subtab active" data-mode="send">${lang === "ko" ? "Workspace에서 Central로 보내기" : "Send Workspace to Central"}</button>
-      <button class="subtab" data-mode="bring">${lang === "ko" ? "Central에서 Workspace로 가져오기" : "Bring Central to Workspace"}</button>
+      <button class="subtab active" data-mode="send">${lang === "ko" ? "작업공간에서 중앙으로 보내기" : "Send Workspace to Central"}</button>
+      <button class="subtab" data-mode="bring">${lang === "ko" ? "중앙에서 작업공간으로 가져오기" : "Bring Central to Workspace"}</button>
     </div>
 
     <div id="summary" class="summary compare-pane"></div>

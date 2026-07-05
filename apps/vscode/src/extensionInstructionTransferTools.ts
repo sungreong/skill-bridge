@@ -282,7 +282,7 @@ export function createExtensionInstructionTransferTools(args: {
         const profileLabel = summarizeInstructionProfiles(instructionPaths);
         vscode.window.showInformationMessage(args.tr(
           `Instructions sent to Workspace: Central ${profileLabel} to workspace · copied ${result.copied} · unchanged ${result.unchanged} · skipped ${result.skipped} · failed ${result.failed}`,
-          `instruction Workspace 반영: Central ${profileLabel} → workspace · 복사 파일 ${result.copied}개 / 변경없음 파일 ${result.unchanged}개 / 건너뜀 파일 ${result.skipped}개 / 실패 파일 ${result.failed}개`
+          `지침 작업공간 반영: 중앙 ${profileLabel} → 작업공간 · 복사 파일 ${result.copied}개 / 변경없음 파일 ${result.unchanged}개 / 건너뜀 파일 ${result.skipped}개 / 실패 파일 ${result.failed}개`
         ));
         return;
       }

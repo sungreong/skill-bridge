@@ -24,8 +24,8 @@ export function sourceDetail(meta: { source?: SourceKind; repoKey?: string; repo
 export function syncLabel(status: SyncStatus, t: TranslationFn): string {
   if (status === "same") return t("same", "같음");
   if (status === "different") return t("different", "다름");
-  if (status === "workspaceOnly") return t("workspace only", "Workspace만");
-  return t("central only", "Central만");
+  if (status === "workspaceOnly") return t("workspace only", "작업공간만");
+  return t("central only", "중앙만");
 }
 
 export function healthLabel(health: HealthStatus, brokenTargetCount: number, t: TranslationFn): string {

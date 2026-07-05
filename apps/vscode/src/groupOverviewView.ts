@@ -102,7 +102,7 @@ export function createGroupOverviewTools(args: {
       const groupFilterId = contextNode?.kind === "group" ? contextNode.id : null;
       const panel = vscode.window.createWebviewPanel(
         "skillBridgeGroupOverview",
-        args.tr("Group Overview", "그룹 Overview"),
+        args.tr("Group Overview", "그룹 개요"),
         vscode.ViewColumn.Active,
         { enableScripts: true }
       );
@@ -111,7 +111,7 @@ export function createGroupOverviewTools(args: {
         const data = await buildGroupOverviewData(args, side, agentFilter, groupFilterId);
         panel.title = args.tr(
           `Group Overview: ${side}${agentFilter ? `/${agentFilter}` : ""}`,
-          `그룹 Overview: ${side}${agentFilter ? `/${agentFilter}` : ""}`
+          `그룹 개요: ${side}${agentFilter ? `/${agentFilter}` : ""}`
         );
         panel.webview.html = renderGroupOverviewHtml(panel.webview, data, args.getUiLanguage());
       };
@@ -569,7 +569,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(t("Group Overview", "그룹 Overview"))}</title>
+  <title>${esc(t("Group Overview", "그룹 개요"))}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
@@ -648,7 +648,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
 <body>
   <div class="wrap">
     <div class="top">
-      <h1>${esc(t("Group Overview", "그룹 Overview"))}: ${esc(data.side)}${data.agentFilter ? ` / ${esc(data.agentFilter)}` : ""}</h1>
+      <h1>${esc(t("Group Overview", "그룹 개요"))}: ${esc(data.side)}${data.agentFilter ? ` / ${esc(data.agentFilter)}` : ""}</h1>
       <div class="top-actions">
         <div id="summary" class="summary">${data.groups.length} ${esc(t("groups", "그룹"))}</div>
         <button id="languageToggle" type="button">${esc(isKo ? "English" : "한국어")}</button>
@@ -809,8 +809,8 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
   const folderHtml = skillFolders.slice(0, 80).map((folder) => renderSkillFolder(folder, t)).join("");
   const searchText = `${group.agent} ${group.sourceDetail} ${group.name} ${group.description} ${group.targets.map((target) => `${target.path} ${target.description} ${target.historyProject}`).join(" ")}`;
   const primaryAction = group.side === "workspace"
-    ? t("Send group + skills to Central", "그룹+스킬을 Central로 보내기")
-    : t("Bring group + skills to Workspace", "그룹+스킬을 Workspace로 가져오기");
+    ? t("Send group + skills to Central", "그룹+스킬을 중앙으로 보내기")
+    : t("Bring group + skills to Workspace", "그룹+스킬을 작업공간으로 가져오기");
   return `
     <article class="group-detail ${active ? "" : "hidden"}" data-group-id="${escAttr(group.id)}" data-search="${esc(searchText.toLowerCase())}">
       <div class="group-head">

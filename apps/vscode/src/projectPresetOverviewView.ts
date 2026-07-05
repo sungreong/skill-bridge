@@ -257,7 +257,7 @@ function renderProjectPresetOverviewHtml(
             <div class="meta">${missingText}<span class="badge">${active.targets.length} ${esc(t("skills", "스킬"))}</span><span class="badge">${active.agentCount} ${esc(t("agents", "에이전트"))}</span></div>
           </div>
           <div class="actions">
-            <button class="primary" data-apply="${escAttr(active.id)}" type="button">${esc(t("Apply to Workspace", "Workspace에 적용"))}</button>
+            <button class="primary" data-apply="${escAttr(active.id)}" type="button">${esc(t("Apply to Workspace", "작업공간에 적용"))}</button>
             <button data-save="${escAttr(active.id)}" type="button">${esc(t("Save preset", "프리셋 저장"))}</button>
             <button class="danger" data-delete="${escAttr(active.id)}" type="button">${esc(t("Delete preset", "프리셋 삭제"))}</button>
           </div>

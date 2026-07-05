@@ -485,7 +485,7 @@ export function createExtensionGroupStateTools(args: {
         })),
         {
           canPickMany: true,
-          title: side === "workspace" ? args.tr("Add to Existing Workspace Groups", "Workspace 기존 그룹에 추가") : args.tr("Add to Existing Central Groups", "Central 기존 그룹에 추가"),
+          title: side === "workspace" ? args.tr("Add to Existing Workspace Groups", "기존 작업공간 그룹에 추가") : args.tr("Add to Existing Central Groups", "기존 중앙 그룹에 추가"),
           placeHolder: args.tr("Choose one or more groups to add to.", "추가할 그룹을 하나 이상 선택하세요.")
         }
       );

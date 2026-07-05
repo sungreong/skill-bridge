@@ -264,7 +264,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       vscode.window.showInformationMessage(
         deps.tr(
           `Installed: Central ${sourcePick.value.tool}/${sourcePick.value.skillName} to Workspace ${targetLabel}`,
-          `설치 완료: Central ${sourcePick.value.tool}/${sourcePick.value.skillName} → Workspace ${targetLabel}`
+          `설치 완료: 중앙 ${sourcePick.value.tool}/${sourcePick.value.skillName} → 작업공간 ${targetLabel}`
         )
       );
     } catch (error) {
@@ -348,7 +348,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       vscode.window.showInformationMessage(
         deps.tr(
           `Installed: bundled skill-manager to Workspace ${targetLabel}`,
-          `설치 완료: 번들 skill-manager → Workspace ${targetLabel}`
+          `설치 완료: 번들 skill-manager → 작업공간 ${targetLabel}`
         )
       );
     } catch (error) {

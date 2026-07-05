@@ -215,15 +215,32 @@ export function createNodeActionTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
       const targetPath = resolveOpenFolderTarget(basePath, side, node);
+      let folderPath = targetPath;
       if (!(await args.exists(targetPath))) {
-        vscode.window.showWarningMessage(args.tr(`Folder does not exist: ${targetPath}`, `열 폴더가 없습니다: ${targetPath}`));
-        return;
+        const createLabel = args.tr("Create Folder", "폴더 만들기");
+        const targetFolderPath = node?.kind === "file" ? path.dirname(targetPath) : targetPath;
+        const picked = await vscode.window.showWarningMessage(
+          args.tr(
+            `Folder does not exist: ${targetFolderPath}`,
+            `열 폴더가 없습니다: ${targetFolderPath}`
+          ),
+          createLabel,
+          args.tr("Check Setup", "설정 점검")
+        );
+        if (picked === args.tr("Check Setup", "설정 점검")) {
+          await vscode.commands.executeCommand("skillBridge.diagnoseEnvironment");
+          return;
+        }
+        if (picked !== createLabel) return;
+        await fs.mkdir(targetFolderPath, { recursive: true });
+        folderPath = targetFolderPath;
       }
-      const stat = await fs.stat(targetPath);
-      const folderPath = stat.isDirectory() ? targetPath : path.dirname(targetPath);
+      const stat = await fs.stat(folderPath);
+      folderPath = stat.isDirectory() ? folderPath : path.dirname(folderPath);
       await vscode.env.openExternal(createFileUriFromAbsolutePath(folderPath));
+      const sideLabel = side === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
       vscode.window.setStatusBarMessage(
-        args.tr(`Skill Bridge: Opened ${side === "workspace" ? "Workspace" : "Central"} folder ${args.compactPathForDisplay(folderPath)}`, `Skill Bridge: ${side === "workspace" ? "Workspace" : "Central"} 폴더 열기 ${args.compactPathForDisplay(folderPath)}`),
+        args.tr(`Skill Bridge: Opened ${sideLabel} folder ${args.compactPathForDisplay(folderPath)}`, `Skill Bridge: ${sideLabel} 폴더 열기 ${args.compactPathForDisplay(folderPath)}`),
         2500
       );
     } catch (error) {
@@ -585,7 +602,7 @@ export function createNodeActionTools(args: {
             : args.tr("Start watching this workspace agent for automatic Central updates", "이 작업공간 에이전트의 자동 중앙 반영 감시를 켭니다")
         }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
-          label: args.tr(`Sync ${args.formatAgentFolderLabel(scopedAgentTool)} to Central Now`, `${args.formatAgentFolderLabel(scopedAgentTool)}를 지금 Central로 sync`),
+          label: args.tr(`Sync ${args.formatAgentFolderLabel(scopedAgentTool)} to Central Now`, `${args.formatAgentFolderLabel(scopedAgentTool)}를 지금 중앙으로 sync`),
           value: "syncAgentNow",
           description: args.tr("Copy changed skill folders now and mirror only related groups", "변경된 스킬 폴더를 지금 복사하고 관련 그룹만 미러링합니다")
         }] : []),
