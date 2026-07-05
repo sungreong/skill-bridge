@@ -546,6 +546,7 @@ export function createNodeActionTools(args: {
       const scopedSelections = provider.getSelectionsFromNodes(scopedNodes);
       const fallbackSelections = !node && scopedSelections.length === 0 ? provider.getAllSelections() : [];
       const selections = args.uniqueSelections(scopedSelections.length > 0 ? scopedSelections : fallbackSelections);
+      const isAllVisibleTransferScope = !node && scopedSelections.length === 0 && fallbackSelections.length > 0;
       const skillRel = getSkillFolderRelativePathFromNode(baseNode);
       const skillNode = baseNode && skillRel ? makeFolderNode(baseNode.tool, skillRel) : undefined;
       const selectedGroup = args.state.selectedGroupId
@@ -558,9 +559,13 @@ export function createNodeActionTools(args: {
       const isScopedAgentAutoSyncEnabled = scopedAgentTool ? args.getAutoSyncWorkspaceAgents().includes(scopedAgentTool) : false;
       const actions: Array<{ label: string; value: string; description?: string }> = [
         ...(canTransfer ? [{
-          label: side === "workspace" ? args.tr("Send This to Central", "이 항목 중앙으로 보내기") : args.tr("Bring This to Workspace", "이 항목 작업공간으로 가져오기"),
+          label: isAllVisibleTransferScope
+            ? args.tr("Review All Visible Skills for Transfer", "현재 보이는 전체 스킬 전송 검토")
+            : side === "workspace" ? args.tr("Send This to Central", "이 항목 중앙으로 보내기") : args.tr("Bring This to Workspace", "이 항목 작업공간으로 가져오기"),
           value: "transfer",
-          description: args.tr(`${selections.length} file target(s) from the clicked item`, `클릭한 항목 기준 파일 대상 ${selections.length}개`)
+          description: isAllVisibleTransferScope
+            ? args.tr(`${selections.length} visible file target(s); confirmation required`, `현재 보이는 파일 대상 ${selections.length}개 · 확인 후 진행`)
+            : args.tr(`${selections.length} file target(s) from the clicked item`, `클릭한 항목 기준 파일 대상 ${selections.length}개`)
         }] : []),
         ...(canCreateGroupFromTarget ? [{
           label: args.tr("Create Group from This", "이 항목으로 그룹 만들기"),
@@ -632,6 +637,18 @@ export function createNodeActionTools(args: {
         if (selections.length === 0) {
           vscode.window.showWarningMessage(args.tr("Could not find files to transfer.", "전송할 파일을 찾지 못했습니다."));
           return;
+        }
+        if (isAllVisibleTransferScope) {
+          const reviewLabel = args.tr("Review All Visible", "전체 검토");
+          const confirm = await vscode.window.showWarningMessage(
+            args.tr(
+              `No item is selected. Review all ${selections.length} visible file target(s) for transfer?`,
+              `선택된 항목이 없습니다. 현재 보이는 파일 대상 ${selections.length}개 전체를 전송 검토할까요?`
+            ),
+            { modal: true },
+            reviewLabel
+          );
+          if (confirm !== reviewLabel) return;
         }
         const result = await args.transferSelections(side, selections, {
           scopeHints: args.buildTransferScopeHintsFromNodes(scopedNodes)

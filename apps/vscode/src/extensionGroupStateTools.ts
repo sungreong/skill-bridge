@@ -527,6 +527,18 @@ export function createExtensionGroupStateTools(args: {
 
       const selections = args.targetsToSelections(getSideSkillFiles(side), group.targets);
       const scopeHints = group.targets.map((target) => ({ ...target }));
+      if (selections.length === 0) {
+        const refreshLabel = args.tr("Refresh", "새로고침");
+        const picked = await vscode.window.showWarningMessage(
+          args.tr(
+            `Group "${group.name}" has no currently available skill files to transfer. Its targets may be missing SKILL.md or no longer exist.`,
+            `그룹 "${group.name}"에는 현재 전송할 수 있는 스킬 파일이 없습니다. 대상에 SKILL.md가 없거나 더 이상 존재하지 않을 수 있습니다.`
+          ),
+          refreshLabel
+        );
+        if (picked === refreshLabel) await args.refresh();
+        return null;
+      }
 
       if (!options?.skipConfirm) {
         const directionLabel = side === "workspace"
