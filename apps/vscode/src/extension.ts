@@ -968,7 +968,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     exportGroup: async (side) => await exportGroup(side)
   });
 
-  ({ offerCentralPathRepair } = createCentralPathRepairTools({
+  const centralPathRepairTools = createCentralPathRepairTools({
     tr,
     output,
     toUserError,
@@ -982,7 +982,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refresh,
     compactPathForDisplay,
     runEnvironmentDiagnosis
-  }));
+  });
+  ({ offerCentralPathRepair } = centralPathRepairTools);
+  register("skillBridge.repairCentralPath", async () => {
+    await centralPathRepairTools.openCentralPathRepairPicker();
+  });
 
   output.appendLine(`[Activation] registered in ${Date.now() - activationStartedAt}ms; initial refresh queued`);
   void refresh().catch(async (error) => {

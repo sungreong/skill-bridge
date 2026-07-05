@@ -83,6 +83,7 @@
   "command.editProjectPresetDescription": "프로젝트 프리셋 설명 편집",
   "command.deleteProjectPreset": "프로젝트 프리셋 삭제",
   "command.repairCentralMetadata": "Central 메타데이터 점검 및 복구",
+  "command.repairCentralPath": "Central 라이브러리 경로 복구",
   "command.diagnoseEnvironment": "환경 점검 및 복구",
   "command.openPerformanceTools": "성능 도구 열기",
   "command.configureWorkspaceAutoSync": "작업공간 자동 sync 설정",

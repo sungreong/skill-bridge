@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",
@@ -103,6 +103,7 @@
     "onCommand:skillBridge.editProjectPresetDescription",
     "onCommand:skillBridge.deleteProjectPreset",
     "onCommand:skillBridge.repairCentralMetadata",
+    "onCommand:skillBridge.repairCentralPath",
     "onCommand:skillBridge.diagnoseEnvironment",
     "onCommand:skillBridge.openPerformanceTools",
     "onCommand:skillBridge.configureWorkspaceAutoSync",
@@ -580,6 +581,12 @@
         "title": "%command.repairCentralMetadata%",
         "category": "Skill Bridge",
         "icon": "$(tools)"
+      },
+      {
+        "command": "skillBridge.repairCentralPath",
+        "title": "%command.repairCentralPath%",
+        "category": "Skill Bridge",
+        "icon": "$(folder-active)"
       },
       {
         "command": "skillBridge.diagnoseEnvironment",
@@ -1273,6 +1280,10 @@
         {
           "command": "skillBridge.diagnoseEnvironment",
           "group": "navigation@0"
+        },
+        {
+          "command": "skillBridge.repairCentralPath",
+          "group": "navigation@0.5"
         },
         {
           "command": "skillBridge.setPersonalHome",

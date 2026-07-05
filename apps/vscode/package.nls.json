@@ -83,6 +83,7 @@
   "command.editProjectPresetDescription": "Edit Project Preset Description",
   "command.deleteProjectPreset": "Delete Project Preset",
   "command.repairCentralMetadata": "Check and Repair Central Metadata",
+  "command.repairCentralPath": "Repair Central Library Path",
   "command.diagnoseEnvironment": "Check Setup and Repair",
   "command.openPerformanceTools": "Open Performance Tools",
   "command.configureWorkspaceAutoSync": "Configure Workspace Auto Sync",
