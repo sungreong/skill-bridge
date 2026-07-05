@@ -4,10 +4,10 @@ import { resolveSkillPath } from "./skillPaths";
 import { isManagedSkillPath, normalizeRel } from "./extensionSupport";
 import type { CentralSkillHistoryFile } from "./extensionHistoryTools";
 import { healthLabel, renderBadge, sideLabel, sourceDetail, sourceLabel, syncLabel } from "./groupOverviewLabels";
+import { renderGroupOverviewStyles } from "./groupOverviewStyles";
 import { ALL_AGENTS, type GroupTreeNode, type GroupTarget, type SelectionGroup, type SkillFile, type SkillSelection, type ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 import type { GroupMutationSummary, LibraryTarget } from "./libraryManagerTypes";
-
 type TranslationFn = (english: string, korean: string) => string;
 type TreeSide = "workspace" | "central";
 
@@ -170,6 +170,10 @@ export function createGroupOverviewTools(args: {
           } else if (isInstallNpxMessage(message)) {
             await args.installSkillsForSide(message.side);
             await args.refresh();
+          } else if (isAddSkillsToGroupsMessage(message)) {
+            await addSkillsToGroups(args, message.groupIds);
+          } else if (isTransferGroupsMessage(message)) {
+            await transferGroups(args, message.groupIds, message.mode);
           } else if (isAddSkillsMessage(message)) {
             const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to update.", "수정할 그룹을 찾지 못했습니다."));
             await addSkillsToGroup(args, group);
@@ -337,6 +341,16 @@ function isInstallNpxMessage(message: unknown): message is { type: "installNpx";
   return record.type === "installNpx"
     && (record.side === "workspace" || record.side === "central");
 }
+function isAddSkillsToGroupsMessage(message: unknown): message is { type: "addSkillsToGroups"; groupIds: string[] } {
+  if (!message || typeof message !== "object") return false;
+  const record = message as Record<string, unknown>;
+  return record.type === "addSkillsToGroups" && Array.isArray(record.groupIds) && record.groupIds.every((id) => typeof id === "string");
+}
+function isTransferGroupsMessage(message: unknown): message is { type: "transferGroups"; groupIds: string[]; mode: "withSkills" | "groupOnly" } {
+  if (!message || typeof message !== "object") return false;
+  const record = message as Record<string, unknown>;
+  return record.type === "transferGroups" && Array.isArray(record.groupIds) && record.groupIds.every((id) => typeof id === "string") && (record.mode === "withSkills" || record.mode === "groupOnly");
+}
 function isAddSkillsMessage(message: unknown): message is { type: "addSkills"; groupId: string } {
   if (!message || typeof message !== "object") return false;
   const record = message as Record<string, unknown>;
@@ -407,6 +421,44 @@ async function addSkillsToGroup(
   ));
 }
 
+async function addSkillsToGroups(args: Parameters<typeof createGroupOverviewTools>[0], groupIds: string[]): Promise<void> {
+  const groups = groupIds.map((id) => args.state.groups.find((group) => group.id === id)).filter((group): group is SelectionGroup => !!group);
+  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first.", "먼저 그룹을 하나 이상 선택하세요."));
+  const tools = [...new Set(groups.map((group) => args.getGroupTool(group)))];
+  if (tools.length !== 1 || !tools[0] || tools[0] === "mixed") throw new Error(args.tr("Select groups from one agent before adding skills.", "스킬을 추가하려면 같은 에이전트의 그룹만 선택하세요."));
+  const candidates = getAvailableSkillFolderTargetsForGroups(args, groups, tools[0]);
+  if (candidates.length === 0) {
+    vscode.window.showInformationMessage(args.tr("No available skills can be added to the selected groups.", "선택한 그룹에 추가할 수 있는 스킬이 없습니다."));
+    return;
+  }
+  const picks = await vscode.window.showQuickPick(candidates.map((target) => ({ label: skillNameFromRelativePath(target.relativePath), description: `${target.tool}/${target.relativePath}`, value: target })), { canPickMany: true, title: args.tr(`Add skills to ${groups.length} group(s)`, `그룹 ${groups.length}개에 스킬 추가`), placeHolder: args.tr("Choose one or more skill folders to add to every selected group.", "선택한 모든 그룹에 추가할 스킬 폴더를 고르세요.") });
+  if (!picks || picks.length === 0) return;
+  let affected = 0;
+  let skipped = 0;
+  for (const group of groups) {
+    const result = await args.assignTargetsToGroupMany(group.side, group.id, picks.map((pick) => pick.value));
+    await markGroupMixedIfNeeded(args, group);
+    affected += result.affectedCount;
+    skipped += result.skippedCount;
+  }
+  vscode.window.showInformationMessage(args.tr(`Added skills to ${groups.length} group(s): added ${affected}, skipped ${skipped}`, `그룹 ${groups.length}개에 스킬 추가 완료: 추가 ${affected}개, 제외 ${skipped}개`));
+}
+
+async function transferGroups(args: Parameters<typeof createGroupOverviewTools>[0], groupIds: string[], mode: "withSkills" | "groupOnly"): Promise<void> {
+  const groups = groupIds.map((id) => args.state.groups.find((group) => group.id === id)).filter((group): group is SelectionGroup => !!group);
+  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first.", "먼저 그룹을 하나 이상 선택하세요."));
+  let changed = 0;
+  for (const group of groups) {
+    if (mode === "groupOnly" && await args.mirrorGroupToOtherSide(group, { requireExistingTargets: false })) changed += 1;
+    if (mode === "withSkills") {
+      const result = await args.exportGroup(group.side, group, { skipConfirm: true, skipNotify: true, skipRefresh: true });
+      if (result && result.copied + result.deleted > 0) changed += 1;
+    }
+  }
+  await args.refresh();
+  vscode.window.showInformationMessage(args.tr(`Selected group action complete: ${changed}/${groups.length} changed`, `선택 그룹 작업 완료: ${groups.length}개 중 ${changed}개 변경`));
+}
+
 async function removeSkillsFromGroup(
   args: Parameters<typeof createGroupOverviewTools>[0],
   group: SelectionGroup,
@@ -463,6 +515,23 @@ function getAvailableSkillFolderTargets(
     const key = `${file.tool}:${folderRel}`;
     if (existing.has(key)) continue;
     byFolder.set(key, { tool: file.tool, relativePath: folderRel, kind: "folder" });
+  }
+  return [...byFolder.values()].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+function getAvailableSkillFolderTargetsForGroups(args: Parameters<typeof createGroupOverviewTools>[0], groups: SelectionGroup[], groupTool: ToolType): LibraryTarget[] {
+  const files = groups[0]?.side === "central" ? args.state.centralSkills : args.state.workspaceSkills;
+  const fullyExisting = new Set<string>();
+  for (const group of groups) {
+    for (const target of group.targets) fullyExisting.add(`${group.id}:${target.tool}:${normalizeRel(skillFolderRelativePath(target.relativePath))}`);
+  }
+  const byFolder = new Map<string, LibraryTarget>();
+  for (const file of files) {
+    if (file.tool !== groupTool) continue;
+    const folderRel = skillFolderRelativePath(file.relativePath);
+    if (folderRel && isManagedSkillPath(folderRel) && !groups.every((group) => fullyExisting.has(`${group.id}:${file.tool}:${folderRel}`))) {
+      byFolder.set(`${file.tool}:${folderRel}`, { tool: file.tool, relativePath: folderRel, kind: "folder" });
+    }
   }
   return [...byFolder.values()].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
@@ -552,12 +621,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
   const t = (english: string, korean: string): string => isKo ? korean : english;
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const activeAgent = data.agentFilter ?? "all";
-  const agentButtons = [
-    `<button class="chip ${activeAgent === "all" ? "active" : ""}" data-agent-filter="all" type="button">All</button>`,
-    ...data.agents.map((agent) =>
-      `<button class="chip ${activeAgent === agent.agent ? "active" : ""}" data-agent-filter="${escAttr(agent.agent)}" type="button">${esc(formatAgent(agent.agent))}</button>`
-    )
-  ].join("");
+  const agentButtons = [`<button class="chip ${activeAgent === "all" ? "active" : ""}" data-agent-filter="all" type="button">All</button>`, ...data.agents.map((agent) => `<button class="chip ${activeAgent === agent.agent ? "active" : ""}" data-agent-filter="${escAttr(agent.agent)}" type="button">${esc(formatAgent(agent.agent))}</button>`)].join("");
   const groupsForView = data.agents.flatMap((agent) => agent.groups);
   const selectedGroupId = groupsForView[0]?.id ?? "";
   const groupRows = groupsForView.map((group, index) => renderGroupRow(group, t, index === 0)).join("");
@@ -570,80 +634,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(t("Group Overview", "그룹 개요"))}</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 10px; padding: 12px; overflow: hidden; }
-    .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
-    .top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-    h1, h2, h3 { margin: 0; font-weight: 600; }
-    h1 { min-width: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    h2 { font-size: 14px; }
-    h3 { font-size: 13px; }
-    .summary { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
-    .toolbar, .agent-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    input, textarea, button { font: inherit; border: 1px solid var(--vscode-panel-border); border-radius: 5px; }
-    input, textarea { background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 6px 8px; }
-    #search { width: min(520px, 100%); min-width: 0; flex: 1 1 260px; }
-    button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 5px 9px; cursor: pointer; }
-    button:disabled { opacity: .55; cursor: not-allowed; }
-    button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
-    .chip { min-height: 28px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; padding: 5px 10px; background: var(--vscode-input-background); color: var(--vscode-descriptionForeground); }
-    .chip.active { border-color: #60a5fa; color: var(--vscode-foreground); box-shadow: inset 0 0 0 1px rgba(96,165,250,.28); }
-    .content { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(160px, 42vh) minmax(0, 1fr); gap: 10px; }
-    .group-list, .detail-shell { min-height: 0; border: 1px solid var(--vscode-panel-border); border-radius: 8px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
-    .group-list { overflow: auto; }
-    .detail-shell { overflow: auto; }
-    .group-list table { min-width: 1040px; }
-    .group-row { cursor: pointer; }
-    .group-row:hover { background: color-mix(in oklab, var(--vscode-editor-background) 92%, #60a5fa 8%); }
-    .group-row.active { background: color-mix(in oklab, var(--vscode-editor-background) 86%, #60a5fa 14%); }
-    .group-name { font-weight: 700; color: var(--vscode-foreground); }
-    .group-desc { max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
-    .agent-label { color: #bfdbfe; font-weight: 700; }
-    .badge { display: inline-flex; align-items: center; min-height: 20px; border-radius: 999px; border: 1px solid var(--vscode-panel-border); padding: 2px 7px; font-size: 11px; white-space: nowrap; }
-    .badge.workspace, .badge.manual { color: #bfdbfe; border-color: rgba(96,165,250,.6); }
-    .badge.central, .badge.npx { color: #bbf7d0; border-color: rgba(52,211,153,.65); }
-    .badge.mixed, .badge.different, .badge.needsDescription { color: #fde68a; border-color: rgba(250,204,21,.7); }
-    .badge.brokenTargets { color: #fecaca; border-color: rgba(248,113,113,.75); }
-    .badge.same { color: #cbd5e1; }
-    .source-detail { max-width: min(520px, 80vw); overflow: hidden; text-overflow: ellipsis; }
-    .group-detail { display: grid; gap: 8px; padding: 10px; }
-    .group-detail.hidden { display: none; }
-    .group-head { display: grid; grid-template-columns: minmax(180px, 1fr) auto; gap: 8px; align-items: start; }
-    .actions { display: flex; gap: 7px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-    .meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; }
-    .pill { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
-    .meta-inline { margin-left: 6px; color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 400; }
-    .edit { display: grid; grid-template-columns: minmax(160px, 220px) minmax(220px, 1fr) auto; gap: 7px; align-items: start; }
-    textarea { min-height: 32px; resize: vertical; }
-    .skill-folders { display: grid; gap: 6px; padding-top: 8px; }
-    .skill-folder { border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: auto; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
-    .skill-folder > summary { display: flex; gap: 8px; align-items: center; padding: 7px 9px; cursor: pointer; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); }
-    .skill-folder input[type="checkbox"] { flex: 0 0 auto; }
-    .folder-name { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .folder-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
-    .folder-summary { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 9px; border-top: 1px solid var(--vscode-panel-border); }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-    thead { position: sticky; top: 0; z-index: 1; background: var(--vscode-sideBar-background); }
-    th, td { text-align: left; padding: 6px 7px; border-top: 1px solid var(--vscode-panel-border); vertical-align: top; }
-    th { color: var(--vscode-descriptionForeground); font-weight: 500; }
-    .path { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .skill-folder table { min-width: 900px; }
-    .skill-desc { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
-    .empty { padding: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; }
-    .hidden { display: none; }
-    @media (max-width: 960px) {
-      .top { align-items: flex-start; flex-wrap: wrap; }
-      .top-actions { justify-content: flex-start; }
-      .toolbar { align-items: stretch; }
-      #search { flex-basis: 100%; }
-      .content { grid-template-rows: minmax(180px, 42vh) minmax(0, 1fr); }
-      .group-head, .edit { grid-template-columns: 1fr; }
-      .actions { justify-content: flex-start; }
-      .path { max-width: 68vw; }
-    }
-  </style>
+  <style>${renderGroupOverviewStyles()}</style>
 </head>
 <body>
   <div class="wrap">
@@ -654,10 +645,18 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
         <button id="languageToggle" type="button">${esc(isKo ? "English" : "한국어")}</button>
       </div>
     </div>
-    <div class="toolbar">
-      <input id="search" placeholder="${esc(t("Search agent, group, skill, or description...", "에이전트, 그룹, 스킬, 설명 검색..."))}" />
-      <button id="expandAll">${esc(t("Expand all", "모두 펼치기"))}</button>
-      <button id="collapseAll">${esc(t("Collapse all", "모두 접기"))}</button>
+    <div class="controls">
+      <div class="toolbar">
+        <input id="search" placeholder="${esc(t("Search agent, group, skill, or description...", "에이전트, 그룹, 스킬, 설명 검색..."))}" />
+        <button id="expandAll">${esc(t("Expand all", "모두 펼치기"))}</button>
+        <button id="collapseAll">${esc(t("Collapse all", "모두 접기"))}</button>
+      </div>
+      <div class="batch-actions">
+        <span id="selectedGroupCount" class="summary">${esc(t("No groups selected", "선택 그룹 없음"))}</span>
+        <button id="batchAddSkills" type="button">${esc(t("Add skills to selected groups", "선택 그룹에 스킬 추가"))}</button>
+        <button id="batchTransferWithSkills" class="primary" type="button">${esc(t("Transfer selected groups + skills", "선택 그룹+스킬 전송"))}</button>
+        <button id="batchTransferGroupOnly" type="button">${esc(t("Transfer selected groups only", "선택 그룹만 전송"))}</button>
+      </div>
     </div>
     <div id="agentFilter" class="agent-filter">
       ${agentButtons}
@@ -668,6 +667,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
           <thead>
             <tr>
               <th style="width: 96px;">${esc(t("Agent", "에이전트"))}</th>
+              <th class="group-check"><input id="toggleGroups" type="checkbox" title="${escAttr(t("Select visible groups", "보이는 그룹 선택"))}" /></th>
               <th>${esc(t("Group", "그룹"))}</th>
               <th style="width: 96px;">${esc(t("Side", "위치"))}</th>
               <th style="width: 96px;">${esc(t("Source", "출처"))}</th>
@@ -676,7 +676,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
               <th style="width: 180px;">${esc(t("Latest file", "최신 파일"))}</th>
             </tr>
           </thead>
-          <tbody>${groupRows || `<tr><td colspan="7">${esc(t("No groups to show.", "표시할 그룹이 없습니다."))}</td></tr>`}</tbody>
+          <tbody>${groupRows || `<tr><td colspan="8">${esc(t("No groups to show.", "표시할 그룹이 없습니다."))}</td></tr>`}</tbody>
         </table>
       </section>
       <section class="detail-shell">
@@ -692,21 +692,29 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
     const rows = Array.from(document.querySelectorAll(".group-row"));
     const details = Array.from(document.querySelectorAll(".group-detail"));
     let activeGroup = "${esc(selectedGroupId)}";
-    let activeAgent = "${esc(activeAgent)}";
+    const activeAgents = new Set("${esc(activeAgent)}" === "all" ? [] : ["${esc(activeAgent)}"]);
     let busy = false;
-    function postAction(message, button) {
-      if (busy) return;
-      busy = true;
-      document.querySelectorAll("button").forEach((item) => { item.disabled = true; });
-      vscode.postMessage(message);
+    const selectedGroupCount = document.getElementById("selectedGroupCount");
+    const toggleGroups = document.getElementById("toggleGroups");
+    function selectedGroupIds() { return Array.from(document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]:checked")).map((item) => item.getAttribute("data-group-select") || "").filter(Boolean); }
+    function syncBatchState() {
+      const ids = selectedGroupIds();
+      if (selectedGroupCount) selectedGroupCount.textContent = ids.length === 0 ? "${esc(t("No groups selected", "선택 그룹 없음"))}" : ids.length + " ${esc(t("groups selected", "개 그룹 선택"))}";
+      document.querySelectorAll("#batchAddSkills,#batchTransferWithSkills,#batchTransferGroupOnly").forEach((item) => { if (item instanceof HTMLButtonElement) item.disabled = ids.length === 0; });
+      const visibleChecks = Array.from(document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]"));
+      if (toggleGroups instanceof HTMLInputElement) {
+        toggleGroups.checked = visibleChecks.length > 0 && visibleChecks.every((item) => item instanceof HTMLInputElement && item.checked);
+        toggleGroups.indeterminate = visibleChecks.some((item) => item instanceof HTMLInputElement && item.checked) && !toggleGroups.checked;
+      }
     }
+    function postAction(message, button) { if (busy) return; busy = true; document.querySelectorAll("button").forEach((item) => { item.disabled = true; }); vscode.postMessage(message); }
     function applySearch() {
       const q = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : "";
       let visible = 0;
       let firstVisible = "";
       for (const row of rows) {
         const agentKey = String(row.getAttribute("data-agent") || "");
-        const matchesActiveAgent = activeAgent === "all" || activeAgent === agentKey;
+        const matchesActiveAgent = activeAgents.size === 0 || activeAgents.has(agentKey);
         const matches = matchesActiveAgent && (!q || String(row.getAttribute("data-search") || "").includes(q));
         row.classList.toggle("hidden", !matches);
         if (matches) {
@@ -714,25 +722,19 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
           if (!firstVisible) firstVisible = String(row.getAttribute("data-group-id") || "");
         }
       }
-      if (!activeGroup || !rows.some((row) => !row.classList.contains("hidden") && row.getAttribute("data-group-id") === activeGroup)) {
-        activeGroup = firstVisible;
-      }
+      if (!activeGroup || !rows.some((row) => !row.classList.contains("hidden") && row.getAttribute("data-group-id") === activeGroup)) activeGroup = firstVisible;
       showGroup(activeGroup);
       if (summary) summary.textContent = visible + " ${esc(t("groups", "그룹"))}";
+      syncBatchState();
     }
-    function showGroup(groupId) {
-      activeGroup = groupId || "";
-      for (const row of rows) {
-        row.classList.toggle("active", row.getAttribute("data-group-id") === activeGroup);
-      }
-      for (const detail of details) {
-        detail.classList.toggle("hidden", detail.getAttribute("data-group-id") !== activeGroup);
-      }
-    }
+    function showGroup(groupId) { activeGroup = groupId || ""; for (const row of rows) row.classList.toggle("active", row.getAttribute("data-group-id") === activeGroup); for (const detail of details) detail.classList.toggle("hidden", detail.getAttribute("data-group-id") !== activeGroup); }
     function chooseAgent(value) {
-      activeAgent = value || "all";
+      if (!value || value === "all") activeAgents.clear();
+      else if (activeAgents.has(value)) activeAgents.delete(value);
+      else activeAgents.add(value);
       agentFilter?.querySelectorAll("[data-agent-filter]").forEach((button) => {
-        button.classList.toggle("active", button.getAttribute("data-agent-filter") === activeAgent);
+        const value = button.getAttribute("data-agent-filter") || "all";
+        button.classList.toggle("active", value === "all" ? activeAgents.size === 0 : activeAgents.has(value));
       });
       applySearch();
     }
@@ -776,14 +778,17 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
         }));
         postAction({ type: "removeSkills", groupId: removeSkills.getAttribute("data-remove-skills") || "", targets }, removeSkills);
       }
-      if (target instanceof HTMLElement && target.id === "expandAll") {
-        document.querySelectorAll("details").forEach((item) => { item.open = true; });
-      }
-      if (target instanceof HTMLElement && target.id === "collapseAll") {
-        document.querySelectorAll("details").forEach((item) => { item.open = false; });
-      }
-      if (target instanceof HTMLElement && target.id === "languageToggle") {
-        postAction({ type: "toggleLanguage" }, target);
+      if (target instanceof HTMLElement && target.id === "batchAddSkills") postAction({ type: "addSkillsToGroups", groupIds: selectedGroupIds() }, target);
+      if (target instanceof HTMLElement && target.id === "batchTransferWithSkills") postAction({ type: "transferGroups", groupIds: selectedGroupIds(), mode: "withSkills" }, target);
+      if (target instanceof HTMLElement && target.id === "batchTransferGroupOnly") postAction({ type: "transferGroups", groupIds: selectedGroupIds(), mode: "groupOnly" }, target);
+      if (target instanceof HTMLElement && target.id === "expandAll") document.querySelectorAll("details").forEach((item) => { item.open = true; });
+      if (target instanceof HTMLElement && target.id === "collapseAll") document.querySelectorAll("details").forEach((item) => { item.open = false; });
+      if (target instanceof HTMLElement && target.id === "languageToggle") postAction({ type: "toggleLanguage" }, target);
+      if (target instanceof HTMLInputElement && target.hasAttribute("data-group-select")) { syncBatchState(); return; }
+      if (target instanceof HTMLInputElement && target.id === "toggleGroups") {
+        document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]").forEach((item) => { if (item instanceof HTMLInputElement) item.checked = target.checked; });
+        syncBatchState();
+        return;
       }
       const row = target instanceof Element ? target.closest(".group-row") : null;
       if (row instanceof HTMLElement) {
@@ -791,12 +796,8 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
       }
     });
     document.querySelectorAll("input[data-skill-target]").forEach((item) => item.addEventListener("click", (event) => event.stopPropagation()));
-    agentFilter?.addEventListener("click", (event) => {
-      const target = event.target;
-      const button = target instanceof Element ? target.closest("[data-agent-filter]") : null;
-      if (!(button instanceof HTMLElement)) return;
-      chooseAgent(button.getAttribute("data-agent-filter") || "all");
-    });
+    document.querySelectorAll("input[data-group-select]").forEach((item) => item.addEventListener("click", (event) => event.stopPropagation()));
+    agentFilter?.addEventListener("click", (event) => { const target = event.target; const button = target instanceof Element ? target.closest("[data-agent-filter]") : null; if (button instanceof HTMLElement) chooseAgent(button.getAttribute("data-agent-filter") || "all"); });
     search?.addEventListener("input", applySearch);
     applySearch();
   </script>
@@ -840,7 +841,7 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
         <textarea data-description aria-label="${escAttr(t("Group description", "그룹 설명"))}">${esc(group.description)}</textarea>
         <button class="primary" data-save="${escAttr(group.id)}">${esc(t("Save", "저장"))}</button>
       </div>
-      <details open>
+      <details class="skill-section" open>
         <summary>${esc(t("Skills in this group", "이 그룹의 스킬"))} <span class="meta-inline">${skillFolders.length} ${esc(t("skills", "스킬"))}</span></summary>
         <div class="skill-folders">
           ${folderHtml || `<div class="empty">${esc(t("No skills found.", "스킬을 찾지 못했습니다."))}</div>`}
@@ -856,6 +857,7 @@ function renderGroupRow(group: GroupOverviewGroup, t: (english: string, korean: 
   return `
     <tr class="group-row ${active ? "active" : ""}" data-group-id="${escAttr(group.id)}" data-agent="${escAttr(group.agent)}" data-search="${esc(searchText.toLowerCase())}">
       <td><span class="agent-label">${esc(formatAgent(group.agent))}</span></td>
+      <td class="group-check"><input type="checkbox" data-group-select="${escAttr(group.id)}" title="${escAttr(t("Select group", "그룹 선택"))}" /></td>
       <td>
         <div class="group-name">${esc(group.name)}</div>
         <div class="group-desc" title="${escAttr(group.description || "-")}">${esc(group.description || t("No description", "설명 없음"))}</div>
