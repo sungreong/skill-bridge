@@ -29,6 +29,7 @@ export type NpxInstallPreset = {
 export function createInstallTransferTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   refresh: () => Promise<void>;
   output: vscode.OutputChannel;
   state: {
@@ -458,7 +459,7 @@ export function createInstallTransferTools(args: {
       if (!side) return;
       await runInstallSkills(side, node);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -467,7 +468,7 @@ export function createInstallTransferTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       await runInstallSkills(side);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -476,7 +477,7 @@ export function createInstallTransferTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       return await runInstallSkills(side, undefined, preset);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
       return false;
     }
   };

@@ -12,6 +12,7 @@ type TranslationFn = (english: string, korean: string) => string;
 export function createProjectPresetCommandTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -46,6 +47,7 @@ export function createProjectPresetCommandTools(args: {
   const projectPresetTools = createProjectPresetTools({
     tr: args.tr,
     toUserError: args.toUserError,
+    handleError: args.handleError,
     state: args.state,
     refresh: args.refresh,
     loadProjectPresets: args.loadProjectPresets,
@@ -65,6 +67,7 @@ export function createProjectPresetCommandTools(args: {
   const { repairCentralMetadata } = createCentralMetadataRepairTools({
     tr: args.tr,
     toUserError: args.toUserError,
+    handleError: args.handleError,
     state: args.state,
     refresh: args.refresh,
     loadProjectPresets: args.loadProjectPresets,
@@ -88,7 +91,8 @@ export function createProjectPresetCommandTools(args: {
     repairCentralMetadata,
     slugifyProjectPresetId: args.slugifyProjectPresetId,
     targetExistsInFiles: args.targetExistsInFiles,
-    toUserError: args.toUserError
+    toUserError: args.toUserError,
+    handleError: args.handleError
   });
   return { ...projectPresetTools, openProjectPresetOverview, repairCentralMetadata };
 }

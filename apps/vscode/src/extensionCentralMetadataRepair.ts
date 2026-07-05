@@ -14,6 +14,7 @@ type RepairSummary = {
 export function createCentralMetadataRepairTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -88,7 +89,7 @@ export function createCentralMetadataRepairTools(args: {
       await args.refresh();
       vscode.window.showInformationMessage(formatDoneMessage(args.tr, summary));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

@@ -11,6 +11,7 @@ type InstructionTransferTarget = { relativePath: string; profileId?: string; sou
 export function createExtensionInstructionTransferTools(args: {
   tr: (english: string, korean: string) => string;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   output: vscode.OutputChannel;
   state: {
     workspacePath: string;
@@ -263,7 +264,7 @@ export function createExtensionInstructionTransferTools(args: {
         `중앙 저장소 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`
       ));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -333,7 +334,7 @@ export function createExtensionInstructionTransferTools(args: {
         `작업공간 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`
       ));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

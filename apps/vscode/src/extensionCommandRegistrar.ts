@@ -13,6 +13,7 @@ export function registerExtensionCommands(args: {
   register: <T>(command: string, handler: (...commandArgs: T[]) => unknown) => void;
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   settingsSection: string;
   state: {
     workspacePath: string;
@@ -236,7 +237,7 @@ export function registerExtensionCommands(args: {
       ].join("\n"));
       vscode.window.showInformationMessage(args.tr("Performance commands copied.", "성능 명령을 복사했습니다."));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -277,7 +278,7 @@ export function registerExtensionCommands(args: {
       args.centralProvider.setHighlight(new Set());
       vscode.window.showInformationMessage(args.tr(`Group deleted: ${group.name}`, `그룹 삭제 완료: ${group.name}`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -305,7 +306,7 @@ export function registerExtensionCommands(args: {
           : args.tr("Workspace auto sync disabled.", "작업공간 자동 sync를 껐습니다.")
       );
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -335,7 +336,7 @@ export function registerExtensionCommands(args: {
         ? args.tr(`Workspace auto sync turned on for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 sync를 켰습니다.`)
         : args.tr(`Workspace auto sync turned off for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 sync를 껐습니다.`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -365,7 +366,7 @@ export function registerExtensionCommands(args: {
         `작업공간 에이전트 sync 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개`
       ));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -695,7 +696,7 @@ export function registerExtensionCommands(args: {
     try {
       await args.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   });
   args.register("skillBridge.switchTab", async () => {

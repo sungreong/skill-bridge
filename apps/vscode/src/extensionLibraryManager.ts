@@ -46,6 +46,7 @@ type LibraryManagerDeps = {
   tr: TranslationFn;
   output: vscode.OutputChannel;
   settingsSection: string;
+  handleError: (error: unknown) => Promise<void>;
   workspaceProvider: SkillTreeProvider;
   centralProvider: SkillTreeProvider;
   getUiLanguage: () => UiLanguage;
@@ -517,7 +518,7 @@ export function createLibraryManagerTools(deps: LibraryManagerDeps): {
         }
       } catch (error) {
         postUi({ busy: false, message: deps.toUserError(error), tone: "error" });
-        vscode.window.showErrorMessage(deps.toUserError(error));
+        await deps.handleError(error);
       }
     });
   };

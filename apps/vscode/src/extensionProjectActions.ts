@@ -25,6 +25,7 @@ type ProjectContext = {
 export function createExtensionProjectActions(args: {
   tr: (english: string, korean: string) => string;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   output: vscode.OutputChannel;
   state: {
     workspacePath: string;
@@ -246,7 +247,7 @@ export function createExtensionProjectActions(args: {
       await args.refresh();
       vscode.window.showInformationMessage(args.tr(`Central library folder set: ${folder}`, `Central 라이브러리 폴더 설정 완료: ${folder}`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

@@ -106,6 +106,7 @@ type ExplorerDeps = {
   exportGroup: (side: TreeSide, group?: SelectionGroup) => Promise<unknown>;
   isSameFileContent: (src: string, dst: string, srcSize: number, dstSize: number) => Promise<boolean>;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
 };
 
 function parseLibraryTargets(rawTargets: unknown): ExplorerTarget[] {
@@ -560,7 +561,7 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
         }
       } catch (error) {
         postUi({ busy: false, message: deps.toUserError(error), tone: "error" });
-        vscode.window.showErrorMessage(deps.toUserError(error));
+        await deps.handleError(error);
       }
     });
   };

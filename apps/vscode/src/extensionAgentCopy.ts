@@ -10,6 +10,7 @@ type TranslationFn = (english: string, korean: string) => string;
 type AgentCopyDeps = {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   workspacePath: () => string;
   centralRepoPath: () => string;
   agents: () => ToolType[];
@@ -334,7 +335,7 @@ export function createAgentCopyTools(deps: AgentCopyDeps): {
         `${side} 에이전트 간 그룹 복사 완료: ${group.name} → ${targetLabel} · 스킬 ${validTargets.length}개 · 그룹 ${changedGroups}개${skipSuffix}`
       ));
     } catch (error) {
-      vscode.window.showErrorMessage(deps.toUserError(error));
+      await deps.handleError(error);
     }
   };
 

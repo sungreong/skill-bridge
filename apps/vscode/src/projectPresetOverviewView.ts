@@ -36,6 +36,7 @@ export function createProjectPresetOverviewTools(args: {
   slugifyProjectPresetId: (value: string) => string;
   targetExistsInFiles: (target: GroupTarget, files: SkillFile[]) => boolean;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
 }): {
   openProjectPresetOverview: (node?: unknown) => Promise<void>;
 } {
@@ -84,14 +85,14 @@ export function createProjectPresetOverviewTools(args: {
           await args.refresh();
           await render();
         } catch (error) {
-          vscode.window.showErrorMessage(args.toUserError(error));
+          await args.handleError(error);
           await render();
         }
       });
       await render();
       args.registerLanguageRefresh(panel, render);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
   return { openProjectPresetOverview };

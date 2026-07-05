@@ -17,6 +17,7 @@ type TranslationFn = (english: string, korean: string) => string;
 type HydrationDeps = {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   workspacePath: () => string;
   centralRepoPath: () => string;
   agents: () => ToolType[];
@@ -159,7 +160,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         )
       );
     } catch (error) {
-      vscode.window.showErrorMessage(deps.toUserError(error));
+      await deps.handleError(error);
     }
   };
 
@@ -267,7 +268,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         )
       );
     } catch (error) {
-      vscode.window.showErrorMessage(deps.toUserError(error));
+      await deps.handleError(error);
     }
   };
 
@@ -351,7 +352,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         )
       );
     } catch (error) {
-      vscode.window.showErrorMessage(deps.toUserError(error));
+      await deps.handleError(error);
     }
   };
 
@@ -423,7 +424,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       await saveProjectPresets(deps.centralRepoPath(), presetsFile);
       vscode.window.showInformationMessage(deps.tr(`Project preset saved: ${preset.name} (${preset.targets.length} skills)`, `프로젝트 프리셋 저장 완료: ${preset.name} (스킬 ${preset.targets.length}개)`));
     } catch (error) {
-      vscode.window.showErrorMessage(deps.toUserError(error));
+      await deps.handleError(error);
     }
   };
 

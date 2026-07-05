@@ -15,6 +15,7 @@ type PersistGroupsFn = (
 export function createExtensionGroupStateTools(args: {
   tr: (english: string, korean: string) => string;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -427,7 +428,7 @@ export function createExtensionGroupStateTools(args: {
       if (saved) args.applyGroupHighlight(saved);
       vscode.window.showInformationMessage(args.tr(`Group saved: ${group.name} (${sameToolTargets.length} skills)`, `그룹 저장 완료: ${group.name} (스킬 ${sameToolTargets.length}개)`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -504,7 +505,7 @@ export function createExtensionGroupStateTools(args: {
       const skipSuffix = skippedTotal > 0 ? args.tr(` · skipped ${skippedTotal}`, ` · 제외 대상 ${skippedTotal}개`) : "";
       vscode.window.showInformationMessage(args.tr(`Added to existing groups: ${affectedTotal} targets${skipSuffix}`, `기존 그룹 추가 완료: 반영 대상 ${affectedTotal}개${skipSuffix}`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -576,7 +577,7 @@ export function createExtensionGroupStateTools(args: {
       }
       return { copied: result.copied, deleted: result.deleted, unchanged: result.unchanged };
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
       return null;
     }
   };

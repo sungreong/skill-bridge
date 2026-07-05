@@ -17,6 +17,7 @@ export type TransferPlanOptions = Pick<TransferPlan, "groupContext" | "repoConte
 type CreateTransferManagerArgs = {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   getUiLanguage: () => UiLanguage;
   registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   getWorkspacePath: () => string;
@@ -330,7 +331,7 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
             };
             render();
           } catch (error) {
-            vscode.window.showErrorMessage(args.toUserError(error));
+            await args.handleError(error);
           }
           return;
         }
@@ -340,7 +341,7 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
             currentPlan = await expandPlan();
             render();
           } catch (error) {
-            vscode.window.showErrorMessage(args.toUserError(error));
+            await args.handleError(error);
           }
           return;
         }

@@ -37,6 +37,7 @@ export function createNpxSkillLibraryTools(args: {
   openGroupOverview: (node?: GroupTreeNode) => Promise<void>;
   persistGroups: (next: SelectionGroup[], selectedGroupId: string | null, options?: { skipExistenceValidation?: boolean }) => Promise<void>;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
 }): { openNpxSkillLibrary: () => Promise<void> } {
   const openNpxSkillLibrary = async (): Promise<void> => {
     try {
@@ -81,14 +82,14 @@ export function createNpxSkillLibraryTools(args: {
           }
           render();
         } catch (error) {
-          vscode.window.showErrorMessage(args.toUserError(error));
+          await args.handleError(error);
           render();
         }
       });
       render();
       args.registerLanguageRefresh(panel, render);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
   return { openNpxSkillLibrary };

@@ -18,6 +18,7 @@ type ProviderLike = {
 export function createNodeActionTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   refresh: () => Promise<void>;
   exists: (targetPath: string) => Promise<boolean>;
   copyNode: (src: string, dst: string) => Promise<void>;
@@ -205,7 +206,7 @@ export function createNodeActionTools(args: {
       await args.refresh();
       vscode.window.showInformationMessage(args.tr(`${kind === "folder" ? "Folder" : "File"} created.`, `${kind === "folder" ? "폴더" : "파일"} 생성 완료`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -226,7 +227,7 @@ export function createNodeActionTools(args: {
         2500
       );
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -349,7 +350,7 @@ export function createNodeActionTools(args: {
       await args.refresh();
       vscode.window.showInformationMessage(args.tr("Duplicated.", "복제 완료"));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -394,7 +395,7 @@ export function createNodeActionTools(args: {
         2200
       );
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -435,7 +436,7 @@ export function createNodeActionTools(args: {
       }
       vscode.window.showInformationMessage(args.tr(`Paste complete: ${copied} item(s)`, `붙여넣기 완료: 항목 ${copied}개`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -514,7 +515,7 @@ export function createNodeActionTools(args: {
       if (pick.value === "duplicateNode") return await runNodeCrud(side, "duplicate", target ?? undefined);
       if (pick.value === "deleteNode") await runNodeCrud(side, "delete", target ?? undefined);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -655,7 +656,7 @@ export function createNodeActionTools(args: {
       if (pick.value === "switchTab") return await vscode.commands.executeCommand("skillBridge.switchTab");
       await args.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

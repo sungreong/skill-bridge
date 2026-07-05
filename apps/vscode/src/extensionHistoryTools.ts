@@ -33,6 +33,7 @@ export type CentralSkillHistoryFile = {
 export function createHistoryTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   getUiLanguage: () => UiLanguage;
   refresh: () => Promise<void>;
   state: {
@@ -171,7 +172,7 @@ export function createHistoryTools(args: {
       });
       await vscode.window.showTextDocument(doc, { preview: true });
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -220,7 +221,7 @@ export function createHistoryTools(args: {
       await args.refresh();
       vscode.window.showInformationMessage(args.tr("Skill created with SKILL.md.", "스킬 생성 완료 (SKILL.md 포함)"));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

@@ -277,17 +277,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const refresh = async (): Promise<ExtensionRefreshResult> =>
     await requireToolset(refreshRuntimeTools, "refreshRuntimeTools").refresh(requireToolset(refreshRuntimeState, "refreshRuntimeState"));
 
-  const {
-    openLibraryDiff,
-    openLibraryManagerPanel,
-    promptCreateGroupForTargets,
-    assignTargetsToGroupMany,
-    unassignTargetsFromGroupMany
-  } = createLibraryManagerTools({
+  let offerCentralPathRepair: (error: unknown) => Promise<boolean> = async () => false;
+  const handleError = async (error: unknown): Promise<void> => {
+    if (!(await offerCentralPathRepair(error))) vscode.window.showErrorMessage(toUserError(error));
+  };
+
+  const { openLibraryDiff, openLibraryManagerPanel, promptCreateGroupForTargets, assignTargetsToGroupMany, unassignTargetsFromGroupMany } = createLibraryManagerTools({
     state,
     tr,
     output,
     settingsSection: SETTINGS_SECTION,
+    handleError,
     workspaceProvider,
     centralProvider,
     getUiLanguage: () => uiLanguage,
@@ -321,6 +321,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const { openTransferExplorerPanel } = createTransferExplorerTools({
     state,
     tr,
+    handleError,
     getUiLanguage: () => uiLanguage,
     setUiLanguage: async (language) => {
       await vscode.workspace
@@ -347,6 +348,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   groupStateTools = createExtensionGroupStateTools({
     tr,
     toUserError,
+    handleError,
     state,
     refresh: async () => void (await refresh()),
     workspaceProvider,
@@ -404,7 +406,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const register = <TArgs extends unknown[]>(id: string, callback: (...args: TArgs) => unknown): void => {
     context.subscriptions.push(
-      vscode.commands.registerCommand(id, (...args: unknown[]) => callback(...(args as TArgs)))
+      vscode.commands.registerCommand(id, async (...args: unknown[]) => {
+        try {
+          await Promise.resolve(callback(...(args as TArgs)));
+        } catch (error) { await handleError(error); }
+      })
     );
   };
 
@@ -513,14 +519,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     normalizeRel,
     getSkillFolderRelativePathFromNode: (node) => getSkillFolderRelativePathFromTreeNode(normalizeRel, node)
   });
-  const {
-    hydrateCurrentProject,
-    downloadCentralSkillToWorkspace,
-    downloadSkillManagerSkillToWorkspace,
-    createCentralPack
-  } = createHydrationTools({
+  const { hydrateCurrentProject, downloadCentralSkillToWorkspace, downloadSkillManagerSkillToWorkspace, createCentralPack } = createHydrationTools({
     tr,
     toUserError,
+    handleError,
     workspacePath: () => state.workspacePath,
     centralRepoPath: () => state.centralRepoPath,
     agents: () => state.agents,
@@ -543,12 +545,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await upsertHydratedWorkspaceGroup(packName, packId, targets);
     }
   });
-  const {
-    runAgentCopyWizard,
-    runGroupAgentCopyWizard
-  } = createAgentCopyTools({
+  const { runAgentCopyWizard, runGroupAgentCopyWizard } = createAgentCopyTools({
     tr,
     toUserError,
+    handleError,
     workspacePath: () => state.workspacePath,
     centralRepoPath: () => state.centralRepoPath,
     agents: () => state.agents,
@@ -598,6 +598,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   } = createHistoryTools({
     tr,
     toUserError,
+    handleError,
     getUiLanguage: () => uiLanguage,
     refresh: async () => void (await refresh()),
     state,
@@ -618,7 +619,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     unassignTargetsFromGroupMany: (side, groupId, targets) => unassignTargetsFromGroupMany(side, groupId, targets),
     ensureUniqueGroupNameForTool, toUserError
   });
-  const { openNpxSkillLibrary } = createNpxSkillLibraryTools({ tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), registerLanguageRefresh, state, getGroupTool, installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side), installNpxRepoForSide: (side, preset) => requireToolset(installTransferTools, "installTransferTools").installNpxRepoForSide(side, preset), openGroupOverview, persistGroups: (next, selectedGroupId, options) => persistGroups(next, selectedGroupId, options), toUserError });
+  const { openNpxSkillLibrary } = createNpxSkillLibraryTools({ tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), registerLanguageRefresh, state, getGroupTool, installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side), installNpxRepoForSide: (side, preset) => requireToolset(installTransferTools, "installTransferTools").installNpxRepoForSide(side, preset), openGroupOverview, persistGroups: (next, selectedGroupId, options) => persistGroups(next, selectedGroupId, options), toUserError, handleError });
   const {
     renameGroup,
     editGroupDescription,
@@ -627,6 +628,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   } = createGroupActionTools({
     tr,
     toUserError,
+    handleError,
     refresh: async () => void (await refresh()),
     workspaceProvider,
     centralProvider,
@@ -657,6 +659,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   } = createNodeActionTools({
     tr,
     toUserError,
+    handleError,
     refresh: async () => void (await refresh()),
     exists,
     copyNode,
@@ -689,6 +692,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   transferManagerTools = createTransferManager({
     tr,
     toUserError,
+    handleError,
     getUiLanguage: () => uiLanguage,
     registerLanguageRefresh,
     getWorkspacePath: () => state.workspacePath,
@@ -754,6 +758,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   installTransferTools = createInstallTransferTools({
     tr,
     toUserError,
+    handleError,
     refresh: async () => void (await refresh()),
     output,
     state,
@@ -830,6 +835,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   instructionTransferTools = createExtensionInstructionTransferTools({
     tr,
     toUserError,
+    handleError,
     output,
     state,
     refresh: async () => {
@@ -880,6 +886,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   } = createExtensionProjectActions({
     tr,
     toUserError,
+    handleError,
     output,
     state,
     uiLanguage: () => uiLanguage,
@@ -913,7 +920,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     slugifyPackId
   });
   const projectPresetTools = createProjectPresetCommandTools({
-    tr, toUserError, state,
+    tr, toUserError, handleError, state,
     refresh: async () => void (await refresh()),
     getUiLanguage: () => uiLanguage, registerLanguageRefresh,
     loadProjectPresets, saveProjectPresets, saveSelectionGroups, getWizardAssetPicks,
@@ -926,7 +933,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registerExtensionCommands({
-    register, tr, toUserError, settingsSection: SETTINGS_SECTION, state,
+    register, tr, toUserError, handleError, settingsSection: SETTINGS_SECTION, state,
     workspaceProvider, centralProvider, unwrapSkillNode,
     openNodeIfFile, openFolderInOs, showGroupActions,
     openGroupOverview, openNpxSkillLibrary, renameGroup, editGroupDescription,
@@ -961,7 +968,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     exportGroup: async (side) => await exportGroup(side)
   });
 
-  const { offerCentralPathRepair } = createCentralPathRepairTools({
+  ({ offerCentralPathRepair } = createCentralPathRepairTools({
     tr,
     output,
     toUserError,
@@ -975,22 +982,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refresh,
     compactPathForDisplay,
     runEnvironmentDiagnosis
-  });
+  }));
 
   output.appendLine(`[Activation] registered in ${Date.now() - activationStartedAt}ms; initial refresh queued`);
   void refresh().catch(async (error) => {
-    if (await offerCentralPathRepair(error)) return;
-    const picked = await vscode.window.showWarningMessage(
-      `${toUserError(error)} ${tr("Use Skill Bridge setup check to inspect the Central path and permissions.", "Skill Bridge 환경 진단으로 Central 경로와 권한을 확인할 수 있습니다.")}`,
-      tr("Check Setup", "환경 진단")
-    );
-    if (picked !== tr("Check Setup", "환경 진단")) return;
-    try {
-      await runEnvironmentDiagnosis();
-    } catch (diagnosisError) {
-      output.appendLine(`[Activation:diagnose] ${toUserError(diagnosisError)}`);
-      vscode.window.showErrorMessage(toUserError(diagnosisError));
-    }
+    await handleError(error);
   });
 }
 

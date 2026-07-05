@@ -9,6 +9,7 @@ type TransferResult = { copied: number; deleted: number; unchanged: number; fail
 export function createProjectPresetTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -344,7 +345,7 @@ export function createProjectPresetTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       await action();
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 

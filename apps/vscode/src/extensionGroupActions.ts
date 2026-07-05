@@ -9,6 +9,7 @@ type GroupMutationMode = "append" | "replace" | "remove";
 export function createGroupActionTools(args: {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
+  handleError: (error: unknown) => Promise<void>;
   refresh: () => Promise<void>;
   workspaceProvider: {
     setSelectedGroup: (groupId: string | null) => void;
@@ -65,7 +66,7 @@ export function createGroupActionTools(args: {
       await args.persistGroups(args.state.groups.map((item) => item.id === group.id ? { ...item, name: nextName.trim() } : item), group.id);
       vscode.window.showInformationMessage(args.tr(`Group renamed: ${nextName.trim()}`, `그룹 이름 변경 완료: ${nextName.trim()}`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -86,7 +87,7 @@ export function createGroupActionTools(args: {
       await args.persistGroups(args.state.groups.map((item) => item.id === group.id ? { ...item, description: nextDescription } : item), group.id);
       vscode.window.showInformationMessage(args.tr(`Group description updated: ${group.name}`, `그룹 설명 수정 완료: ${group.name}`));
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
@@ -180,7 +181,7 @@ export function createGroupActionTools(args: {
       if (action.value === "info") return void await args.showGroupInfo(group);
       await vscode.commands.executeCommand("skillBridge.deleteGroup", node);
     } catch (error) {
-      vscode.window.showErrorMessage(args.toUserError(error));
+      await args.handleError(error);
     }
   };
 
