@@ -2,7 +2,7 @@
   "displayName": "Skill Bridge: AI Skill Library",
   "description": "Browse, review, import, and update AI agent skills from a central library.",
   "config.title": "Skill Bridge",
-  "config.centralRepoPath.description": "Personal central skill library path. Supports ${userHome}, ${workspaceFolder}, ${workspaceRoot}, and ${env:NAME} variables.",
+  "config.centralRepoPath.description": "Personal central skill library path. Defaults to the current workspace. Supports ${userHome}, ${workspaceFolder}, ${workspaceRoot}, and ${env:NAME} variables.",
   "config.defaultAgents.description": "Agent folders managed by Skill Bridge.",
   "config.visibleAgents.description": "Agent folders visible in the Skill Bridge tree. Empty means show all agents.",
   "config.visibleQuickTools.description": "Quick Tools commands shown in the Skill Bridge tree. Empty uses the default basic tool set.",

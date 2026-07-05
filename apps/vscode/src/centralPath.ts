@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const DEFAULT_CENTRAL_REPO_PATH_SETTING = "${userHome}/skill-bridge-repo";
+export const DEFAULT_CENTRAL_REPO_PATH_SETTING = "${workspaceFolder}/.skillbridge/central-repo";
 
 export type CentralPathIssueCode =
   | "empty"
@@ -112,7 +112,9 @@ function resolveDefaultCentralRepoPath(workspacePath: string): string {
   const expanded = expandConfiguredPath(DEFAULT_CENTRAL_REPO_PATH_SETTING, workspacePath);
   const resolved = resolveHostAbsolutePath(expanded);
   if (resolved.ok) return resolved.absolutePath;
-  return path.resolve(os.homedir(), "skill-bridge-repo");
+  return workspacePath
+    ? path.resolve(workspacePath, ".skillbridge", "central-repo")
+    : path.resolve(os.homedir(), ".skillbridge", "central-repo");
 }
 
 function resolveUriCandidate(value: string): { kind: "plain" } | { kind: "fileUri"; fsPath: string } | { kind: "nonFileUri" } {
@@ -151,7 +153,7 @@ function resolveHostAbsolutePath(value: string): ResolvedHostPath {
       };
     }
   } else {
-    if (looksLikeWrappedWindowsDrivePath(normalized) || path.win32.isAbsolute(normalized)) {
+    if (looksLikeWrappedWindowsDrivePath(normalized) || looksLikeWindowsDrivePath(normalized) || looksLikeWindowsUncPath(normalized)) {
       return { ok: false, issue: "hostMismatch", rawValue: value };
     }
     if (!path.posix.isAbsolute(normalized)) {
@@ -174,6 +176,14 @@ function looksLikePosixHomePath(value: string): boolean {
 
 function looksLikeWrappedWindowsDrivePath(value: string): boolean {
   return /^\/[A-Za-z]:[\\/]/.test(value);
+}
+
+function looksLikeWindowsDrivePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value);
+}
+
+function looksLikeWindowsUncPath(value: string): boolean {
+  return /^\\\\[^\\]+\\[^\\]+/.test(value) || /^\/\/[^/]+\/[^/]+/.test(value);
 }
 
 function hasContaminatedAbsolutePrefix(value: string): boolean {

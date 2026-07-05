@@ -29,8 +29,8 @@ async function main() {
     );
     assert.equal(defaultResult.ok, true, "default central path should resolve");
     assert.ok(
-      defaultResult.absolutePath.endsWith(path.join("skill-bridge-repo")),
-      `default path should end with skill-bridge-repo, got ${defaultResult.absolutePath}`
+      defaultResult.absolutePath.endsWith(path.join(".skillbridge", "central-repo")),
+      `default path should end with .skillbridge/central-repo, got ${defaultResult.absolutePath}`
     );
 
     const contaminated = centralPath.resolveCentralRepoPath(
@@ -75,6 +75,13 @@ async function main() {
         "configured"
       );
       assert.equal(fileUri.ok, true, "POSIX file URI should resolve on POSIX hosts");
+
+      const posixWorkspacePath = centralPath.resolveCentralRepoPath(
+        "/app",
+        workspacePath,
+        "configured"
+      );
+      assert.equal(posixWorkspacePath.ok, true, "POSIX workspace root path should resolve on POSIX hosts");
 
       const windowsPath = centralPath.resolveCentralRepoPath(
         "C:/Users/test/skill-bridge-repo",

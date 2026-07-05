@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",
@@ -125,7 +125,7 @@
       "properties": {
         "skillBridge.centralRepoPath": {
           "type": "string",
-          "default": "${userHome}/skill-bridge-repo",
+          "default": "${workspaceFolder}/.skillbridge/central-repo",
           "description": "%config.centralRepoPath.description%"
         },
         "skillBridge.defaultAgents": {

@@ -2,7 +2,7 @@
   "displayName": "Skill Bridge: AI Skill Library",
   "description": "중앙 라이브러리에서 AI 에이전트 스킬을 검토하고 가져오고 업데이트합니다.",
   "config.title": "Skill Bridge",
-  "config.centralRepoPath.description": "개인 중앙 스킬 라이브러리 경로입니다. ${userHome}, ${workspaceFolder}, ${workspaceRoot}, ${env:NAME} 변수를 지원합니다.",
+  "config.centralRepoPath.description": "개인 중앙 스킬 라이브러리 경로입니다. 기본값은 현재 작업공간 기준입니다. ${userHome}, ${workspaceFolder}, ${workspaceRoot}, ${env:NAME} 변수를 지원합니다.",
   "config.defaultAgents.description": "Skill Bridge가 관리하는 에이전트 폴더입니다.",
   "config.visibleAgents.description": "Skill Bridge 트리에 표시할 에이전트 폴더입니다. 비워두면 전체 에이전트를 표시합니다.",
   "config.visibleQuickTools.description": "Skill Bridge 트리에 표시할 Quick Tools 명령입니다. 비워두면 기본 핵심 도구만 표시합니다.",
