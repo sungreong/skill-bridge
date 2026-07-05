@@ -2,7 +2,7 @@ export function renderGroupOverviewStyles(): string {
   return `
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 7px; padding: 8px 10px; overflow: hidden; }
+    .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 7px; padding: 8px 10px; overflow: hidden; }
     .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
     .top-actions, .toolbar, .agent-filter, .actions, .meta, .folder-summary, .batch-actions { min-width: 0; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .top-actions, .actions { justify-content: flex-end; }
@@ -20,7 +20,7 @@ export function renderGroupOverviewStyles(): string {
     button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
     .chip { min-height: 26px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 3px 9px; background: var(--vscode-input-background); color: var(--vscode-descriptionForeground); }
     .chip.active { border-color: #60a5fa; color: var(--vscode-foreground); box-shadow: inset 0 0 0 1px rgba(96,165,250,.28); }
-    .agent-filter { max-height: 60px; overflow: auto; padding-right: 2px; scrollbar-gutter: stable; }
+    .agent-filter { max-height: 42px; overflow: auto; padding-right: 2px; scrollbar-gutter: stable; }
     .content { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(112px, min(28vh, 230px)) minmax(0, 1fr); gap: 7px; }
     .group-list, .detail-shell { min-height: 0; border: 1px solid var(--vscode-panel-border); border-radius: 7px; overflow: hidden; background: color-mix(in oklab, var(--vscode-editor-background) 97%, var(--vscode-editor-foreground) 3%); }
     .group-list, .detail-shell, .skill-section, .skill-folders { scrollbar-gutter: stable; }

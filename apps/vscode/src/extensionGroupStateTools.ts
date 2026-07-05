@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { GroupTarget, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { TransferScopeHint } from "./extensionTransferManager";
+import { findMirroredGroupIndexes } from "./groupMirrorMatching";
 
 type TreeSide = "workspace" | "central";
 
@@ -309,10 +310,10 @@ export function createExtensionGroupStateTools(args: {
     const targetSide: TreeSide = sourceGroup.side === "workspace" ? "central" : "workspace";
     const mirrorKey = `${sourceGroup.side}:${sourceGroup.id}`;
     const now = new Date().toISOString();
-    const existing = args.state.groups.find((group) =>
-      group.side === targetSide
-      && group.meta?.mirroredFrom === mirrorKey
-    );
+    const matchingIndexes = findMirroredGroupIndexes({ groups: args.state.groups, sourceGroup, targetSide, mirrorKey });
+    const existingIndex = matchingIndexes[0] ?? -1;
+    const duplicateIndexes = new Set(matchingIndexes.slice(1));
+    const existing = existingIndex >= 0 ? args.state.groups[existingIndex] : undefined;
 
     const normalizedTargets = args.dedupeGroupTargets(sourceGroup.targets.filter((target) => args.isManagedSkillPath(target.relativePath)));
     const targetFiles = options?.requireExistingTargets ? getSideSkillFiles(targetSide) : undefined;
@@ -320,8 +321,9 @@ export function createExtensionGroupStateTools(args: {
       ? normalizedTargets.filter((target) => args.targetExistsInFiles(target, targetFiles))
       : normalizedTargets;
     if (mirroredTargets.length === 0) {
-      if (existing) {
-        const nextGroups = args.state.groups.filter((group) => group.id !== existing.id);
+      if (matchingIndexes.length > 0) {
+        const indexesToRemove = new Set(matchingIndexes);
+        const nextGroups = args.state.groups.filter((_, index) => !indexesToRemove.has(index));
         await persistGroups(nextGroups, args.state.selectedGroupId, { skipExistenceValidation: true });
       }
       args.output.appendLine(args.tr(
@@ -345,7 +347,11 @@ export function createExtensionGroupStateTools(args: {
     };
 
     const nextGroups = existing
-      ? args.state.groups.map((group) => (group.id === existing.id ? mirrored : group))
+      ? args.state.groups.flatMap((group, index) => {
+        if (index === existingIndex) return [mirrored];
+        if (duplicateIndexes.has(index)) return [];
+        return [group];
+      })
       : [...args.state.groups, mirrored];
     await persistGroups(nextGroups, args.state.selectedGroupId, { skipExistenceValidation: !options?.requireExistingTargets });
     return true;

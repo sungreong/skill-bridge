@@ -796,7 +796,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
       }
     });
     document.querySelectorAll("input[data-skill-target]").forEach((item) => item.addEventListener("click", (event) => event.stopPropagation()));
-    document.querySelectorAll("input[data-group-select]").forEach((item) => item.addEventListener("click", (event) => event.stopPropagation()));
+    document.querySelectorAll("input[data-group-select]").forEach((item) => { item.addEventListener("click", (event) => event.stopPropagation()); item.addEventListener("change", syncBatchState); });
     agentFilter?.addEventListener("click", (event) => { const target = event.target; const button = target instanceof Element ? target.closest("[data-agent-filter]") : null; if (button instanceof HTMLElement) chooseAgent(button.getAttribute("data-agent-filter") || "all"); });
     search?.addEventListener("input", applySearch);
     applySearch();

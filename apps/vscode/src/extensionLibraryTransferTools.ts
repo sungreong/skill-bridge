@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { promises as fs } from "node:fs";
 import type { GroupTarget, SelectionGroup, SkillFile, ToolType, TransferPlan, TransferStatus } from "./types";
 import type { TransferScopeHint } from "./extensionTransferManager";
+import { findMirroredGroupIndexes } from "./groupMirrorMatching";
 
 type TreeSide = "workspace" | "central";
 
@@ -287,15 +288,20 @@ export function createExtensionLibraryTransferTools(args: {
 
     for (const sourceGroup of sourceGroups) {
       const mirrorKey = `${sourceGroup.side}:${sourceGroup.id}`;
-      const existingIndex = nextGroups.findIndex((group) => group.side === targetSide && group.meta?.mirroredFrom === mirrorKey);
+      const matchingIndexes = findMirroredGroupIndexes({ groups: nextGroups, sourceGroup, targetSide, mirrorKey });
+      const existingIndex = matchingIndexes[0] ?? -1;
+      const duplicateIndexes = new Set(matchingIndexes.slice(1));
       const existing = existingIndex >= 0 ? nextGroups[existingIndex] : undefined;
       const now = new Date().toISOString();
       const normalizedTargets = args.dedupeGroupTargets(sourceGroup.targets.filter((target) => args.isManagedSkillPath(target.relativePath)));
       const mirroredTargets = normalizedTargets.filter((target) => args.targetExistsInFiles(target, targetFiles));
       if (mirroredTargets.length === 0) {
-        if (existing) {
-          nextGroups.splice(existingIndex, 1);
-          changed += 1;
+        if (matchingIndexes.length > 0) {
+          const indexesToRemove = new Set(matchingIndexes);
+          for (let index = nextGroups.length - 1; index >= 0; index -= 1) {
+            if (indexesToRemove.has(index)) nextGroups.splice(index, 1);
+          }
+          changed += matchingIndexes.length;
         } else {
           skipped += 1;
         }
@@ -316,8 +322,11 @@ export function createExtensionLibraryTransferTools(args: {
       };
 
       if (existing) {
-        if (args.groupsEquivalent(existing, mirrored)) continue;
+        if (args.groupsEquivalent(existing, mirrored) && duplicateIndexes.size === 0) continue;
         nextGroups[existingIndex] = mirrored;
+        for (const index of [...duplicateIndexes].sort((left, right) => right - left)) {
+          nextGroups.splice(index, 1);
+        }
         changed += 1;
       } else {
         nextGroups.push(mirrored);
