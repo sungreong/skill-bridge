@@ -444,18 +444,18 @@ export function createExtensionRefreshRuntime(args: {
         const summary = await args.syncWorkspaceAgentFoldersToCentral(pending, "auto");
         if (summary.syncedFolders === 0) return;
         args.output.appendLine(args.tr(
-          `[AutoSync] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups} centralFolders=${summary.centralFolders} centralFiles=${summary.centralFiles} skippedMissingSkillMd=${summary.skippedMissingSkillMd}`,
-          `[AutoSync] 작업공간 → 중앙 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹동기화=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
+          `[AutoSave] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups} centralFolders=${summary.centralFolders} centralFiles=${summary.centralFiles} skippedMissingSkillMd=${summary.skippedMissingSkillMd}`,
+          `[AutoSave] 작업공간 → 중앙 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹반영=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
         ));
         vscode.window.setStatusBarMessage(
           args.tr(
-            `Skill Bridge auto sync: ${summary.syncedFolders} folder(s) · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders}/${summary.centralFiles} · skipped ${summary.skippedMissingSkillMd}`,
-            `Skill Bridge 자동 sync: 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 그룹 ${summary.mirroredGroups}개 · 중앙 ${summary.centralFolders}/${summary.centralFiles} · 제외 ${summary.skippedMissingSkillMd}`
+            `Skill Bridge auto save to Central: ${summary.syncedFolders} folder(s) · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders}/${summary.centralFiles} · skipped ${summary.skippedMissingSkillMd}`,
+            `Skill Bridge 자동 중앙 반영: 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 그룹 ${summary.mirroredGroups}개 · 중앙 ${summary.centralFolders}/${summary.centralFiles} · 제외 ${summary.skippedMissingSkillMd}`
           ),
           3500
         );
       } catch (error) {
-        args.output.appendLine(`[AutoSync] ${args.toUserError(error)}`);
+        args.output.appendLine(`[AutoSave] ${args.toUserError(error)}`);
       } finally {
         runtime.autoSyncInFlight = null;
         if (runtime.autoSyncPending.size > 0) {

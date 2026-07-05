@@ -219,7 +219,7 @@ export function createProjectPresetTools(args: {
     }
     const availableTargets = eligibleTargets.filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
     if (availableTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review.", "전송 검토 후 중앙에서 사용할 수 있는 선택 스킬이 없습니다."));
+      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review.", "반영 검토 후 중앙에서 사용할 수 있는 선택 스킬이 없습니다."));
       return;
     }
     if (availableTargets.length < eligibleTargets.length) {

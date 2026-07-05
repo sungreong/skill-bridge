@@ -242,8 +242,8 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
   ): Promise<TransferPlan | null> => {
     let currentPlan = plan;
     const titleForPlan = (): string => currentPlan.mode === "workspaceToCentral"
-      ? args.tr("Send to Central - Review Before Transfer", "중앙으로 보내기 - 전송 전 검토")
-      : args.tr("Bring to Workspace - Review Before Transfer", "작업공간으로 가져오기 - 전송 전 검토");
+      ? args.tr("Save to Central - Review Before Applying", "중앙 반영 - 적용 전 검토")
+      : args.tr("Bring to Workspace - Review Before Applying", "작업공간으로 가져오기 - 적용 전 검토");
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferManager",
       titleForPlan(),
@@ -360,7 +360,7 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
           const validSelectedKeys = new Set(currentPlan.items.filter((item) => selectedKeys.has(item.key)).map((item) => item.key));
           if (validSelectedKeys.size === 0) {
             const errorMessage = args.tr("Could not find selected items in the current plan.", "현재 계획에서 선택 항목을 찾지 못했습니다.");
-            vscode.window.showWarningMessage(args.tr("Could not find selected items in the current transfer plan. Refresh and select again.", "현재 전송 계획에서 선택 항목을 찾지 못했습니다. 새로고침 후 다시 선택하세요."));
+            vscode.window.showWarningMessage(args.tr("Could not find selected items in the current apply plan. Refresh and select again.", "현재 반영 계획에서 선택 항목을 찾지 못했습니다. 새로고침 후 다시 선택하세요."));
             void panel.webview.postMessage({ type: "promptCopyFailed", payload: { message: errorMessage } });
             return;
           }

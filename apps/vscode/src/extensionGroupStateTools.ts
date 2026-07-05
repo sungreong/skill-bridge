@@ -172,14 +172,14 @@ export function createExtensionGroupStateTools(args: {
     );
     const missingSelectedTargets = normalizedTargets.filter((target) => !args.targetExistsInFiles(target, targetFiles));
     const tools = uniqueTargetTools(normalizedTargets);
-    const groupSuffix = mirroredGroup ? args.tr(" · group synced", " · 그룹 동기화됨") : "";
+    const groupSuffix = mirroredGroup ? args.tr(" · group applied", " · 그룹 반영됨") : "";
 
     if (missingSelectedTargets.length > 0) {
       return {
         warning: true,
         message: args.tr(
-          `Group copy made no file changes, but ${sideLabel(targetSide)} still misses ${missingSelectedTargets.length} selected target(s): ${formatTargetSample(missingSelectedTargets)}. Refresh and review the transfer plan for this group.${groupSuffix}`,
-          `그룹 복사 결과 파일 변경이 없었지만 ${sideLabel(targetSide)}에 선택 대상 ${missingSelectedTargets.length}개가 아직 없습니다: ${formatTargetSample(missingSelectedTargets)}. 새로고침 후 이 그룹의 전송 계획을 다시 확인하세요.${groupSuffix}`
+          `Group copy made no file changes, but ${sideLabel(targetSide)} still misses ${missingSelectedTargets.length} selected target(s): ${formatTargetSample(missingSelectedTargets)}. Refresh and review the apply plan for this group.${groupSuffix}`,
+          `그룹 복사 결과 파일 변경이 없었지만 ${sideLabel(targetSide)}에 선택 대상 ${missingSelectedTargets.length}개가 아직 없습니다: ${formatTargetSample(missingSelectedTargets)}. 새로고침 후 이 그룹의 반영 계획을 다시 확인하세요.${groupSuffix}`
         )
       };
     }
@@ -328,7 +328,7 @@ export function createExtensionGroupStateTools(args: {
       }
       args.output.appendLine(args.tr(
         `[GroupMirror] skipped "${sourceGroup.name}": no target-side skills were found after transfer.`,
-        `[GroupMirror] "${sourceGroup.name}" 건너뜀: 전송 후 대상 측 스킬을 찾지 못했습니다.`
+        `[GroupMirror] "${sourceGroup.name}" 건너뜀: 반영 후 대상 측 스킬을 찾지 못했습니다.`
       ));
       return false;
     }
@@ -366,7 +366,7 @@ export function createExtensionGroupStateTools(args: {
           : args.tr(`${group.targets.length} target(s)`, `대상 ${group.targets.length}개`),
         value: group.id
       })),
-      { title: side === "workspace" ? args.tr("Select Group to Send", "내보낼 그룹 선택") : args.tr("Select Group to Bring", "가져올 그룹 선택") }
+      { title: side === "workspace" ? args.tr("Select Group to Save to Central", "중앙에 반영할 그룹 선택") : args.tr("Select Group to Bring to Workspace", "작업공간으로 가져올 그룹 선택") }
     );
     if (!pick) return undefined;
     return groups.find((item) => item.id === pick.value);
@@ -537,8 +537,8 @@ export function createExtensionGroupStateTools(args: {
         const refreshLabel = args.tr("Refresh", "새로고침");
         const picked = await vscode.window.showWarningMessage(
           args.tr(
-            `Group "${group.name}" has no currently available skill files to transfer. Its targets may be missing SKILL.md or no longer exist.`,
-            `그룹 "${group.name}"에는 현재 전송할 수 있는 스킬 파일이 없습니다. 대상에 SKILL.md가 없거나 더 이상 존재하지 않을 수 있습니다.`
+            `Group "${group.name}" has no currently available skill files to apply. Its targets may be missing SKILL.md or no longer exist.`,
+            `그룹 "${group.name}"에는 현재 반영할 수 있는 스킬 파일이 없습니다. 대상에 SKILL.md가 없거나 더 이상 존재하지 않을 수 있습니다.`
           ),
           refreshLabel
         );
@@ -552,8 +552,8 @@ export function createExtensionGroupStateTools(args: {
           : args.tr("Central → Workspace", "중앙 → 작업공간");
         const ok = await vscode.window.showWarningMessage(
           args.tr(
-            `Export group "${group.name}" (${group.targets.length} skill folders) via ${directionLabel}?`,
-            `그룹 "${group.name}" (스킬 폴더 ${group.targets.length}개) ${directionLabel} 내보내기를 진행할까요?`
+            `Apply group "${group.name}" (${group.targets.length} skill folders) via ${directionLabel}?`,
+            `그룹 "${group.name}" (스킬 폴더 ${group.targets.length}개)를 ${directionLabel} 방향으로 반영할까요?`
           ),
           { modal: true },
           args.tr("Continue", "진행")
@@ -586,7 +586,7 @@ export function createExtensionGroupStateTools(args: {
             vscode.window.showInformationMessage(diagnosis.message);
           }
         } else {
-          const groupSuffix = mirroredGroup ? args.tr(" · opposite panel group synced", " · 반대 패널 그룹 동기화됨") : "";
+          const groupSuffix = mirroredGroup ? args.tr(" · opposite panel group updated", " · 반대 패널 그룹 반영됨") : "";
           vscode.window.showInformationMessage(args.tr(
             `Group applied: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${groupSuffix}`,
             `그룹 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${groupSuffix}`

@@ -182,13 +182,13 @@ export function createGroupActionTools(args: {
         : args.tr("no current valid selection", "현재 유효 선택 없음");
       const action = await vscode.window.showQuickPick(
         [
-          { label: group.side === "workspace" ? args.tr("Send to Central", "중앙으로 보내기") : args.tr("Bring to Workspace", "작업공간으로 가져오기"), value: "run" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
-          { label: args.tr("Copy Group to Another Agent", "다른 에이전트로 그룹 복사"), value: "copyAgent" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
+          { label: group.side === "workspace" ? args.tr("Save Group and Skills to Central", "그룹+스킬을 중앙에 반영") : args.tr("Bring Group and Skills to Workspace", "그룹+스킬을 작업공간으로 가져오기"), value: "run" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
+          { label: args.tr("Copy Group and Skills to Another Agent", "그룹+스킬을 다른 에이전트로 복사"), value: "copyAgent" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
           { label: args.tr("Rename Group", "그룹 이름 변경"), value: "rename" as const },
           { label: args.tr("Edit Group Description", "그룹 설명 수정"), value: "description" as const },
-          { label: args.tr("Add Current Selection", "현재 선택 항목 추가"), value: "append" as const, description: selectionDetail },
-          { label: args.tr("Replace with Current Selection", "현재 선택 항목으로 교체"), value: "replace" as const, description: selectionDetail },
-          { label: args.tr("Remove Current Selection", "현재 선택 항목 제거"), value: "remove" as const, description: selectionDetail },
+          { label: args.tr("Add Current Selection to Group", "현재 선택 스킬을 그룹에 추가"), value: "append" as const, description: selectionDetail },
+          { label: args.tr("Replace Group with Current Selection", "그룹 구성을 현재 선택 스킬로 교체"), value: "replace" as const, description: selectionDetail },
+          { label: args.tr("Remove Current Selection from Group", "현재 선택 스킬을 그룹에서 제외"), value: "remove" as const, description: selectionDetail },
           { label: args.tr("View Group Info", "그룹 정보 보기"), value: "info" as const },
           { label: args.tr("Delete Group", "그룹 삭제"), value: "delete" as const }
         ],

@@ -117,7 +117,7 @@ export function createExtensionLibraryTransferTools(args: {
     const skillMdRel = `${skillFolderRel}/SKILL.md`;
     const skillMdAbs = args.resolveSkillPath(basePath, tool, skillMdRel, sourceSide);
     if (!(await args.exists(skillMdAbs))) {
-      vscode.window.showWarningMessage(args.tr(`Skills without SKILL.md cannot be transferred: ${tool}/${skillFolderRel}`, `SKILL.md가 없는 스킬은 전송할 수 없습니다: ${tool}/${skillFolderRel}`));
+      vscode.window.showWarningMessage(args.tr(`Skills without SKILL.md cannot be applied: ${tool}/${skillFolderRel}`, `SKILL.md가 없는 스킬은 반영할 수 없습니다: ${tool}/${skillFolderRel}`));
       return;
     }
 
@@ -132,7 +132,7 @@ export function createExtensionLibraryTransferTools(args: {
         .map((file) => ({ tool: file.tool, relativePath: file.relativePath }))
     );
     if (selections.length === 0) {
-      vscode.window.showWarningMessage(args.tr(`No valid skill was found to transfer: ${tool}/${skillFolderRel}`, `전송할 유효 스킬을 찾지 못했습니다: ${tool}/${skillFolderRel}`));
+      vscode.window.showWarningMessage(args.tr(`No valid skill was found to apply: ${tool}/${skillFolderRel}`, `반영할 유효 스킬을 찾지 못했습니다: ${tool}/${skillFolderRel}`));
       return;
     }
     const scopeHints: TransferScopeHint[] = [{ kind, tool, relativePath }];
@@ -145,7 +145,7 @@ export function createExtensionLibraryTransferTools(args: {
     const label = sourceSide === "workspace"
       ? args.tr("Workspace → Central", "작업공간 → 중앙")
       : args.tr("Central → Workspace", "중앙 → 작업공간");
-    const groupSuffix = mirroredGroups > 0 ? args.tr(` · synced groups ${mirroredGroups}`, ` · 그룹 동기화 ${mirroredGroups}개`) : "";
+    const groupSuffix = mirroredGroups > 0 ? args.tr(` · applied groups ${mirroredGroups}`, ` · 그룹 반영 ${mirroredGroups}개`) : "";
     if (result.copied + result.deleted === 0) {
       vscode.window.showInformationMessage(args.tr(`${label}: ${tool}/${relativePath} no changes${groupSuffix}`, `${label}: ${tool}/${relativePath} 변경 없음${groupSuffix}`));
       return;
@@ -201,7 +201,7 @@ export function createExtensionLibraryTransferTools(args: {
 
     const selections = args.uniqueSelections(selectedFiles);
     if (selections.length === 0 || scopeHints.length === 0) {
-      throw new Error(args.tr("No transferable valid skills were found in the selected items.", "선택 항목 중 전송 가능한 유효 스킬을 찾지 못했습니다."));
+      throw new Error(args.tr("No valid skills that can be applied were found in the selected items.", "선택 항목 중 반영 가능한 유효 스킬을 찾지 못했습니다."));
     }
 
     const result = await args.transferSelections(sourceSide, selections, { scopeHints });

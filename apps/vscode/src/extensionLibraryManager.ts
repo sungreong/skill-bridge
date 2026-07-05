@@ -241,26 +241,26 @@ export function createLibraryManagerTools(deps: LibraryManagerDeps): {
           const relativePath = normalizeRel(String(payload.relativePath ?? ""));
           const kind = payload.kind === "file" ? "file" : "folder";
           if (!tool || !relativePath) return;
-          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} transfer in progress: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply in progress: ${tool}/${relativePath}`, tone: "info" });
           await deps.transferPathFromExplorer(sourceSide, tool, relativePath, kind, parseGroupIds(payload.selectedGroupIds));
           await postState();
-          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} transfer completed: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply completed: ${tool}/${relativePath}`, tone: "info" });
           return;
         }
         if (message.type === "moveSelected") {
           const payload = (message.payload as { sourceSide?: string; targets?: unknown; selectedGroupIds?: string[] } | undefined) ?? {};
           const sourceSide = payload.sourceSide === "central" ? "central" : "workspace";
           const targets = parseLibraryTargets(payload.targets);
-          if (targets.length === 0) throw new Error(deps.tr("There are no items to bulk move.", "일괄 이동할 항목이 없습니다."));
-          postUi({ busy: true, message: deps.tr(`Bulk transfer in progress... (${targets.length} targets)`, `일괄 전송 진행 중... (${targets.length}개 대상)`), tone: "info" });
+          if (targets.length === 0) throw new Error(deps.tr("There are no items to apply.", "반영할 항목이 없습니다."));
+          postUi({ busy: true, message: deps.tr(`Bulk apply in progress... (${targets.length} targets)`, `일괄 반영 진행 중... (${targets.length}개 대상)`), tone: "info" });
           const summary = await deps.transferSelectedPathsFromLibrary(sourceSide, targets, parseGroupIds(payload.selectedGroupIds));
           await postState();
-          const groupSuffix = summary.mirroredGroups > 0 ? ` · synced groups ${summary.mirroredGroups}` : "";
+          const groupSuffix = summary.mirroredGroups > 0 ? ` · applied groups ${summary.mirroredGroups}` : "";
           postUi({
             busy: false,
             message: deps.tr(
-              `Selected move completed: requested ${summary.requested} · applied ${summary.processed} · copied ${summary.copied} · deleted ${summary.deleted} · skipped ${summary.skipped}${groupSuffix}`,
-              `선택 항목 이동 완료: 요청 ${summary.requested} · 적용 ${summary.processed} · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 건너뜀 ${summary.skipped}${groupSuffix}`
+              `Selected apply completed: requested ${summary.requested} · applied ${summary.processed} · copied ${summary.copied} · deleted ${summary.deleted} · skipped ${summary.skipped}${groupSuffix}`,
+              `선택 항목 반영 완료: 요청 ${summary.requested} · 적용 ${summary.processed} · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 건너뜀 ${summary.skipped}${groupSuffix}`
             ),
             tone: "info"
           });
@@ -289,7 +289,7 @@ export function createLibraryManagerTools(deps: LibraryManagerDeps): {
           postUi({ busy: true, message: deps.tr(`Reviewing selected changes to bring in... (${targets.length} targets)`, `선택 변경 가져오기 검토 중... (${targets.length}개 대상)`), tone: "info" });
           const summary = await deps.transferSelectedPathsFromLibrary(sourceSide, targets, parseGroupIds(payload.selectedGroupIds));
           await postState();
-          const groupSuffix = summary.mirroredGroups > 0 ? ` · synced groups ${summary.mirroredGroups}` : "";
+          const groupSuffix = summary.mirroredGroups > 0 ? ` · applied groups ${summary.mirroredGroups}` : "";
           postUi({
             busy: false,
             message: deps.tr(

@@ -70,11 +70,11 @@ export function buildAgentReviewPrompt(plan: TransferPlan, selectedKeys: Set<str
   const maxRows = 80;
 
   const lines: string[] = [
-    language === "ko" ? "# Skill Bridge 전송 검토" : "# Skill Bridge Transfer Review",
+    language === "ko" ? "# Skill Bridge 반영 검토" : "# Skill Bridge Apply Review",
     "",
     t(
-      "You are reviewing a pending Skill Bridge transfer before the user manually applies it.",
-      "사용자가 수동으로 반영하기 전에 대기 중인 Skill Bridge 전송을 검토합니다."
+      "You are reviewing pending Skill Bridge changes before the user manually applies them.",
+      "사용자가 수동으로 반영하기 전에 대기 중인 Skill Bridge 변경을 검토합니다."
     ),
     t(
       "Do not execute changes, do not auto-merge, and do not suggest turning this into a skill runner or Git GUI.",
@@ -107,7 +107,7 @@ export function buildAgentReviewPrompt(plan: TransferPlan, selectedKeys: Set<str
     `- ${t("Risk counts", "위험 개수")}: ${t("high", "높음")} ${riskCounts.high}, ${t("medium", "중간")} ${riskCounts.medium}, ${t("low", "낮음")} ${riskCounts.low}`,
     "",
     t("## Review Checklist", "## 검토 체크리스트"),
-    `- ${t("Is the transfer direction correct for the user's intent?", "전송 방향이 사용자 의도와 맞나요?")}`,
+    `- ${t("Is the apply direction correct for the user's intent?", "반영 방향이 사용자 의도와 맞나요?")}`,
     `- ${t("Are any SKILL.md, system prompt, model, permission, or config files changed?", "SKILL.md, 시스템 프롬프트, 모델, 권한, 설정 파일 변경이 있나요?")}`,
     `- ${t("Are deletions or file/folder type conflicts intentional?", "삭제나 파일/폴더 타입 충돌이 의도된 건가요?")}`,
     `- ${t("Could this overwrite a newer target-side version the user still needs?", "사용자가 아직 필요한 더 최신 대상 버전을 덮어쓸 수 있나요?")}`,
@@ -180,13 +180,13 @@ function analyzeTransferItem(item: TransferPlanItem, skillFoldersWithManifest: S
     addRisk(draft, "medium", localize(language, "Config file", "설정 파일"), localize(language, "Model, option, permission, or tool settings may change.", "모델, 옵션, 권한 또는 도구 설정 변경 가능성이 있습니다."));
   }
   if (item.entryKind === "folder" && item.status !== "same") {
-    addRisk(draft, "medium", localize(language, "Folder-level transfer", "폴더 단위 전송"), localize(language, "Several nested items may be applied at once.", "하위 항목 여러 개가 한 번에 반영될 수 있습니다."));
+    addRisk(draft, "medium", localize(language, "Folder-level apply", "폴더 단위 반영"), localize(language, "Several nested items may be applied at once.", "하위 항목 여러 개가 한 번에 반영될 수 있습니다."));
   }
   if (item.status !== "same" && !isSameSizeOrSmall(item.srcSize, item.dstSize)) {
     addRisk(draft, "medium", localize(language, "Large size change", "큰 크기 변화"), localize(language, "The file size difference is large, so confirm it is intentional.", "파일 크기 차이가 커서 의도한 변경인지 확인이 좋습니다."));
   }
   if (folderKey && !skillFoldersWithManifest.has(folderKey) && item.entryKind === "folder") {
-    addRisk(draft, "high", localize(language, "SKILL.md missing from transfer scope", "전송 범위 SKILL.md 없음"), localize(language, "This transfer plan does not include a SKILL.md row for the skill folder.", "현재 전송 계획에는 이 스킬 폴더의 SKILL.md 행이 보이지 않습니다."));
+    addRisk(draft, "high", localize(language, "SKILL.md missing from apply scope", "반영 범위 SKILL.md 없음"), localize(language, "This apply plan does not include a SKILL.md row for the skill folder.", "현재 반영 계획에는 이 스킬 폴더의 SKILL.md 행이 보이지 않습니다."));
   }
   if (draft.tags.length === 0) {
     addRisk(
@@ -208,7 +208,7 @@ function analyzeTransferItem(item: TransferPlanItem, skillFoldersWithManifest: S
 
 function buildItemChecklist(item: TransferPlanItem, draft: RiskDraft, language: UiLanguage): string[] {
   const checks = [
-    localize(language, "Check transfer direction", "전송 방향 확인"),
+    localize(language, "Check apply direction", "반영 방향 확인"),
     localize(language, "Review Diff", "Diff 확인")
   ];
   if (draft.severity === "high") checks.push(localize(language, "Manual review before apply", "적용 전 수동 검토"));

@@ -192,10 +192,10 @@ export function createExtensionProjectActions(args: {
   };
 
   const runAssetTransferWizard = async (sourceSide: TreeSide): Promise<void> => {
-    const asset = await args.pickWizardAsset(sourceSide, sourceSide === "workspace" ? args.tr("Choose a skill to send to Central", "중앙으로 올릴 스킬") : args.tr("Choose a skill to bring to Workspace", "작업공간으로 가져올 스킬"));
+    const asset = await args.pickWizardAsset(sourceSide, sourceSide === "workspace" ? args.tr("Choose a skill to save to Central", "중앙에 반영할 스킬") : args.tr("Choose a skill to bring to Workspace", "작업공간으로 가져올 스킬"));
     if (!asset) return;
     if (asset.status === "missingSkillMd") {
-      vscode.window.showWarningMessage(args.tr("Skills without SKILL.md cannot be transferred.", "SKILL.md가 없는 스킬은 전송할 수 없습니다."));
+      vscode.window.showWarningMessage(args.tr("Skills without SKILL.md cannot be applied.", "SKILL.md가 없는 스킬은 반영할 수 없습니다."));
       return;
     }
     const sourceFiles = sourceSide === "workspace" ? args.state.workspaceSkills : args.state.centralSkills;
@@ -205,7 +205,7 @@ export function createExtensionProjectActions(args: {
         .map((file) => ({ tool: file.tool, relativePath: file.relativePath }))
     );
     if (selections.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No files were found to transfer.", "전송할 파일을 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No files were found to apply.", "반영할 파일을 찾지 못했습니다."));
       return;
     }
     const result = await args.transferSelections(sourceSide, selections, {
@@ -215,8 +215,8 @@ export function createExtensionProjectActions(args: {
     await args.refresh();
     vscode.window.showInformationMessage(
       args.tr(
-        `Skill transfer result: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · synced groups ${mirroredGroups}` : ""}`,
-        `스킬 전송 결과: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 동기화 ${mirroredGroups}개` : ""}`
+        `Skill apply result: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : ""}`,
+        `스킬 반영 결과: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 반영 ${mirroredGroups}개` : ""}`
       )
     );
   };

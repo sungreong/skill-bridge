@@ -109,7 +109,7 @@ export function createHydrationTools(deps: HydrationDeps): {
           actionKind: "manual" as const,
           label: deps.tr("$(list-selection) Select Central Skills Manually", "$(list-selection) 중앙 스킬 직접 선택"),
           description: deps.tr(`Choose from ${centralAssets.length} skills`, `스킬 ${centralAssets.length}개 중 선택`),
-          detail: deps.tr("Choose only the skills this project needs and review them before transfer.", "현재 프로젝트에 필요한 스킬만 골라 전송 전 검토 화면에서 확인합니다.")
+          detail: deps.tr("Choose only the skills this project needs and review them before applying.", "현재 프로젝트에 필요한 스킬만 골라 반영 전 검토 화면에서 확인합니다.")
         }
       ];
 
@@ -169,7 +169,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       if (!deps.workspacePath() || !deps.centralRepoPath()) await deps.refresh();
       const centralAssets = deps.getWizardAssetPicks("central").filter((asset) => asset.status !== "missingSkillMd");
       if (centralAssets.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("There are no Central skills to download.", "다운로드할 중앙 스킬이 없습니다."));
+        vscode.window.showWarningMessage(deps.tr("There are no Central skills to bring to Workspace.", "작업공간으로 가져올 중앙 스킬이 없습니다."));
         return;
       }
 
@@ -181,7 +181,7 @@ export function createHydrationTools(deps: HydrationDeps): {
           value: asset
         })),
         {
-          title: deps.tr("Search Skills to Download", "다운로드할 스킬 검색"),
+          title: deps.tr("Search Central Skills to Bring", "가져올 중앙 스킬 검색"),
           placeHolder: deps.tr("Search by skill name, agent, or path.", "스킬 이름, 에이전트, 경로로 검색하세요."),
           matchOnDescription: true,
           matchOnDetail: true
@@ -255,7 +255,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         relativePath: sourcePick.value.rootRelativePath
       }));
       await deps.upsertHydratedWorkspaceGroup(
-        `Download: ${sourcePick.value.skillName}`,
+        `Bring: ${sourcePick.value.skillName}`,
         `download-${targetPick.value}-${sourcePick.value.skillName}`,
         targets
       );
@@ -298,7 +298,7 @@ export function createHydrationTools(deps: HydrationDeps): {
           }))
         ],
         {
-          title: deps.tr("Download Skill Manager Skill", "Skill Manager 스킬 다운로드"),
+          title: deps.tr("Install Skill Manager Helper", "Skill Manager 도우미 설치"),
           placeHolder: deps.tr("Choose the workspace agent folder that will receive the skill-manager skill.", "skill-manager 스킬을 받을 작업공간 에이전트 폴더를 선택하세요."),
           matchOnDescription: true,
           matchOnDetail: true
@@ -335,7 +335,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         await deps.copyNode(sourceAbs, info.targetAbs);
       }
       await deps.upsertHydratedWorkspaceGroup(
-        "Download: skill-manager",
+        "Install: skill-manager",
         `download-${targetPick.value}-skill-manager`,
         targetInfos.map((info) => ({
           kind: "folder",

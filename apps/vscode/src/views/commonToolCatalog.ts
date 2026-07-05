@@ -19,7 +19,6 @@ export const DEFAULT_QUICK_TOOL_COMMANDS = new Set<string>([
   "skillBridge.openLibraryManager",
   "skillBridge.switchTab",
   "skillBridge.switchTreeFilter",
-  "skillBridge.toggleLanguage",
   "skillBridge.diagnoseEnvironment",
   "skillBridge.setPersonalHome",
   "skillBridge.openWorkspaceFolder",
@@ -27,9 +26,7 @@ export const DEFAULT_QUICK_TOOL_COMMANDS = new Set<string>([
   "skillBridge.createProjectPresetFromWorkspace",
   "skillBridge.openCentralFolder",
   "skillBridge.downloadCentralSkill",
-  "skillBridge.openProjectPresetOverview",
-  "skillBridge.createCentralPack",
-  "skillBridge.repairCentralMetadata"
+  "skillBridge.openProjectPresetOverview"
 ]);
 
 export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSectionId, CommonToolCommand[]> {
@@ -38,24 +35,24 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Review Sync Changes", "동기화 변경 검토"),
-        description: localize(language, "Common · compare both sides", "공통 · 양쪽 비교"),
+        label: localize(language, "Compare and Apply Changes", "변경 비교/반영"),
+        description: localize(language, "Start here · review Workspace and Central", "처음 시작 · 작업공간과 중앙 비교"),
         command: "skillBridge.openTransferExplorer",
         icon: "arrow-swap"
       },
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Open Skill Library", "스킬 라이브러리 열기"),
-        description: localize(language, "Common · browse grouped assets", "공통 · 그룹 자산 탐색"),
+        label: localize(language, "Manage Skill Library", "스킬 라이브러리 관리"),
+        description: localize(language, "Browse, filter, save, and bring skills", "스킬 탐색·필터·반영"),
         command: "skillBridge.openLibraryManager",
         icon: "library"
       },
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Open Group Overview", "그룹 개요 열기"),
-        description: localize(language, "Common · manage skill groups", "공통 · 스킬 그룹 관리"),
+        label: localize(language, "Manage Skill Groups", "스킬 그룹 관리"),
+        description: localize(language, "Advanced · edit groups and their skills", "고급 · 그룹과 포함 스킬 편집"),
         command: "skillBridge.openGroupOverview",
         icon: "symbol-namespace",
         tier: "advanced"
@@ -63,8 +60,8 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Open NPX Skill Library", "NPX 스킬 라이브러리 열기"),
-        description: localize(language, "Common · manage npx downloads", "공통 · npx 다운로드 관리"),
+        label: localize(language, "Manage npx-installed Skills", "npx 설치 스킬 관리"),
+        description: localize(language, "Advanced · update skills installed from npx", "고급 · npx로 받은 스킬 업데이트"),
         command: "skillBridge.openNpxSkillLibrary",
         icon: "cloud",
         tier: "advanced"
@@ -72,8 +69,8 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Download Skill Manager Skill", "스킬 매니저 스킬 다운로드"),
-        description: localize(language, "Common · install bundled helper", "공통 · 번들 도우미 설치"),
+        label: localize(language, "Install Skill Manager Helper", "Skill Manager 도우미 설치"),
+        description: localize(language, "Advanced · add the bundled helper skill", "고급 · 번들 도우미 스킬 추가"),
         command: "skillBridge.downloadSkillManagerSkill",
         icon: "cloud-download",
         tier: "advanced"
@@ -81,8 +78,8 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Copy Between Agents", "에이전트 간 복사"),
-        description: localize(language, "Common · cross-agent copy", "공통 · 에이전트 간 복사"),
+        label: localize(language, "Copy to Another Agent", "다른 에이전트로 복사"),
+        description: localize(language, "Advanced · copy within the same side", "고급 · 같은 쪽 안에서 복사"),
         command: "skillBridge.copyBetweenAgents",
         icon: "arrow-both",
         tier: "advanced"
@@ -90,16 +87,16 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Switch Agent View", "에이전트 보기 전환"),
-        description: localize(language, "Common · filter source agent", "공통 · 에이전트 필터"),
+        label: localize(language, "Choose Visible Agents", "보일 에이전트 선택"),
+        description: localize(language, "View · show selected agent folders", "보기 · 표시할 에이전트 폴더"),
         command: "skillBridge.switchTab",
         icon: "list-tree"
       },
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Filter Skill Tree", "스킬 트리 필터"),
-        description: localize(language, "Common · status filters", "공통 · 상태 필터"),
+        label: localize(language, "Filter by Skill Status", "스킬 상태 필터"),
+        description: localize(language, "View · changed, new, warning, recent", "보기 · 변경/신규/경고/최근"),
         command: "skillBridge.switchTreeFilter",
         icon: "filter"
       },
@@ -107,7 +104,7 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
         kind: "command",
         sectionId: "common",
         label: localize(language, "Manage Quick Tools", "빠른 도구 관리"),
-        description: localize(language, "Common · choose visible tools", "공통 · 표시할 도구 선택"),
+        description: localize(language, "View · choose the shortcuts shown here", "보기 · 여기 표시할 바로가기 선택"),
         command: MANAGE_QUICK_TOOLS_COMMAND,
         icon: "checklist"
       },
@@ -122,16 +119,16 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Check Setup and Repair", "설정 점검 및 복구"),
-        description: localize(language, "Common · diagnose paths", "공통 · 경로 진단"),
+        label: localize(language, "Check Setup", "설정 점검"),
+        description: localize(language, "Setup · diagnose paths and tools", "설정 · 경로와 도구 진단"),
         command: "skillBridge.diagnoseEnvironment",
         icon: "pulse"
       },
       {
         kind: "command",
         sectionId: "common",
-        label: localize(language, "Reset Central Library Folder", "중앙 라이브러리 폴더 초기화"),
-        description: localize(language, "Common · restore default path", "공통 · 기본 경로 복원"),
+        label: localize(language, "Reset Central Folder Setting", "중앙 폴더 설정 되돌리기"),
+        description: localize(language, "Advanced · restore the default folder path", "고급 · 기본 폴더 경로 복원"),
         command: "skillBridge.resetPersonalHome",
         icon: "discard",
         tier: "advanced"
@@ -142,31 +139,31 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
         kind: "command",
         sectionId: "workspace",
         label: localize(language, "Open Workspace Skills Folder", "작업공간 스킬 폴더 열기"),
-        description: localize(language, "Workspace only · local files", "작업공간 전용 · 로컬 파일"),
+        description: localize(language, "Workspace · open local skill files", "작업공간 · 로컬 스킬 파일"),
         command: "skillBridge.openWorkspaceFolder",
         icon: "folder-opened"
       },
       {
         kind: "command",
         sectionId: "workspace",
-        label: localize(language, "Apply Project Preset", "프로젝트 프리셋 적용"),
-        description: localize(language, "Workspace only · apply presets", "작업공간 전용 · 프리셋 적용"),
+        label: localize(language, "Apply Preset to Workspace", "프리셋을 작업공간에 적용"),
+        description: localize(language, "Bring a saved Central preset into this project", "중앙 프리셋을 이 프로젝트로 가져오기"),
         command: "skillBridge.hydrateProject",
         icon: "repo-pull"
       },
       {
         kind: "command",
         sectionId: "workspace",
-        label: localize(language, "Create Project Preset from Workspace", "현재 작업공간으로 프로젝트 프리셋 만들기"),
-        description: localize(language, "Workspace only · save as Central preset", "작업공간 전용 · 중앙 프리셋 저장"),
+        label: localize(language, "Save Workspace as Central Preset", "작업공간 스킬로 중앙 프리셋 만들기"),
+        description: localize(language, "Save selected Workspace skills for reuse", "작업공간 스킬을 재사용 프리셋으로 저장"),
         command: "skillBridge.createProjectPresetFromWorkspace",
         icon: "package"
       },
       {
         kind: "command",
         sectionId: "workspace",
-        label: localize(language, "Configure Workspace Auto Sync", "작업공간 자동 동기화 설정"),
-        description: localize(language, "Workspace only · sync settings", "작업공간 전용 · 동기화 설정"),
+        label: localize(language, "Configure Auto Save to Central", "자동 중앙 반영 설정"),
+        description: localize(language, "Advanced · watch Workspace skills for changes", "고급 · 작업공간 스킬 변경 감시"),
         command: "skillBridge.configureWorkspaceAutoSync",
         icon: "sync-ignored",
         tier: "advanced"
@@ -174,8 +171,8 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "workspace",
-        label: localize(language, "Sync Workspace Agent to Central Now", "지금 작업공간 에이전트를 중앙으로 동기화"),
-        description: localize(language, "Workspace only · push to Central", "작업공간 전용 · 중앙으로 반영"),
+        label: localize(language, "Save Workspace Agent to Central Now", "지금 중앙에 반영"),
+        description: localize(language, "Advanced · copy one Workspace agent to Central", "고급 · 작업공간 에이전트 하나를 중앙에 복사"),
         command: "skillBridge.syncWorkspaceAgentNow",
         icon: "sync",
         tier: "advanced"
@@ -186,7 +183,7 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
         kind: "command",
         sectionId: "central",
         label: localize(language, "Open Central Library Folder", "중앙 라이브러리 폴더 열기"),
-        description: localize(language, "Central only · library files", "중앙 전용 · 라이브러리 파일"),
+        description: localize(language, "Central · open reusable skill files", "중앙 · 재사용 스킬 파일"),
         command: "skillBridge.openCentralFolder",
         icon: "folder-library"
       },
@@ -201,32 +198,32 @@ export function buildCommonToolNodes(language: UiLanguage): Record<CommonToolSec
       {
         kind: "command",
         sectionId: "central",
-        label: localize(language, "Download or Update Skill", "스킬 다운로드 또는 업데이트"),
-        description: localize(language, "Central only · update from source", "중앙 전용 · 소스에서 업데이트"),
+        label: localize(language, "Bring Central Skill to Workspace", "중앙 스킬을 작업공간으로 가져오기"),
+        description: localize(language, "Choose one Central skill and target agent", "중앙 스킬 하나와 받을 에이전트 선택"),
         command: "skillBridge.downloadCentralSkill",
         icon: "cloud-download"
       },
       {
         kind: "command",
         sectionId: "central",
-        label: localize(language, "Open Project Presets", "프로젝트 프리셋 열기"),
-        description: localize(language, "Central only · manage presets", "중앙 전용 · 프리셋 관리"),
+        label: localize(language, "Manage Project Presets", "프로젝트 프리셋 관리"),
+        description: localize(language, "Central · review, edit, apply presets", "중앙 · 프리셋 검토·편집·적용"),
         command: "skillBridge.openProjectPresetOverview",
         icon: "library"
       },
       {
         kind: "command",
         sectionId: "central",
-        label: localize(language, "Create Project Preset", "프로젝트 프리셋 만들기"),
-        description: localize(language, "Central only · save selected assets", "중앙 전용 · 선택 자산 저장"),
+        label: localize(language, "Create Preset from Central Skills", "중앙 스킬로 프리셋 만들기"),
+        description: localize(language, "Advanced · save selected Central skills", "고급 · 선택한 중앙 스킬 저장"),
         command: "skillBridge.createCentralPack",
         icon: "package"
       },
       {
         kind: "command",
         sectionId: "central",
-        label: localize(language, "Check and Repair Central Metadata", "중앙 메타데이터 점검 및 복구"),
-        description: localize(language, "Central only · clean preset and group JSON", "중앙 전용 · 프리셋/그룹 JSON 정리"),
+        label: localize(language, "Clean Central Presets and Groups", "중앙 프리셋/그룹 정리"),
+        description: localize(language, "Advanced · remove stale metadata entries", "고급 · 오래된 메타데이터 정리"),
         command: "skillBridge.repairCentralMetadata",
         icon: "tools",
         tier: "advanced"

@@ -34,6 +34,7 @@ import { createExtensionRefreshRuntime, type ExtensionRefreshResult } from "./ex
 import { createExtensionProjectActions } from "./extensionProjectActions";
 import { createProjectPresetCommandTools } from "./extensionProjectPresetBootstrap";
 import { registerExtensionCommands } from "./extensionCommandRegistrar";
+import { registerMenuCommandAliases, setMenuLanguageContext } from "./extensionMenuCommandAliases";
 import {
   collectFiles,
   collectFolderEntryRows,
@@ -391,9 +392,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getSkillFolderRelativePath,
     dedupeGroupTargets,
     mirrorGroupToOtherSide,
-    refresh: async () => {
-      await refresh();
-    }
+    refresh: async () => { await refresh(); }
   });
   const {
     collectAffectedGroupIdsForScopeHints,
@@ -414,14 +413,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
 
+  registerMenuCommandAliases(register);
+
   const setLanguageAndRefreshViews = async (language: UiLanguage): Promise<void> => {
     await vscode.workspace
       .getConfiguration(SETTINGS_SECTION)
       .update("language", language, vscode.ConfigurationTarget.Global);
     uiLanguage = language;
+    await setMenuLanguageContext(language);
     applyLanguageChrome();
-    workspaceProvider.setLanguage(language);
-    centralProvider.setLanguage(language);
     for (const refreshLanguage of [...languageRefreshers]) {
       await Promise.resolve(refreshLanguage()).catch((error) => {
         output.appendLine(`[LanguageRefresh] ${toUserError(error)}`);
@@ -432,9 +432,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(workspaceView, centralView, statusBar, qualityStatusBar, output, skillDiagnostics);
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
     if (event.affectsConfiguration(`${SETTINGS_SECTION}.language`)) {
+      void setMenuLanguageContext(getUiLanguage());
       applyLanguageChrome();
-      workspaceProvider.setLanguage(getUiLanguage());
-      centralProvider.setLanguage(getUiLanguage());
       for (const refresh of [...languageRefreshers]) {
         void Promise.resolve(refresh()).catch((error) => {
           output.appendLine(`[LanguageRefresh] ${toUserError(error)}`);
@@ -445,8 +444,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const agents = getAutoSyncWorkspaceAgents();
       vscode.window.setStatusBarMessage(
         agents.length > 0
-          ? tr(`Skill Bridge auto sync agents: ${agents.join(", ")}`, `Skill Bridge 자동 sync 에이전트: ${agents.join(", ")}`)
-          : tr("Skill Bridge auto sync disabled.", "Skill Bridge 자동 sync가 꺼져 있습니다."),
+          ? tr(`Skill Bridge auto save agents: ${agents.join(", ")}`, `Skill Bridge 자동 중앙 반영 에이전트: ${agents.join(", ")}`)
+          : tr("Skill Bridge auto save to Central disabled.", "Skill Bridge 자동 중앙 반영이 꺼져 있습니다."),
         3000
       );
     }
@@ -455,6 +454,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       applyTabFilter(state, workspaceProvider, centralProvider); updateStatusChrome();
     }
   }));
+  void setMenuLanguageContext(getUiLanguage());
   applyLanguageChrome();
 
   workspaceView.onDidChangeSelection((event) => {

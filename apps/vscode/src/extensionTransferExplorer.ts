@@ -423,7 +423,7 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
     await deps.refresh();
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferExplorer",
-      deps.tr("Review Sync Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)"),
+      deps.tr("Compare and Apply Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)"),
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -435,7 +435,7 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
       panel.webview.postMessage({ type: "ui", payload });
     };
     const render = async (): Promise<void> => {
-      panel.title = deps.tr("Review Sync Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)");
+      panel.title = deps.tr("Compare and Apply Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)");
       panel.webview.html = renderComparedTransferExplorerHtml(panel.webview, await buildTransferExplorerPayload(), deps.getUiLanguage());
     };
     deps.registerLanguageRefresh(panel, render);
@@ -465,10 +465,10 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           const relativePath = normalizeRel(String(payload.relativePath ?? ""));
           const kind = payload.kind === "file" ? "file" : "folder";
           if (!tool || !relativePath) return;
-          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} transfer in progress: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply in progress: ${tool}/${relativePath}`, tone: "info" });
           await deps.transferPathFromExplorer(sourceSide, tool, relativePath, kind, payload.selectedGroupIds);
           await postState();
-          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} transfer completed: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply completed: ${tool}/${relativePath}`, tone: "info" });
           return;
         }
         if (message.type === "moveGroup") {
@@ -478,13 +478,13 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           if (!groupId) return;
           const group = deps.state.groups.find((entry) => entry.id === groupId && entry.side === sourceSide);
           if (!group) {
-            vscode.window.showWarningMessage(deps.tr("The group to transfer was not found.", "전송할 그룹을 찾지 못했습니다."));
+            vscode.window.showWarningMessage(deps.tr("The group to apply was not found.", "반영할 그룹을 찾지 못했습니다."));
             return;
           }
-          postUi({ busy: true, message: deps.tr(`Group transfer in progress: ${group.name}`, `그룹 전송 중: ${group.name}`), tone: "info" });
+          postUi({ busy: true, message: deps.tr(`Group apply in progress: ${group.name}`, `그룹 반영 중: ${group.name}`), tone: "info" });
           await deps.exportGroup(sourceSide, group);
           await postState();
-          postUi({ busy: false, message: deps.tr(`Group transfer completed: ${group.name}`, `그룹 전송 완료: ${group.name}`), tone: "info" });
+          postUi({ busy: false, message: deps.tr(`Group apply completed: ${group.name}`, `그룹 반영 완료: ${group.name}`), tone: "info" });
           return;
         }
         if (message.type === "moveCompared") {
@@ -499,7 +499,7 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           const summary = await deps.transferComparedTargetsFromExplorer(sourceSide, targets, selectedStatuses);
           await postState();
           const groupSuffix = summary.mirroredGroups > 0
-            ? deps.tr(` · synced groups ${summary.mirroredGroups}`, ` · 동기화된 그룹 ${summary.mirroredGroups}`)
+            ? deps.tr(` · applied groups ${summary.mirroredGroups}`, ` · 반영된 그룹 ${summary.mirroredGroups}`)
             : "";
           postUi({
             busy: false,

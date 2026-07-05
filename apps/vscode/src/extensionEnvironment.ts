@@ -387,7 +387,7 @@ async function checkGitCommand(tr: TranslatePair, toUserError: (error: unknown) 
     const { stdout } = await execFileAsync("git", ["--version"], { windowsHide: process.platform === "win32" });
     return { label: "Git", status: "ok", detail: String(stdout).trim() || tr("git is available", "git 사용 가능") };
   } catch (error) {
-    return { label: "Git", status: "warn", detail: `${tr("git command is unavailable. Check Git installation/PATH before using sync features.", "git 명령을 실행할 수 없습니다. 동기화 기능 전에 설치/PATH 확인이 필요합니다.")} ${toUserError(error)}` };
+    return { label: "Git", status: "warn", detail: `${tr("git command is unavailable. Check Git installation/PATH before saving skills to Central.", "git 명령을 실행할 수 없습니다. 중앙 반영 기능 전에 설치/PATH 확인이 필요합니다.")} ${toUserError(error)}` };
   }
 }
 

@@ -54,7 +54,7 @@ export async function collectNpxSkillLibraryDiagnosis(args: {
     command: "npx",
     versionArgs: ["--version"],
     installScript: nodeInstallScript(),
-    missingDetail: args.tr("npx is required to download and update external skill packs.", "외부 스킬 팩 다운로드/업데이트에는 npx가 필요합니다."),
+    missingDetail: args.tr("npx is required to install and update external skill packs.", "외부 스킬 팩 설치/업데이트에는 npx가 필요합니다."),
     args
   });
   const git = await checkRequiredCommand({
@@ -141,7 +141,7 @@ export function renderNpxSkillLibraryGuideMarkdown(diagnosis: NpxSkillLibraryDia
   lines.push(diagnosis.status === "ready"
     ? tr(
       "NPX skill library download/update controls can be used. If an update still fails, inspect the Output panel and network/npm registry settings.",
-      "NPX 스킬 라이브러리 다운로드/업데이트 기능을 사용할 수 있습니다. 그래도 실패하면 Output 패널과 네트워크/npm registry 설정을 확인하세요."
+      "NPX 스킬 라이브러리 설치/업데이트 기능을 사용할 수 있습니다. 그래도 실패하면 Output 패널과 네트워크/npm registry 설정을 확인하세요."
     )
     : tr(
       "Fix the missing requirements first, restart VS Code if PATH changed, then run the NPX Skill Library check again.",
@@ -233,7 +233,7 @@ async function checkSkillsPackage(args: {
       id: "skillsPackage",
       label: "skills package",
       status: "warn",
-      detail: `${args.tr("Could not verify the npm skills package. Check network or npm registry settings before downloading.", "npm skills 패키지를 확인하지 못했습니다. 다운로드 전에 네트워크 또는 npm registry 설정을 확인하세요.")} ${args.toUserError(error)}`
+      detail: `${args.tr("Could not verify the npm skills package. Check network or npm registry settings before installing.", "npm skills 패키지를 확인하지 못했습니다. 설치 전에 네트워크 또는 npm registry 설정을 확인하세요.")} ${args.toUserError(error)}`
     };
   }
 }

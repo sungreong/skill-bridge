@@ -219,7 +219,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
       draft.warnings.push({
         code: "missing-skill-md",
         severity: "danger",
-        message: args.tr("SKILL.md is missing, so this may be excluded from transfers.", "SKILL.md가 없어 전송 대상에서 제외될 수 있습니다."),
+        message: args.tr("SKILL.md is missing, so this may be excluded when applying changes.", "SKILL.md가 없어 변경 반영 대상에서 제외될 수 있습니다."),
         relativePath: folder
       });
     }

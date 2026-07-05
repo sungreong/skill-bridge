@@ -433,7 +433,7 @@ export function createNodeActionTools(args: {
         return;
       }
       if (args.state.clipboard.side !== side) {
-        vscode.window.showWarningMessage(args.tr("Pasting into the other panel is not supported. Use Send to Central or Bring to Workspace.", "다른 패널로 붙여넣기는 지원하지 않습니다. 중앙으로 보내기/작업공간으로 가져오기를 사용하세요."));
+        vscode.window.showWarningMessage(args.tr("Pasting into the other panel is not supported. Use Save to Central or Bring to Workspace.", "다른 패널로 붙여넣기는 지원하지 않습니다. 중앙에 반영하거나 작업공간으로 가져오기를 사용하세요."));
         return;
       }
       const selected = node ?? providerFor(side).getSelected();
@@ -568,8 +568,8 @@ export function createNodeActionTools(args: {
       const actions: Array<{ label: string; value: string; description?: string }> = [
         ...(canTransfer ? [{
           label: isAllVisibleTransferScope
-            ? args.tr("Review All Visible Skills for Transfer", "현재 보이는 전체 스킬 전송 검토")
-            : side === "workspace" ? args.tr("Send This to Central", "이 항목 중앙으로 보내기") : args.tr("Bring This to Workspace", "이 항목 작업공간으로 가져오기"),
+            ? args.tr("Review All Visible Skills Before Applying", "현재 보이는 전체 스킬 반영 전 검토")
+            : side === "workspace" ? args.tr("Save This to Central", "이 항목 중앙에 반영") : args.tr("Bring This to Workspace", "이 항목 작업공간으로 가져오기"),
           value: "transfer",
           description: isAllVisibleTransferScope
             ? args.tr(`${selections.length} visible file target(s); confirmation required`, `현재 보이는 파일 대상 ${selections.length}개 · 확인 후 진행`)
@@ -603,21 +603,21 @@ export function createNodeActionTools(args: {
         ...(isPathCopyableNode(baseNode) ? [{
           label: side === "workspace" ? args.tr("Copy This to Another Workspace Agent", "이 항목을 다른 작업공간 에이전트로 복사") : args.tr("Copy This to Another Central Agent", "이 항목을 다른 중앙 에이전트로 복사"),
           value: "copyAgent",
-          description: args.tr("Copy the clicked skill or folder between configured agents on this side", "이 side의 설정된 다른 에이전트로 클릭한 스킬/폴더 복사")
+          description: args.tr("Copy the clicked skill or folder to another agent on this side", "클릭한 스킬/폴더를 같은 쪽의 다른 에이전트로 복사")
         }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
           label: isScopedAgentAutoSyncEnabled
-            ? args.tr(`Turn Off Auto Sync for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 sync 끄기`)
-            : args.tr(`Turn On Auto Sync for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 sync 켜기`),
+            ? args.tr(`Turn Off Auto Save to Central for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영 끄기`)
+            : args.tr(`Turn On Auto Save to Central for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영 켜기`),
           value: "toggleAutoSync",
           description: isScopedAgentAutoSyncEnabled
-            ? args.tr("Stop watching this workspace agent for automatic Central updates", "이 작업공간 에이전트의 자동 중앙 반영 감시를 끕니다")
-            : args.tr("Start watching this workspace agent for automatic Central updates", "이 작업공간 에이전트의 자동 중앙 반영 감시를 켭니다")
+            ? args.tr("Stop saving this workspace agent's changes to Central automatically", "이 작업공간 에이전트의 변경 사항을 중앙에 자동 반영하지 않습니다")
+            : args.tr("Start saving this workspace agent's changes to Central automatically", "이 작업공간 에이전트의 변경 사항을 중앙에 자동 반영합니다")
         }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
-          label: args.tr(`Sync ${args.formatAgentFolderLabel(scopedAgentTool)} to Central Now`, `${args.formatAgentFolderLabel(scopedAgentTool)}를 지금 중앙으로 sync`),
+          label: args.tr(`Save ${args.formatAgentFolderLabel(scopedAgentTool)} to Central Now`, `${args.formatAgentFolderLabel(scopedAgentTool)}를 지금 중앙에 반영`),
           value: "syncAgentNow",
-          description: args.tr("Copy changed skill folders now and mirror only related groups", "변경된 스킬 폴더를 지금 복사하고 관련 그룹만 미러링합니다")
+          description: args.tr("Copy this agent's skill folders now and mirror only related groups", "이 에이전트의 스킬 폴더를 지금 복사하고 관련 그룹만 미러링합니다")
         }] : []),
         {
           label: args.tr("Open Skill File Tools", "스킬 파일 만들기/수정 열기"),
@@ -629,11 +629,11 @@ export function createNodeActionTools(args: {
         actions.push({
           label: args.tr(`Open Selected Group Actions (${selectedGroup.name})`, `선택 그룹 작업 열기 (${selectedGroup.name})`),
           value: "groupActions",
-          description: args.tr("Run, rename, add, replace, or remove items", "실행/이름변경/항목 추가·교체·제거")
+          description: args.tr("Apply, rename, add, replace, or remove group items", "반영/이름변경/그룹 항목 추가·교체·제외")
         });
       }
       actions.push(
-        { label: args.tr("Switch Source Tab", "소스 탭 전환"), value: "switchTab" },
+        { label: args.tr("Choose Visible Agents", "보일 에이전트 선택"), value: "switchTab" },
         { label: args.tr("Refresh", "새로고침"), value: "refresh" }
       );
       const pick = await vscode.window.showQuickPick(actions, {
@@ -643,15 +643,15 @@ export function createNodeActionTools(args: {
       if (!pick) return;
       if (pick.value === "transfer") {
         if (selections.length === 0) {
-          vscode.window.showWarningMessage(args.tr("Could not find files to transfer.", "전송할 파일을 찾지 못했습니다."));
+          vscode.window.showWarningMessage(args.tr("Could not find files to apply.", "반영할 파일을 찾지 못했습니다."));
           return;
         }
         if (isAllVisibleTransferScope) {
           const reviewLabel = args.tr("Review All Visible", "전체 검토");
           const confirm = await vscode.window.showWarningMessage(
             args.tr(
-              `No item is selected. Review all ${selections.length} visible file target(s) for transfer?`,
-              `선택된 항목이 없습니다. 현재 보이는 파일 대상 ${selections.length}개 전체를 전송 검토할까요?`
+              `No item is selected. Review all ${selections.length} visible file target(s) before applying?`,
+              `선택된 항목이 없습니다. 현재 보이는 파일 대상 ${selections.length}개 전체를 반영 전 검토할까요?`
             ),
             { modal: true },
             reviewLabel
@@ -667,8 +667,8 @@ export function createNodeActionTools(args: {
         );
         await args.refresh();
         vscode.window.showInformationMessage(args.tr(
-          `${side === "workspace" ? "Send to Central" : "Bring to Workspace"} complete: copied ${result.copied}, deleted ${result.deleted}, unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · synced groups ${mirroredGroups}` : ""}`,
-          `${side === "workspace" ? "중앙으로 보내기" : "작업공간으로 가져오기"} 완료: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 동기화 ${mirroredGroups}개` : ""}`
+          `${side === "workspace" ? "Save to Central" : "Bring to Workspace"} complete: copied ${result.copied}, deleted ${result.deleted}, unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : ""}`,
+          `${side === "workspace" ? "중앙 반영" : "작업공간 가져오기"} 완료: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 반영 ${mirroredGroups}개` : ""}`
         ));
         return;
       }
@@ -679,8 +679,8 @@ export function createNodeActionTools(args: {
       if (pick.value === "toggleAutoSync" && scopedAgentTool) {
         const enabled = await args.toggleWorkspaceAgentAutoSync(scopedAgentTool);
         vscode.window.showInformationMessage(enabled
-          ? args.tr(`Workspace auto sync turned on for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 sync를 켰습니다.`)
-          : args.tr(`Workspace auto sync turned off for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 sync를 껐습니다.`));
+          ? args.tr(`Auto save to Central turned on for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영을 켰습니다.`)
+          : args.tr(`Auto save to Central turned off for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영을 껐습니다.`));
         return;
       }
       if (pick.value === "syncAgentNow" && scopedAgentTool) {
@@ -689,8 +689,8 @@ export function createNodeActionTools(args: {
           ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
           : "";
         const message = args.tr(
-          `Workspace agent sync complete: ${scopedAgentTool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-          `작업공간 에이전트 sync 완료: ${scopedAgentTool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
+          `Workspace agent saved to Central: ${scopedAgentTool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+          `작업공간 에이전트 중앙 반영 완료: ${scopedAgentTool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
         );
         if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
           vscode.window.showWarningMessage(message);

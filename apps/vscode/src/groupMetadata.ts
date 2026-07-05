@@ -65,10 +65,10 @@ export function formatMirroredFromLabel(mirroredFrom: string | undefined, langua
   const isKo = language === "ko";
   if (mirroredFrom === "central-pack" || mirroredFrom === "central-preset") return isKo ? "중앙 프리셋" : "Central preset";
   if (mirroredFrom.startsWith("workspace:")) {
-    return `${isKo ? "작업공간 그룹 동기화" : "Workspace group sync"} (${mirroredFrom})`;
+    return `${isKo ? "작업공간 그룹 반영" : "Workspace group applied"} (${mirroredFrom})`;
   }
   if (mirroredFrom.startsWith("central:")) {
-    return `${isKo ? "중앙 그룹 동기화" : "Central group sync"} (${mirroredFrom})`;
+    return `${isKo ? "중앙 그룹 반영" : "Central group applied"} (${mirroredFrom})`;
   }
   return mirroredFrom;
 }

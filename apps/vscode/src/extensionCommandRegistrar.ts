@@ -289,14 +289,14 @@ export function registerExtensionCommands(args: {
       const picks = await vscode.window.showQuickPick(
         args.state.agents.map((tool) => ({
           label: tool === "agents" ? ".agents" : `.${tool}`,
-          description: args.tr("Auto-sync this workspace agent to Central when its skill folders change", "이 작업공간 에이전트의 스킬 폴더가 바뀌면 중앙으로 자동 sync"),
+          description: args.tr("Automatically save this workspace agent's changed skills to Central", "이 작업공간 에이전트의 변경 스킬을 중앙에 자동 반영"),
           picked: args.getAutoSyncWorkspaceAgents().includes(tool),
           value: tool
         })),
         {
           canPickMany: true,
-          title: args.tr("Choose Workspace Agents for Auto Sync", "자동 sync할 작업공간 에이전트 선택"),
-          placeHolder: args.tr("Only selected workspace agents will auto-sync changed skills to Central.", "선택한 작업공간 에이전트만 변경된 스킬을 중앙으로 자동 sync합니다.")
+          title: args.tr("Choose Workspace Agents for Auto Save to Central", "자동 중앙 반영할 작업공간 에이전트 선택"),
+          placeHolder: args.tr("Only selected workspace agents will save changed skills to Central automatically.", "선택한 작업공간 에이전트만 변경된 스킬을 중앙에 자동 반영합니다.")
         }
       );
       if (!picks) return;
@@ -304,8 +304,8 @@ export function registerExtensionCommands(args: {
       await vscode.workspace.getConfiguration(args.settingsSection).update("autoSyncWorkspaceAgents", selected, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(
         selected.length > 0
-          ? args.tr(`Workspace auto sync enabled for: ${selected.join(", ")}`, `작업공간 자동 sync 설정 완료: ${selected.join(", ")}`)
-          : args.tr("Workspace auto sync disabled.", "작업공간 자동 sync를 껐습니다.")
+          ? args.tr(`Auto save to Central enabled for: ${selected.join(", ")}`, `자동 중앙 반영 설정 완료: ${selected.join(", ")}`)
+          : args.tr("Auto save to Central disabled.", "자동 중앙 반영을 껐습니다.")
       );
     } catch (error) {
       await args.handleError(error);
@@ -321,13 +321,13 @@ export function registerExtensionCommands(args: {
           args.state.agents.map((agent) => ({
             label: args.formatAgentFolderLabel(agent),
             description: args.getAutoSyncWorkspaceAgents().includes(agent)
-              ? args.tr("Auto sync is currently on", "현재 자동 sync 켜짐")
-              : args.tr("Auto sync is currently off", "현재 자동 sync 꺼짐"),
+              ? args.tr("Auto save to Central is on", "자동 중앙 반영 켜짐")
+              : args.tr("Auto save to Central is off", "자동 중앙 반영 꺼짐"),
             value: agent
           })),
           {
-            title: args.tr("Toggle Workspace Agent Auto Sync", "작업공간 에이전트 자동 sync 토글"),
-            placeHolder: args.tr("Choose a workspace agent to turn auto sync on or off.", "자동 sync를 켜거나 끌 작업공간 에이전트를 고르세요.")
+            title: args.tr("Turn Auto Save to Central On or Off", "자동 중앙 반영 켜기/끄기"),
+            placeHolder: args.tr("Choose a workspace agent to turn auto save to Central on or off.", "자동 중앙 반영을 켜거나 끌 작업공간 에이전트를 고르세요.")
           }
         );
         if (!picked) return;
@@ -335,8 +335,8 @@ export function registerExtensionCommands(args: {
       }
       const enabled = await args.toggleWorkspaceAgentAutoSync(tool);
       vscode.window.showInformationMessage(enabled
-        ? args.tr(`Workspace auto sync turned on for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 sync를 켰습니다.`)
-        : args.tr(`Workspace auto sync turned off for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 sync를 껐습니다.`));
+        ? args.tr(`Auto save to Central turned on for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 중앙 반영을 켰습니다.`)
+        : args.tr(`Auto save to Central turned off for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 중앙 반영을 껐습니다.`));
     } catch (error) {
       await args.handleError(error);
     }
@@ -351,12 +351,12 @@ export function registerExtensionCommands(args: {
         const picked = await vscode.window.showQuickPick(
           args.state.agents.map((agent) => ({
             label: args.formatAgentFolderLabel(agent),
-            description: args.tr("Sync all current workspace skills for this agent to Central now", "이 에이전트의 현재 작업공간 스킬 전체를 지금 중앙으로 sync"),
+            description: args.tr("Save all current workspace skills for this agent to Central now", "이 에이전트의 현재 작업공간 스킬 전체를 지금 중앙에 반영"),
             value: agent
           })),
           {
-            title: args.tr("Choose Workspace Agent to Sync Now", "지금 sync할 작업공간 에이전트 선택"),
-            placeHolder: args.tr("This syncs the selected workspace agent's skill folders to Central and mirrors only related groups.", "선택한 작업공간 에이전트의 스킬 폴더를 중앙으로 sync하고 관련 그룹만 미러링합니다.")
+            title: args.tr("Choose Workspace Agent to Save to Central", "중앙에 반영할 작업공간 에이전트 선택"),
+            placeHolder: args.tr("This copies the selected workspace agent's skill folders to Central and mirrors only related groups.", "선택한 작업공간 에이전트의 스킬 폴더를 중앙에 복사하고 관련 그룹만 미러링합니다.")
           }
         );
         if (!picked) return;
@@ -367,8 +367,8 @@ export function registerExtensionCommands(args: {
         ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
         : "";
       const message = args.tr(
-        `Workspace agent sync complete: ${tool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-        `작업공간 에이전트 sync 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
+        `Workspace agent saved to Central: ${tool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+        `작업공간 에이전트 중앙 반영 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
       );
       if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
         vscode.window.showWarningMessage(message);

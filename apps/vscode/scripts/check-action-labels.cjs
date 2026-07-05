@@ -5,13 +5,37 @@ const root = process.cwd();
 const actionKeyPattern = /^(command|submenu|view)\./;
 const hangulPattern = /[가-힣]/;
 const mixedActionTerms = /\b(Overview|Workspace|Quick Tools)\b/;
-const files = ["package.nls.json", "package.nls.ko.json"];
+const englishFiles = ["package.nls.json"];
+const koreanFiles = ["package.nls.ko.json"];
+const configActionKeys = ["config.visibleQuickTools.description", "config.autoSyncWorkspaceAgents.description"];
 
 const failures = [];
 
-for (const fileName of files) {
+for (const fileName of englishFiles) {
   const filePath = path.join(root, fileName);
   const labels = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  for (const [key, value] of Object.entries(labels)) {
+    if (!actionKeyPattern.test(key)) continue;
+    if (key === "viewContainer.title") continue;
+    if (typeof value !== "string") continue;
+    if (hangulPattern.test(value)) {
+      failures.push(`${fileName}: ${key} should be English but contains Korean text: ${value}`);
+    }
+  }
+  for (const key of configActionKeys) {
+    const value = labels[key];
+    if (typeof value !== "string") {
+      failures.push(`${fileName}: ${key} is missing or not a string`);
+      continue;
+    }
+    if (hangulPattern.test(value)) {
+      failures.push(`${fileName}: ${key} should be English but contains Korean text: ${value}`);
+    }
+  }
+}
+
+for (const fileName of koreanFiles) {
+  const labels = JSON.parse(fs.readFileSync(path.join(root, fileName), "utf8"));
   for (const [key, value] of Object.entries(labels)) {
     if (!actionKeyPattern.test(key)) continue;
     if (key === "viewContainer.title") continue;
@@ -23,14 +47,7 @@ for (const fileName of files) {
       failures.push(`${fileName}: ${key} contains mixed UI term: ${value}`);
     }
   }
-}
-
-for (const [fileName, keys] of [
-  ["package.nls.json", ["config.visibleQuickTools.description", "config.autoSyncWorkspaceAgents.description"]],
-  ["package.nls.ko.json", ["config.visibleQuickTools.description", "config.autoSyncWorkspaceAgents.description"]]
-]) {
-  const labels = JSON.parse(fs.readFileSync(path.join(root, fileName), "utf8"));
-  for (const key of keys) {
+  for (const key of configActionKeys) {
     const value = labels[key];
     if (typeof value !== "string") {
       failures.push(`${fileName}: ${key} is missing or not a string`);
@@ -42,6 +59,36 @@ for (const [fileName, keys] of [
     if (mixedActionTerms.test(value)) {
       failures.push(`${fileName}: ${key} contains mixed UI term: ${value}`);
     }
+  }
+}
+
+const catalogLabels = extractCommonToolLabels(path.join(root, "src", "views", "commonToolCatalog.ts"));
+const englishLabels = JSON.parse(fs.readFileSync(path.join(root, "package.nls.json"), "utf8"));
+const koreanLabels = JSON.parse(fs.readFileSync(path.join(root, "package.nls.ko.json"), "utf8"));
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const manifestCommands = manifest.contributes?.commands ?? [];
+const manifestCommandById = new Map(manifestCommands.map((command) => [command.command, command]));
+for (const [command, label] of catalogLabels.entries()) {
+  const key = command.replace(/^skillBridge\./, "command.");
+  if (englishLabels[key] !== label.english) {
+    failures.push(`package.nls.json: ${key} does not match Quick Tools English label: ${englishLabels[key]} !== ${label.english}`);
+  }
+  if (koreanLabels[key] !== label.korean) {
+    failures.push(`package.nls.ko.json: ${key} does not match Quick Tools Korean label: ${koreanLabels[key]} !== ${label.korean}`);
+  }
+}
+
+for (const command of manifestCommands) {
+  const alias = /^skillBridge\.menu\.(en|ko)\.(.+)$/.exec(command.command);
+  if (!alias) continue;
+  const targetCommand = manifestCommandById.get(`skillBridge.${alias[2]}`);
+  const expected = resolveManifestTitle(targetCommand?.title, alias[1] === "ko" ? koreanLabels : englishLabels);
+  if (typeof expected !== "string") {
+    failures.push(`package.json: ${command.command} has no localization target command.${alias[2]}`);
+    continue;
+  }
+  if (command.title !== expected) {
+    failures.push(`package.json: ${command.command} title mismatch: ${command.title} !== ${expected}`);
   }
 }
 
@@ -90,4 +137,34 @@ function listFiles(dirPath, extension) {
     }
   }
   return results;
+}
+
+function extractCommonToolLabels(filePath) {
+  const text = fs.readFileSync(filePath, "utf8");
+  const labels = new Map();
+  const blockRegex = /\{\s*kind:\s*"command"[\s\S]*?\n\s*\}/g;
+  let blockMatch = blockRegex.exec(text);
+  while (blockMatch) {
+    const block = blockMatch[0];
+    const command = /command:\s*"([^"]+)"/.exec(block)?.[1];
+    const labelMatch = /label:\s*localize\(language,\s*"((?:\\"|[^"])*)",\s*"((?:\\"|[^"])*)"\)/.exec(block);
+    if (command && labelMatch) {
+      labels.set(command, {
+        english: unescapeTsString(labelMatch[1]),
+        korean: unescapeTsString(labelMatch[2])
+      });
+    }
+    blockMatch = blockRegex.exec(text);
+  }
+  return labels;
+}
+
+function unescapeTsString(value) {
+  return value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+function resolveManifestTitle(value, labels) {
+  if (typeof value !== "string") return undefined;
+  const match = /^%([^%]+)%$/.exec(value);
+  return match ? labels[match[1]] : value;
 }

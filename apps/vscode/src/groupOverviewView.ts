@@ -142,7 +142,7 @@ export function createGroupOverviewTools(args: {
             await args.persistGroups(nextGroups, group.id);
             vscode.window.setStatusBarMessage(args.tr(`Group updated: ${name}`, `그룹 수정 완료: ${name}`), 2000);
           } else if (isTransferGroupMessage(message)) {
-            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to transfer.", "전송할 그룹을 찾지 못했습니다."));
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to apply.", "반영할 그룹을 찾지 못했습니다."));
             if (message.mode === "groupOnly") {
               const ok = await vscode.window.showWarningMessage(
                 args.tr(
@@ -653,9 +653,9 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
       </div>
       <div class="batch-actions">
         <span id="selectedGroupCount" class="summary">${esc(t("No groups selected", "선택 그룹 없음"))}</span>
-        <button id="batchAddSkills" type="button">${esc(t("Add skills to selected groups", "선택 그룹에 스킬 추가"))}</button>
-        <button id="batchTransferWithSkills" class="primary" type="button">${esc(t("Transfer selected groups + skills", "선택 그룹+스킬 전송"))}</button>
-        <button id="batchTransferGroupOnly" type="button">${esc(t("Transfer selected groups only", "선택 그룹만 전송"))}</button>
+        <button id="batchAddSkills" type="button">${esc(t("Add existing skills to selected groups", "선택 그룹에 기존 스킬 추가"))}</button>
+        <button id="batchTransferWithSkills" class="primary" type="button">${esc(t("Apply selected groups + skills", "선택 그룹+스킬 반영"))}</button>
+        <button id="batchTransferGroupOnly" type="button">${esc(t("Apply selected group info only", "선택 그룹 정보만 반영"))}</button>
       </div>
     </div>
     <div id="agentFilter" class="agent-filter">
@@ -671,7 +671,7 @@ function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewDat
               <th>${esc(t("Group", "그룹"))}</th>
               <th style="width: 96px;">${esc(t("Side", "위치"))}</th>
               <th style="width: 96px;">${esc(t("Source", "출처"))}</th>
-              <th style="width: 94px;">${esc(t("Sync", "동기화"))}</th>
+              <th style="width: 94px;">${esc(t("Status", "상태"))}</th>
               <th style="width: 82px;">${esc(t("Skills", "스킬"))}</th>
               <th style="width: 180px;">${esc(t("Latest file", "최신 파일"))}</th>
             </tr>
@@ -810,7 +810,7 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
   const folderHtml = skillFolders.slice(0, 80).map((folder) => renderSkillFolder(folder, t)).join("");
   const searchText = `${group.agent} ${group.sourceDetail} ${group.name} ${group.description} ${group.targets.map((target) => `${target.path} ${target.description} ${target.historyProject}`).join(" ")}`;
   const primaryAction = group.side === "workspace"
-    ? t("Send group + skills to Central", "그룹+스킬을 중앙으로 보내기")
+    ? t("Save group + skills to Central", "그룹+스킬을 중앙에 반영")
     : t("Bring group + skills to Workspace", "그룹+스킬을 작업공간으로 가져오기");
   return `
     <article class="group-detail ${active ? "" : "hidden"}" data-group-id="${escAttr(group.id)}" data-search="${esc(searchText.toLowerCase())}">
@@ -825,15 +825,15 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
             ${renderBadge(healthLabel(group.health, group.brokenTargetCount, t), group.health)}
             <span class="pill">${esc(t("Targets", "대상"))}: ${group.targetCount}</span>
             <span class="pill">${esc(t("Latest file", "최신 파일"))}: ${esc(group.latestUpdatedAt)}</span>
-            <span class="pill">${esc(t("Latest sync", "최신 동기화"))}: ${esc(group.latestHistoryAt)}</span>
+            <span class="pill">${esc(t("Latest applied", "최근 반영"))}: ${esc(group.latestHistoryAt)}</span>
           </div>
         </div>
         <div class="actions">
           <button class="primary" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="withSkills">${esc(primaryAction)}</button>
-          <button data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group only", "그룹만"))}</button>
-          <button data-add-skills="${escAttr(group.id)}">${esc(t("Add skills", "스킬 추가"))}</button>
-          <button data-remove-skills="${escAttr(group.id)}">${esc(t("Remove selected", "선택 제거"))}</button>
-          <button data-install-npx="${escAttr(group.side)}">${esc(t("npx skills add", "npx skills add"))}</button>
+          <button data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group info only", "그룹 정보만"))}</button>
+          <button data-add-skills="${escAttr(group.id)}">${esc(t("Add existing skills", "기존 스킬 추가"))}</button>
+          <button data-remove-skills="${escAttr(group.id)}">${esc(t("Remove from group", "그룹에서 제외"))}</button>
+          <button data-install-npx="${escAttr(group.side)}">${esc(t("Install from npx", "npx에서 설치"))}</button>
         </div>
       </div>
       <div class="edit">
@@ -892,7 +892,7 @@ function renderSkillFolder(folder: GroupOverviewSkillFolder, t: (english: string
       </summary>
       <div class="folder-summary">
         <span class="pill">${esc(t("Latest file", "최신 파일"))}: ${esc(folder.latestUpdatedAt)}</span>
-        <span class="pill">${esc(t("Latest sync", "최신 동기화"))}: ${esc(folder.latestHistoryAt)}</span>
+        <span class="pill">${esc(t("Latest applied", "최근 반영"))}: ${esc(folder.latestHistoryAt)}</span>
         ${folder.description ? `<span class="skill-desc">${esc(folder.description)}</span>` : ""}
       </div>
       <table>
@@ -901,7 +901,7 @@ function renderSkillFolder(folder: GroupOverviewSkillFolder, t: (english: string
             <th>${esc(t("File", "파일"))}</th>
             <th>${esc(t("Type", "종류"))}</th>
             <th>${esc(t("File updated", "파일 수정"))}</th>
-            <th>${esc(t("Synced", "동기화"))}</th>
+            <th>${esc(t("Applied", "반영"))}</th>
             <th>${esc(t("Source", "출처"))}</th>
             <th>${esc(t("Description", "설명"))}</th>
           </tr>

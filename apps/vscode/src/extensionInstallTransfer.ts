@@ -178,11 +178,11 @@ export function createInstallTransferTools(args: {
   };
 
   const pickEmptyTransferScope = async (side: TreeSide): Promise<"all" | "cancel"> => {
-    const direction = side === "workspace" ? args.tr("Send to Central", "중앙으로 보내기") : args.tr("Bring to Workspace", "작업공간으로 가져오기");
+    const direction = side === "workspace" ? args.tr("Save to Central", "중앙에 반영") : args.tr("Bring to Workspace", "작업공간으로 가져오기");
     const pick = await vscode.window.showQuickPick(
       [
         {
-          label: args.tr("Review All Visible Skills for Transfer", "현재 보이는 전체 스킬 전송 검토"),
+          label: args.tr("Review All Visible Skills Before Applying", "현재 보이는 전체 스킬 반영 전 검토"),
           description: direction,
           detail: args.tr("Only when nothing is selected, this opens all visible skills in the review screen.", "선택한 항목이 없을 때만 전체를 검토 화면에 올립니다."),
           value: "all" as const
@@ -190,12 +190,12 @@ export function createInstallTransferTools(args: {
         {
           label: args.tr("Cancel", "취소"),
           description: args.tr("Select a skill or folder in the tree first", "먼저 트리에서 스킬이나 폴더를 선택"),
-          detail: args.tr("To transfer specific items, right-click or select them in the tree and run this again.", "특정 항목만 전송하려면 트리에서 우클릭하거나 선택 후 다시 실행하세요."),
+          detail: args.tr("To apply specific items, right-click or select them in the tree and run this again.", "특정 항목만 반영하려면 트리에서 우클릭하거나 선택 후 다시 실행하세요."),
           value: "cancel" as const
         }
       ],
       {
-        title: args.tr("Select Transfer Scope", "전송 범위를 선택하세요"),
+        title: args.tr("Select Apply Scope", "반영 범위를 선택하세요"),
         matchOnDescription: true,
         matchOnDetail: true
       }
@@ -277,15 +277,15 @@ export function createInstallTransferTools(args: {
       const defaultCwd = sideBasePath;
       const useStaging = selectedTool !== "agents";
       const cwdInput = preset?.cwd ?? (useStaging ? defaultCwd : await vscode.window.showInputBox({
-        title: args.tr("Run Directory", "실행 디렉터리"),
-        prompt: args.tr("Enter the directory where npx skills add should run", "npx skills add를 실행할 디렉터리를 입력하세요"),
+        title: args.tr("Working Directory", "작업 디렉터리"),
+        prompt: args.tr("Enter the directory where npx skills add should run", "npx skills add 명령을 실행할 작업 디렉터리를 입력하세요"),
         value: defaultCwd,
         ignoreFocusOut: true
       }));
       if (cwdInput === undefined) return false;
       const cwd = cwdInput.trim() || defaultCwd;
       if (!(await args.exists(cwd))) {
-        vscode.window.showErrorMessage(args.tr(`Run directory not found: ${cwd}`, `실행 디렉터리를 찾을 수 없습니다: ${cwd}`));
+        vscode.window.showErrorMessage(args.tr(`Working directory not found: ${cwd}`, `작업 디렉터리를 찾을 수 없습니다: ${cwd}`));
         return false;
       }
       const stat = await fs.stat(cwd).catch(() => null);
@@ -297,7 +297,7 @@ export function createInstallTransferTools(args: {
       const commandCwd = stagingDir ?? cwd;
       const targetSkillRoot = path.join(getWritableSkillRoot(sideBasePath, selectedTool, side), "skills");
       const commandArgs = ["-y", "skills", "add", repo, ...skills.flatMap((skill) => ["--skill", skill]), "--yes"];
-      const runLabel = args.tr("Run", "실행");
+      const runLabel = args.tr("Run Command", "명령 실행");
       if (!preset?.skipCommandConfirm) {
         const confirm = await vscode.window.showWarningMessage(
           args.tr(
@@ -427,17 +427,17 @@ export function createInstallTransferTools(args: {
             ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
             : "";
           vscode.window.showInformationMessage(args.tr(
-            `Install, group, and auto sync complete: ${syncedToolLabel} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-            `설치, 그룹 생성, 자동 sync 완료: ${syncedToolLabel} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
+            `Install, group, and auto save complete: ${syncedToolLabel} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+            `설치, 그룹 생성, 자동 중앙 반영 완료: ${syncedToolLabel} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
           ));
           return true;
         }
       }
 
-      const copyLabel = args.tr("Copy", "복사");
+      const copyLabel = side === "workspace" ? args.tr("Save to Central", "중앙에 반영") : args.tr("Bring to Workspace", "작업공간으로 가져오기");
       const shouldSync = await vscode.window.showInformationMessage(
         side === "workspace"
-          ? args.tr("Copy installed skills to the central repository?", "설치된 스킬을 중앙 저장소로 복사할까요?")
+          ? args.tr("Save installed skills to the central library?", "설치된 스킬을 중앙 라이브러리에 반영할까요?")
           : args.tr("Copy installed skills to the workspace?", "설치된 스킬을 작업 폴더로 복사할까요?"),
         copyLabel
       );
@@ -452,8 +452,8 @@ export function createInstallTransferTools(args: {
         if (transferResult.copied + transferResult.deleted > 0 || mirroredGroup) {
           await args.refresh();
           vscode.window.showInformationMessage(args.tr(
-            `Installed skills applied: copied ${transferResult.copied}, deleted ${transferResult.deleted}, unchanged ${transferResult.unchanged}${mirroredGroup ? " · group synced" : ""}`,
-            `설치 스킬 반영: 복사 행 ${transferResult.copied}개 / 삭제 행 ${transferResult.deleted}개 / 변경없음 행 ${transferResult.unchanged}개${mirroredGroup ? " · 그룹 동기화됨" : ""}`
+            `Installed skills applied: copied ${transferResult.copied}, deleted ${transferResult.deleted}, unchanged ${transferResult.unchanged}${mirroredGroup ? " · group applied" : ""}`,
+            `설치 스킬 반영: 복사 행 ${transferResult.copied}개 / 삭제 행 ${transferResult.deleted}개 / 변경없음 행 ${transferResult.unchanged}개${mirroredGroup ? " · 그룹 반영됨" : ""}`
           ));
         }
       }

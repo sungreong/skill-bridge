@@ -212,7 +212,7 @@ export function createExtensionShellTools(args: {
     const groupLabel = args.tr(`groups W ${groupCounts.workspace} / C ${groupCounts.central}`, `그룹 W ${groupCounts.workspace} / C ${groupCounts.central}`);
     args.updateStatusChromeCore();
     vscode.window.setStatusBarMessage(
-      `Skill Bridge · ${tab} · W ${args.state.workspaceSkills.length} / C ${args.state.centralSkills.length} · ${groupLabel} · auto sync ${autoSyncLabel}`,
+      `Skill Bridge · ${tab} · W ${args.state.workspaceSkills.length} / C ${args.state.centralSkills.length} · ${groupLabel} · auto save ${autoSyncLabel}`,
       2500
     );
   };

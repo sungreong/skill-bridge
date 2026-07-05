@@ -38,7 +38,7 @@ export function renderAddMoveWizardHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${payload.language === "ko" ? "스킬 관리자" : "Skill Manager"}</title>
+  <title>${payload.language === "ko" ? "스킬 추가/이동 도우미" : "Add or Move Helper"}</title>
   <style>
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
     .wrap { padding: 8px 10px; display: grid; gap: 7px; }
@@ -127,8 +127,8 @@ export function renderAddMoveWizardHtml(
     const uiState = { busy:false, action:"" };
     const copy = {
       en: {
-        title: "Skill Manager",
-        subtitle: "Create, download, sync, and move skills after checking risk signals first.",
+        title: "Add or Move Helper",
+        subtitle: "Create, bring, save, and move skills after checking risk signals first.",
         refresh: "Refresh",
         languageToggle: "한국어",
         initialFeedback: "Choose an action. VS Code prompts and the pre-transfer review will open next.",
@@ -163,22 +163,22 @@ export function renderAddMoveWizardHtml(
         filterRecent: "Recent",
         actions: {
           newSkill: ["Create New Skill", "Choose a target agent and create skills/<name>/SKILL.md."],
-          promoteAsset: ["Send to Central", "Review one workspace skill before saving it to the central library."],
+          promoteAsset: ["Save to Central", "Review one workspace skill before saving it to the central library."],
           importAsset: ["Bring to Workspace", "Review one central skill before applying it to this workspace."],
-          hydrateProject: ["Apply Project Preset", "Apply a saved project preset or selected Central skills to this project."],
-          downloadCentralSkill: ["Download or Update Skill", "Search the central library and apply a skill to a workspace agent folder."],
-          downloadSkillManagerSkill: ["Download Skill Manager Skill", "Apply the bundled skill-manager skill from this extension to the current workspace."],
-          createPack: ["Create Project Preset", "Save selected Central skills as a reusable preset for a project type."],
-          copyAgent: ["Copy Between Agents", "Copy a skill between Claude, Codex, .agents, or another agent within Workspace or Central."],
-          installNpx: ["npx skills add", "Open the existing install flow, then continue to review and sync."]
+          hydrateProject: ["Apply Preset to Workspace", "Apply a saved project preset or selected Central skills to this project."],
+          downloadCentralSkill: ["Bring Central Skill to Workspace", "Search the central library and apply a skill to a workspace agent folder."],
+          downloadSkillManagerSkill: ["Install Skill Manager Helper", "Apply the bundled skill-manager skill from this extension to the current workspace."],
+          createPack: ["Create Preset from Central Skills", "Save selected Central skills as a reusable preset for a project type."],
+          copyAgent: ["Copy to Another Agent", "Copy a skill between Claude, Codex, .agents, or another agent within Workspace or Central."],
+          installNpx: ["Install from npx", "Open the existing install flow, then continue to review and apply changes."]
         }
       },
       ko: {
-        title: "스킬 관리자",
-        subtitle: "스킬을 만들고, 중앙 저장소와 맞추고, 다른 에이전트로 복사하기 전에 위험 신호를 먼저 확인합니다.",
+        title: "스킬 추가/이동 도우미",
+        subtitle: "스킬을 만들고, 작업공간으로 가져오고, 중앙에 반영하고, 다른 에이전트로 복사하기 전에 위험 신호를 먼저 확인합니다.",
         refresh: "새로고침",
         languageToggle: "English",
-        initialFeedback: "작업을 선택하면 VS Code 입력창과 전송 전 검토 화면이 이어서 열립니다.",
+        initialFeedback: "작업을 선택하면 VS Code 입력창과 반영 전 검토 화면이 이어서 열립니다.",
         busyFeedback: "이미 작업을 여는 중입니다. VS Code 입력창을 확인하세요.",
         refreshing: "스킬 자산 목록을 새로고침하는 중입니다...",
         openingPrompt: "입력창을 여는 중입니다",
@@ -210,14 +210,14 @@ export function renderAddMoveWizardHtml(
         filterRecent: "최근",
         actions: {
           newSkill: ["새 스킬 만들기", "대상 에이전트를 고르고 skills/<name>/SKILL.md를 생성합니다."],
-          promoteAsset: ["중앙으로 보내기", "작업공간의 스킬 하나를 전송 전 검토 화면에서 확인한 뒤 중앙에 반영합니다."],
-          importAsset: ["작업공간으로 가져오기", "중앙 저장소의 스킬 하나를 전송 전 검토 화면에서 확인한 뒤 가져옵니다."],
-          hydrateProject: ["프로젝트 프리셋 적용", "프로젝트 프리셋이나 선택한 중앙 스킬을 현재 프로젝트에 가져옵니다."],
-          downloadCentralSkill: ["스킬 다운로드/업데이트", "중앙 라이브러리에서 검색해 작업공간 에이전트 폴더에 적용합니다."],
-          downloadSkillManagerSkill: ["Skill Manager 스킬 다운로드", "확장에 번들된 skill-manager 스킬을 현재 작업공간에 적용합니다."],
-          createPack: ["프로젝트 프리셋 만들기", "선택한 중앙 스킬을 프로젝트 유형별 재사용 프리셋으로 저장합니다."],
-          copyAgent: ["에이전트 간 복사", "작업공간 또는 중앙 안에서 Claude, Codex, .agents 등 다른 에이전트로 복사합니다."],
-          installNpx: ["npx skills add", "기존 설치 흐름을 열고 설치 후 그룹/전송 검토로 이어갑니다."]
+          promoteAsset: ["중앙에 반영", "작업공간의 스킬 하나를 반영 전 검토 화면에서 확인한 뒤 중앙에 반영합니다."],
+          importAsset: ["작업공간으로 가져오기", "중앙 저장소의 스킬 하나를 반영 전 검토 화면에서 확인한 뒤 가져옵니다."],
+          hydrateProject: ["프리셋을 작업공간에 적용", "프로젝트 프리셋이나 선택한 중앙 스킬을 현재 프로젝트에 가져옵니다."],
+          downloadCentralSkill: ["중앙 스킬을 작업공간으로 가져오기", "중앙 라이브러리에서 검색해 작업공간 에이전트 폴더에 적용합니다."],
+          downloadSkillManagerSkill: ["Skill Manager 도우미 설치", "확장에 번들된 skill-manager 스킬을 현재 작업공간에 적용합니다."],
+          createPack: ["중앙 스킬로 프리셋 만들기", "선택한 중앙 스킬을 프로젝트 유형별 재사용 프리셋으로 저장합니다."],
+          copyAgent: ["다른 에이전트로 복사", "작업공간 또는 중앙 안에서 Claude, Codex, .agents 등 다른 에이전트로 복사합니다."],
+          installNpx: ["npx에서 설치", "기존 설치 흐름을 열고 설치 후 그룹/반영 검토로 이어갑니다."]
         }
       }
     };

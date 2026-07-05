@@ -41,7 +41,7 @@ export function renderLibraryManagerHtml(
     </div>
 
     <div class="subtabs compare-pane">
-      <button class="subtab active" data-mode="send">${lang === "ko" ? "작업공간에서 중앙으로 보내기" : "Send Workspace to Central"}</button>
+      <button class="subtab active" data-mode="send">${lang === "ko" ? "작업공간을 중앙에 반영" : "Save Workspace to Central"}</button>
       <button class="subtab" data-mode="bring">${lang === "ko" ? "중앙에서 작업공간으로 가져오기" : "Bring Central to Workspace"}</button>
     </div>
 
@@ -58,7 +58,7 @@ export function renderLibraryManagerHtml(
           <div id="agentButtons" class="button-strip"></div>
           <button id="selectVisibleBtn" class="ghost">${lang === "ko" ? "보이는 항목 선택" : "Select visible"}</button>
           <button id="clearSelectionBtn" class="ghost">${lang === "ko" ? "선택 해제" : "Clear"}</button>
-          <button id="runSelectedBtn" class="primary">${lang === "ko" ? "선택 항목 실행" : "Run selected"}</button>
+          <button id="runSelectedBtn" class="primary">${lang === "ko" ? "선택 항목 반영" : "Apply selected"}</button>
         </div>
       </div>
       <div id="compareTable" class="table-wrap"></div>

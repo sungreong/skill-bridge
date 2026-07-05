@@ -53,7 +53,7 @@ export function createAddMoveWizardPanelOpener(input: {
   return async function openAddMoveWizardPanel(): Promise<void> {
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeAddMoveWizard",
-      input.tr("Skill Manager", "스킬 관리자"),
+      input.tr("Add or Move Helper", "스킬 추가/이동 도우미"),
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -70,7 +70,7 @@ export function createAddMoveWizardPanelOpener(input: {
       panel.webview.postMessage({ type: "ui", payload: { message, tone, busy, action } });
     };
     const render = (): void => {
-      panel.title = input.tr("Skill Manager", "스킬 관리자");
+      panel.title = input.tr("Add or Move Helper", "스킬 추가/이동 도우미");
       panel.webview.html = renderAddMoveWizardHtml(panel.webview, input.getPayload());
     };
     input.registerLanguageRefresh(panel, render);
@@ -84,7 +84,7 @@ export function createAddMoveWizardPanelOpener(input: {
           const payload = (message.payload && typeof message.payload === "object") ? message.payload as { language?: unknown } : {};
           const next: UiLanguage = coerceUiLanguage(payload.language);
           await input.setLanguage(next);
-          panel.title = input.tr("Skill Manager", "스킬 관리자");
+          panel.title = input.tr("Add or Move Helper", "스킬 추가/이동 도우미");
           postState();
           postUi(input.tr("Language switched.", "언어를 전환했습니다."));
           return;
@@ -105,11 +105,11 @@ export function createAddMoveWizardPanelOpener(input: {
           return;
         }
         if (message.type === "promoteAsset") {
-          postUi(input.tr("Opening Send to Central...", "작업공간 스킬 선택창을 여는 중입니다..."), "info", true, "promoteAsset");
+          postUi(input.tr("Opening Save to Central review...", "중앙 반영 검토를 여는 중입니다..."), "info", true, "promoteAsset");
           await input.runAssetTransferWizard("workspace");
           await input.refresh();
           postState();
-          postUi(input.tr("Workspace to Central review completed.", "작업공간 → 중앙 검토 흐름을 완료했습니다."));
+          postUi(input.tr("Save to Central review completed.", "중앙 반영 검토를 완료했습니다."));
           return;
         }
         if (message.type === "importAsset") {
@@ -121,11 +121,11 @@ export function createAddMoveWizardPanelOpener(input: {
           return;
         }
         if (message.type === "copyAgent") {
-          postUi(input.tr("Opening Copy Between Agents...", "에이전트 간 복사 선택창을 여는 중입니다..."), "info", true, "copyAgent");
+          postUi(input.tr("Opening Copy to Another Agent...", "다른 에이전트로 복사 선택창을 여는 중입니다..."), "info", true, "copyAgent");
           await input.runAgentCopyWizard();
           await input.refresh();
           postState();
-          postUi(input.tr("Copy Between Agents completed.", "에이전트 간 복사 흐름을 완료했습니다."));
+          postUi(input.tr("Copy to Another Agent completed.", "다른 에이전트로 복사를 완료했습니다."));
           return;
         }
         if (message.type === "installNpx") {
@@ -137,24 +137,24 @@ export function createAddMoveWizardPanelOpener(input: {
           return;
         }
         if (message.type === "hydrateProject") {
-          postUi(input.tr("Opening Add Skills to Workspace...", "현재 프로젝트에 스킬을 채우는 흐름을 여는 중입니다..."), "info", true, "hydrateProject");
+          postUi(input.tr("Opening Apply Preset to Workspace...", "프리셋을 작업공간에 적용하는 흐름을 여는 중입니다..."), "info", true, "hydrateProject");
           await input.hydrateCurrentProject();
           await input.refresh();
           postState();
-          postUi(input.tr("Add Skills to Workspace completed.", "프로젝트에 스킬 채우기를 완료했습니다."));
+          postUi(input.tr("Apply Preset to Workspace completed.", "프리셋 작업공간 적용을 완료했습니다."));
           return;
         }
         if (message.type === "downloadCentralSkill") {
-          postUi(input.tr("Opening Download or Update Skill...", "스킬 다운로드/업데이트 흐름을 여는 중입니다..."), "info", true, "downloadCentralSkill");
+          postUi(input.tr("Opening Bring Central Skill to Workspace...", "중앙 스킬을 작업공간으로 가져오는 흐름을 여는 중입니다..."), "info", true, "downloadCentralSkill");
           await input.downloadCentralSkillToWorkspace();
           await input.refresh();
           postState();
-          postUi(input.tr("Download or Update Skill completed.", "스킬 다운로드/업데이트를 완료했습니다."));
+          postUi(input.tr("Bring Central Skill to Workspace completed.", "중앙 스킬 가져오기를 완료했습니다."));
           return;
         }
         if (message.type === "downloadSkillManagerSkill") {
           postUi(
-            input.tr("Downloading bundled skill-manager skill...", "번들된 skill-manager 스킬을 다운로드하는 중입니다..."),
+            input.tr("Installing bundled Skill Manager helper skill...", "번들된 Skill Manager 도우미 스킬을 설치하는 중입니다..."),
             "info",
             true,
             "downloadSkillManagerSkill"
@@ -162,15 +162,15 @@ export function createAddMoveWizardPanelOpener(input: {
           await input.downloadSkillManagerSkillToWorkspace();
           await input.refresh();
           postState();
-          postUi(input.tr("Bundled skill-manager skill download completed.", "skill-manager 스킬 다운로드를 완료했습니다."));
+          postUi(input.tr("Bundled Skill Manager helper installed.", "Skill Manager 도우미 설치를 완료했습니다."));
           return;
         }
         if (message.type === "createPack") {
-          postUi(input.tr("Opening Create Project Preset...", "프로젝트 프리셋 생성 흐름을 여는 중입니다..."), "info", true, "createPack");
+          postUi(input.tr("Opening Create Preset from Central Skills...", "중앙 스킬로 프리셋 만드는 흐름을 여는 중입니다..."), "info", true, "createPack");
           await input.createCentralPack();
           await input.refresh();
           postState();
-          postUi(input.tr("Create Project Preset completed.", "프로젝트 프리셋 생성을 완료했습니다."));
+          postUi(input.tr("Create Preset from Central Skills completed.", "중앙 스킬 프리셋 만들기를 완료했습니다."));
         }
       } catch (error) {
         const text = input.toUserError(error);

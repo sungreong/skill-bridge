@@ -13,6 +13,7 @@ const vscodeIgnore = fs.readFileSync(ignorePath, 'utf8');
 
 const declared = new Set((manifest.contributes?.commands ?? []).map((c) => c.command));
 const implemented = new Set();
+const menuAliasRegex = /^skillBridge\.menu\.(en|ko)\.(.+)$/;
 
 const sourceFiles = listFiles(srcRoot, '.ts').map((filePath) => fs.readFileSync(filePath, 'utf8'));
 const registerRegex = /register\("([^"]+)"/g;
@@ -25,10 +26,22 @@ for (const sourceText of sourceFiles) {
   registerRegex.lastIndex = 0;
 }
 
-const missingInCode = [...declared].filter((id) => !implemented.has(id));
+const missingInCode = [...declared].filter((id) => {
+  if (implemented.has(id)) return false;
+  const alias = menuAliasRegex.exec(id);
+  if (!alias) return true;
+  const target = `skillBridge.${alias[2]}`;
+  return !declared.has(target) || !implemented.has(target);
+});
 const missingInManifest = [...implemented].filter((id) => !declared.has(id));
+const invalidMenuAliases = [...declared].filter((id) => {
+  const alias = menuAliasRegex.exec(id);
+  if (!alias) return false;
+  const target = `skillBridge.${alias[2]}`;
+  return !declared.has(target);
+});
 
-if (missingInCode.length > 0 || missingInManifest.length > 0) {
+if (missingInCode.length > 0 || missingInManifest.length > 0 || invalidMenuAliases.length > 0) {
   console.error('Skill Bridge manifest command mismatch');
   if (missingInCode.length > 0) {
     console.error('Declared but not implemented:');
@@ -37,6 +50,10 @@ if (missingInCode.length > 0 || missingInManifest.length > 0) {
   if (missingInManifest.length > 0) {
     console.error('Implemented but not declared:');
     for (const id of missingInManifest) console.error(`- ${id}`);
+  }
+  if (invalidMenuAliases.length > 0) {
+    console.error('Menu aliases without a declared target command:');
+    for (const id of invalidMenuAliases) console.error(`- ${id}`);
   }
   process.exit(1);
 }

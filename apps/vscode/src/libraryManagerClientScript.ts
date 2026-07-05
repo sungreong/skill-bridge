@@ -153,13 +153,13 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         }
         function modeTitle(){
           return ui.mode === "send"
-            ? t("Send Workspace skills to Central", "작업공간 스킬을 중앙으로 보내기")
+            ? t("Save Workspace skills to Central", "작업공간 스킬을 중앙에 반영")
             : t("Bring Central skills to Workspace", "중앙 스킬을 작업공간으로 가져오기");
         }
         function modeSubtitle(rows){
           const actionable = rows.filter(isActionable).length;
           return ui.mode === "send"
-            ? t(actionable + " skill(s) can be sent. Modified skills overwrite Central after review.", actionable + "개 스킬을 중앙에 보낼 수 있습니다.")
+            ? t(actionable + " skill(s) can be saved to Central. Modified skills overwrite Central after review.", actionable + "개 스킬을 중앙에 반영할 수 있습니다.")
             : t(actionable + " skill(s) can be brought in. Modified skills overwrite Workspace after review.", actionable + "개 스킬을 작업공간으로 가져올 수 있습니다.");
         }
         function passes(row){
@@ -208,7 +208,7 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           const summary = compareSummary();
           const metrics = ui.mode === "send"
             ? [
-              ["actionable", t("Ready to send", "보낼 수 있음"), summary.workspaceOnly + summary.modified],
+              ["actionable", t("Ready to save", "반영할 수 있음"), summary.workspaceOnly + summary.modified],
               ["sourceOnly", t("Workspace new", "작업공간 신규"), summary.workspaceOnly],
               ["modified", t("Modified", "수정됨"), summary.modified],
               ["same", t("Already same", "이미 동일"), summary.same]
@@ -230,10 +230,10 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
             ui.status = "actionable";
           }
           const sourceOnlyLabel = ui.mode === "send"
-            ? t("Workspace only (new to Central)", "작업공간만 (보낼 신규)")
+            ? t("Workspace only (new to Central)", "작업공간만 (중앙에 반영할 신규)")
             : t("Central only (new to Workspace)", "중앙만 (가져올 신규)");
           const statusOptions = [
-            ["actionable", t("Ready to move", "이동 가능")],
+            ["actionable", t("Ready to apply", "반영 가능")],
             ["all", t("All in this direction", "현재 방향 전체")],
             ["sourceOnly", sourceOnlyLabel],
             ["modified", t("Modified", "수정됨")],
@@ -322,17 +322,17 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           allBox.checked = actionableRows.length > 0 && selectedCount === actionableRows.length;
           allBox.indeterminate = selectedCount > 0 && selectedCount < actionableRows.length;
           allBox.title = actionableRows.length === 0
-            ? t("No actionable rows in this view", "이 보기에는 실행 가능한 항목이 없습니다")
-            : t("Select all actionable rows in this view", "현재 보기의 실행 가능한 항목 전체 선택");
+            ? t("No rows can be applied in this view", "이 보기에는 반영할 수 있는 항목이 없습니다")
+            : t("Select all rows that can be applied in this view", "현재 보기의 반영 가능한 항목 전체 선택");
         }
         function renderCompareTable(){
           const rows = visibleRows();
           const actionableCount = actionableVisibleRows().length;
           const selectedCount = selectedVisibleRows().length;
           document.getElementById("panelTitle").textContent = modeTitle();
-          document.getElementById("panelSubtitle").textContent = modeSubtitle(compareRows()) + " · " + t("Showing ", "표시 ") + rows.length + t(" item(s)", "개") + " · " + t("Ready ", "이동 가능 ") + actionableCount + " · " + t("Selected ", "선택 ") + selectedCount;
+          document.getElementById("panelSubtitle").textContent = modeSubtitle(compareRows()) + " · " + t("Showing ", "표시 ") + rows.length + t(" item(s)", "개") + " · " + t("Ready ", "반영 가능 ") + actionableCount + " · " + t("Selected ", "선택 ") + selectedCount;
           document.getElementById("runSelectedBtn").textContent = ui.mode === "send"
-            ? t("Send selected to Central", "선택 항목 중앙으로 보내기")
+            ? t("Save selected to Central", "선택 항목 중앙에 반영")
             : t("Bring selected to Workspace", "선택 항목 작업공간으로 가져오기");
           document.getElementById("runSelectedBtn").disabled = selectedCount === 0;
           if (rows.length === 0) {
@@ -350,7 +350,7 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
               const checked = ui.selected[row.key] && actionable ? "checked" : "";
               const groups = ui.mode === "send" ? row.workspaceGroups : row.centralGroups;
               const button = actionable
-                ? '<button class="primary" data-action="run-one" data-key="' + esc(row.key) + '">' + esc(ui.mode === "send" ? t("Send", "보내기") : t("Bring", "가져오기")) + '</button>'
+                ? '<button class="primary" data-action="run-one" data-key="' + esc(row.key) + '">' + esc(ui.mode === "send" ? t("Save", "반영") : t("Bring", "가져오기")) + '</button>'
                 : '<button disabled>' + esc(t("No action", "작업 없음")) + '</button>';
               const diff = row.status === "modified"
                 ? '<button class="ghost" data-action="diff" data-key="' + esc(row.key) + '">' + esc(t("Diff", "비교")) + '</button>'
@@ -420,12 +420,12 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         function runRows(rows){
           const targets = rows.filter(isActionable).map(targetFromRow);
           if (targets.length === 0) {
-            setStatus(t("Select at least one actionable skill.", "실행 가능한 스킬을 하나 이상 선택하세요."), "warn");
+            setStatus(t("Select at least one skill that can be applied.", "반영할 수 있는 스킬을 하나 이상 선택하세요."), "warn");
             return;
           }
           const sourceSide = ui.mode === "send" ? "workspace" : "central";
           vscode.postMessage({ type: "moveSelected", payload: { sourceSide, targets } });
-          setStatus((ui.mode === "send" ? t("Send requested: ", "보내기 요청: ") : t("Bring requested: ", "가져오기 요청: ")) + targets.length, "info");
+          setStatus((ui.mode === "send" ? t("Save requested: ", "중앙 반영 요청: ") : t("Bring requested: ", "가져오기 요청: ")) + targets.length, "info");
         }
         function chooseStatus(value){
           ui.status = value || "actionable";

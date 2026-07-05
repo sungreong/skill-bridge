@@ -388,7 +388,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       const isExport = state.mode === "workspaceToCentral";
       ui.directionPanel.className = "direction-panel" + (isExport ? "" : " import");
       ui.directionTitle.innerHTML = isExport
-        ? t('Workspace <span class="arrow">→</span> Send to Central', '작업공간 <span class="arrow">→</span> 중앙으로 보내기')
+        ? t('Workspace <span class="arrow">→</span> Save to Central', '작업공간 <span class="arrow">→</span> 중앙에 반영')
         : t('Central <span class="arrow">→</span> Bring to Workspace', '중앙 <span class="arrow">→</span> 작업공간으로 가져오기');
       const scope = state.scopeContext || { type: "all", label: isExport ? t("All Workspace", "작업공간 전체") : t("All Central", "중앙 전체"), count: 0, expandable: false };
       ui.scopeLabel.textContent = scope.label || (isExport ? t("All Workspace", "작업공간 전체") : t("All Central", "중앙 전체"));
@@ -505,7 +505,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       vscode.postMessage({ type: "refreshPlan", payload: { selectedKeys: keys } });
     });
     document.getElementById("expandScopeBtn").addEventListener("click", () => {
-      setFeedback(t("Removing the scope filter and loading the full transfer plan...", "범위 필터를 해제하고 전체 전송 계획을 불러오는 중..."), "info");
+      setFeedback(t("Removing the scope filter and loading the full apply plan...", "범위 필터를 해제하고 전체 반영 계획을 불러오는 중..."), "info");
       vscode.postMessage({ type: "expandScope" });
     });
     document.getElementById("cancelBtn").addEventListener("click", () => vscode.postMessage({ type: "cancel" }));

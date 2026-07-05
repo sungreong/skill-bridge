@@ -256,12 +256,12 @@ export function createExtensionInstructionTransferTools(args: {
       const mirroredGroups = await args.mirrorGroupsForTransferResult("workspace", result, selectedGroup ? [selectedGroup.id] : undefined);
       await args.refresh();
       if (result.copied + result.deleted === 0) {
-        vscode.window.showInformationMessage(args.tr(`No Central file changes to copy${mirroredGroups > 0 ? " · group synced" : ""}`, `중앙 저장소 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`));
+        vscode.window.showInformationMessage(args.tr(`No Central file changes to copy${mirroredGroups > 0 ? " · group applied" : ""}`, `중앙 저장소 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`));
         return;
       }
       vscode.window.showInformationMessage(args.tr(
-        `Central updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group synced" : ""}`,
-        `중앙 저장소 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`
+        `Central updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group applied" : ""}`,
+        `중앙 저장소 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`
       ));
     } catch (error) {
       await args.handleError(error);
@@ -326,12 +326,12 @@ export function createExtensionInstructionTransferTools(args: {
       const mirroredGroups = await args.mirrorGroupsForTransferResult("central", result, selectedGroup ? [selectedGroup.id] : undefined);
       await args.refresh();
       if (result.copied + result.deleted === 0) {
-        vscode.window.showInformationMessage(args.tr(`No Workspace file changes to copy${mirroredGroups > 0 ? " · group synced" : ""}`, `작업 폴더 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`));
+        vscode.window.showInformationMessage(args.tr(`No Workspace file changes to copy${mirroredGroups > 0 ? " · group applied" : ""}`, `작업 폴더 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`));
         return;
       }
       vscode.window.showInformationMessage(args.tr(
-        `Workspace updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group synced" : ""}`,
-        `작업공간 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 동기화됨" : ""}`
+        `Workspace updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group applied" : ""}`,
+        `작업공간 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`
       ));
     } catch (error) {
       await args.handleError(error);
