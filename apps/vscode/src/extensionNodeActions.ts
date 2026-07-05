@@ -44,7 +44,7 @@ export function createNodeActionTools(args: {
   getAutoSyncWorkspaceAgents: () => ToolType[];
   toggleWorkspaceAgentAutoSync: (tool: ToolType) => Promise<boolean>;
   formatAgentFolderLabel: (tool: ToolType) => string;
-  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; copied: number; deleted: number; mirroredGroups: number } }>;
+  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; copied: number; deleted: number; mirroredGroups: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }>;
   uniqueSelections: (selections: Array<{ tool: ToolType; relativePath: string }>) => Array<{ tool: ToolType; relativePath: string }>;
   workspaceProvider: ProviderLike & { getSelectionsFromNodes: (nodes: SkillTreeNode[]) => Array<{ tool: ToolType; relativePath: string }> };
   centralProvider: ProviderLike & { getSelectionsFromNodes: (nodes: SkillTreeNode[]) => Array<{ tool: ToolType; relativePath: string }> };
@@ -643,10 +643,18 @@ export function createNodeActionTools(args: {
       }
       if (pick.value === "syncAgentNow" && scopedAgentTool) {
         const { summary } = await args.syncWorkspaceAgentToCentralNow(scopedAgentTool);
-        vscode.window.showInformationMessage(args.tr(
-          `Workspace agent sync complete: ${scopedAgentTool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups}`,
-          `작업공간 에이전트 sync 완료: ${scopedAgentTool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개`
-        ));
+        const skippedSuffix = summary.skippedMissingSkillMd > 0
+          ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+          : "";
+        const message = args.tr(
+          `Workspace agent sync complete: ${scopedAgentTool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+          `작업공간 에이전트 sync 완료: ${scopedAgentTool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
+        );
+        if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
+          vscode.window.showWarningMessage(message);
+        } else {
+          vscode.window.showInformationMessage(message);
+        }
         return;
       }
       if (pick.value === "crud") return await showQuickSkillCrud(side, baseNode);

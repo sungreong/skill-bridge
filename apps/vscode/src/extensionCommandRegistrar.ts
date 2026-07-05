@@ -88,7 +88,7 @@ export function registerExtensionCommands(args: {
   resolveWorkspaceAutoSyncToolFromNode: (node?: SkillTreeNode) => ToolType | undefined;
   formatAgentFolderLabel: (tool: ToolType) => string;
   toggleWorkspaceAgentAutoSync: (tool: ToolType) => Promise<boolean>;
-  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; copied: number; deleted: number; mirroredGroups: number } }>;
+  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; copied: number; deleted: number; mirroredGroups: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }>;
   setLanguage: (language: UiLanguage) => Promise<void>;
   applyLanguageChrome: () => void;
   updateStatusChrome: () => void;
@@ -361,10 +361,18 @@ export function registerExtensionCommands(args: {
         tool = picked.value;
       }
       const { summary } = await args.syncWorkspaceAgentToCentralNow(tool);
-      vscode.window.showInformationMessage(args.tr(
-        `Workspace agent sync complete: ${tool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups}`,
-        `작업공간 에이전트 sync 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개`
-      ));
+      const skippedSuffix = summary.skippedMissingSkillMd > 0
+        ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+        : "";
+      const message = args.tr(
+        `Workspace agent sync complete: ${tool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+        `작업공간 에이전트 sync 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
+      );
+      if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
+        vscode.window.showWarningMessage(message);
+      } else {
+        vscode.window.showInformationMessage(message);
+      }
     } catch (error) {
       await args.handleError(error);
     }
@@ -415,7 +423,7 @@ export function registerExtensionCommands(args: {
         { label: args.tr("Changed", "변경"), description: args.tr("Skills with content that differs from the opposite side", "반대편과 내용이 다른 스킬"), value: "changed" as SkillTreeFilterMode },
         { label: args.tr("New", "신규"), description: args.tr("Skills that exist only on the current side", "현재 쪽에만 있는 스킬"), value: "new" as SkillTreeFilterMode },
         { label: args.tr("Warnings", "경고"), description: args.tr("Skills with sensitive data, scripts, absolute paths, or other warnings", "민감정보, 스크립트, 절대경로 등 경고가 있는 스킬"), value: "risk" as SkillTreeFilterMode },
-        { label: "Missing SKILL.md", description: args.tr("Folders without a skill manifest", "스킬 매니페스트가 없는 폴더"), value: "missingSkillMd" as SkillTreeFilterMode },
+        { label: args.tr("Missing SKILL.md", "SKILL.md 없음"), description: args.tr("Folders without a skill manifest", "스킬 매니페스트가 없는 폴더"), value: "missingSkillMd" as SkillTreeFilterMode },
         { label: args.tr("Recent", "최근"), description: args.tr("Skills modified in the last 7 days", "최근 7일 안에 수정된 스킬"), value: "recent" as SkillTreeFilterMode }
       ],
       { title: args.tr("Choose Tree Filter", "트리 필터 선택"), matchOnDescription: true }

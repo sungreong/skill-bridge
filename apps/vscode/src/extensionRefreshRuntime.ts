@@ -327,7 +327,7 @@ export function createExtensionRefreshRuntime(args: {
   getWorkspaceChangedSkillFolder: (absolutePath: string) => { tool: ToolType; skillFolderRel: string } | null;
   getAutoSyncWorkspaceAgents: () => ToolType[];
   enqueueWorkspaceAutoSync: (tool: ToolType, skillFolderRel: string) => void;
-  syncWorkspaceAgentFoldersToCentral: (pending: Array<{ tool: ToolType; skillFolderRel: string }>, reason: "auto" | "manual") => Promise<{ syncedFolders: number; copied: number; deleted: number; unchanged: number; mirroredGroups: number }>;
+  syncWorkspaceAgentFoldersToCentral: (pending: Array<{ tool: ToolType; skillFolderRel: string }>, reason: "auto" | "manual") => Promise<{ syncedFolders: number; copied: number; deleted: number; unchanged: number; mirroredGroups: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number }>;
 }): {
   createRefreshState: () => {
     refreshTimer: NodeJS.Timeout | null;
@@ -444,13 +444,13 @@ export function createExtensionRefreshRuntime(args: {
         const summary = await args.syncWorkspaceAgentFoldersToCentral(pending, "auto");
         if (summary.syncedFolders === 0) return;
         args.output.appendLine(args.tr(
-          `[AutoSync] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups}`,
-          `[AutoSync] Workspace → Central 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹동기화=${summary.mirroredGroups}`
+          `[AutoSync] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups} centralFolders=${summary.centralFolders} centralFiles=${summary.centralFiles} skippedMissingSkillMd=${summary.skippedMissingSkillMd}`,
+          `[AutoSync] Workspace → Central 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹동기화=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
         ));
         vscode.window.setStatusBarMessage(
           args.tr(
-            `Skill Bridge auto sync: ${summary.syncedFolders} folder(s) · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups}`,
-            `Skill Bridge 자동 sync: 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 그룹 ${summary.mirroredGroups}개`
+            `Skill Bridge auto sync: ${summary.syncedFolders} folder(s) · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders}/${summary.centralFiles} · skipped ${summary.skippedMissingSkillMd}`,
+            `Skill Bridge 자동 sync: 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 그룹 ${summary.mirroredGroups}개 · 중앙 ${summary.centralFolders}/${summary.centralFiles} · 제외 ${summary.skippedMissingSkillMd}`
           ),
           3500
         );

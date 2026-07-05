@@ -61,7 +61,7 @@ export function createInstallTransferTools(args: {
   syncWorkspaceAgentFoldersToCentral: (
     targets: Array<{ tool: ToolType; skillFolderRel: string }>,
     reason: "manual" | "auto"
-  ) => Promise<{ syncedFolders: number; copied: number; deleted: number; mirroredGroups: number; unchanged: number }>;
+  ) => Promise<{ syncedFolders: number; copied: number; deleted: number; mirroredGroups: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number }>;
   normalizeRepoName: (raw: string) => string;
   persistGroups: (next: SelectionGroup[], selectedGroupId: string | null) => Promise<void>;
   targetsToSelections: (files: SkillFile[], targets: SelectionGroup["targets"]) => SkillSelection[];
@@ -418,9 +418,12 @@ export function createInstallTransferTools(args: {
         if (shouldAutoSync) {
           const summary = await args.syncWorkspaceAgentFoldersToCentral(syncFolders, "manual");
           const syncedToolLabel = groupingTool ? args.formatAgentFolderLabel(groupingTool) : args.tr("workspace agent", "작업공간 에이전트");
+          const skippedSuffix = summary.skippedMissingSkillMd > 0
+            ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+            : "";
           vscode.window.showInformationMessage(args.tr(
-            `Install, group, and auto sync complete: ${syncedToolLabel} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups}`,
-            `설치, 그룹 생성, 자동 sync 완료: ${syncedToolLabel} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개`
+            `Install, group, and auto sync complete: ${syncedToolLabel} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
+            `설치, 그룹 생성, 자동 sync 완료: ${syncedToolLabel} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
           ));
           return true;
         }

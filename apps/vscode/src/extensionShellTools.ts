@@ -1,4 +1,5 @@
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import * as vscode from "vscode";
 import type { GroupTarget, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
@@ -15,6 +16,7 @@ export function createExtensionShellTools(args: {
     activeTab: SourceTab;
     workspaceSkills: SkillFile[];
     centralSkills: SkillFile[];
+    workspaceMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
     groups: SelectionGroup[];
     agents: ToolType[];
   };
@@ -56,7 +58,7 @@ export function createExtensionShellTools(args: {
   resolveWorkspaceAutoSyncToolFromNode: (node?: SkillTreeNode) => ToolType | undefined;
   resolveSelectedAgentToolForSide: (side: TreeSide, node?: SkillTreeNode) => ToolType | undefined;
   toggleWorkspaceAgentAutoSync: (tool: ToolType) => Promise<boolean>;
-  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number } }>;
+  syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }>;
   updateStatusChrome: () => void;
   applyLanguageChrome: () => void;
   registerLanguageRefresh: (panel: vscode.WebviewPanel, refresh: () => Promise<void> | void) => void;
@@ -64,7 +66,7 @@ export function createExtensionShellTools(args: {
   syncWorkspaceAgentFoldersToCentral: (
     folders: Array<{ tool: ToolType; skillFolderRel: string }>,
     reason: "auto" | "manual"
-  ) => Promise<{ syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number }>;
+  ) => Promise<{ syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number }>;
 } {
   const getAutoSyncWorkspaceAgents = (): ToolType[] => {
     const configured = vscode.workspace.getConfiguration(args.settingsSection).get<string[]>("autoSyncWorkspaceAgents", []);
@@ -114,14 +116,22 @@ export function createExtensionShellTools(args: {
   const syncWorkspaceAgentFoldersToCentral = async (
     folders: Array<{ tool: ToolType; skillFolderRel: string }>,
     reason: "auto" | "manual"
-  ): Promise<{ syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number }> => {
+  ): Promise<{ syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number }> => {
     if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
-    if (folders.length === 0) return { syncedFolders: 0, mirroredGroups: 0, copied: 0, deleted: 0, unchanged: 0 };
+    if (folders.length === 0) return { syncedFolders: 0, mirroredGroups: 0, copied: 0, deleted: 0, unchanged: 0, centralFolders: 0, centralFiles: 0, skippedMissingSkillMd: 0 };
 
     const scopeHints = args.collapseLibraryTargets(
       folders.map((item) => ({ tool: item.tool, relativePath: item.skillFolderRel, kind: "folder" as const }))
     );
-    if (scopeHints.length === 0) return { syncedFolders: 0, mirroredGroups: 0, copied: 0, deleted: 0, unchanged: 0 };
+    if (scopeHints.length === 0) return { syncedFolders: 0, mirroredGroups: 0, copied: 0, deleted: 0, unchanged: 0, centralFolders: 0, centralFiles: 0, skippedMissingSkillMd: 0 };
+
+    const skippedMissingSkillMd = args.state.workspaceMissingSkillFolders.filter((folder) =>
+      scopeHints.some((hint) => hint.tool === folder.tool && hint.relativePath === folder.relativePath)
+    ).length;
+
+    await Promise.all([...new Set(scopeHints.map((hint) => hint.tool))].map(async (tool) => {
+      await fs.mkdir(path.join(args.getSkillRoot(args.state.centralRepoPath, tool, "central"), "skills"), { recursive: true });
+    }));
 
     const workspaceSelections = args.uniqueSelections(
       scopeHints.flatMap((hint) =>
@@ -131,7 +141,16 @@ export function createExtensionShellTools(args: {
       )
     );
     if (workspaceSelections.length === 0) {
-      return { syncedFolders: 0, mirroredGroups: 0, copied: 0, deleted: 0, unchanged: 0 };
+      return {
+        syncedFolders: scopeHints.length,
+        mirroredGroups: 0,
+        copied: 0,
+        deleted: 0,
+        unchanged: 0,
+        centralFolders: 0,
+        centralFiles: 0,
+        skippedMissingSkillMd
+      };
     }
 
     const result = await args.transferSelections("workspace", workspaceSelections, { scopeHints });
@@ -147,21 +166,30 @@ export function createExtensionShellTools(args: {
         mirroredGroups += 1;
       }
     }
-    if (mirroredGroups > 0) {
-      await args.refresh();
-    }
+    await args.refresh();
+    const centralFiles = args.state.centralSkills.filter((file) =>
+      scopeHints.some((hint) => file.tool === hint.tool && file.relativePath.startsWith(`${hint.relativePath}/`))
+    );
+    const centralFolders = new Set(
+      centralFiles
+        .map((file) => args.getSkillFolderRelativePath(file.relativePath))
+        .filter((value): value is string => !!value)
+    ).size;
     return {
       syncedFolders: scopeHints.length,
       mirroredGroups,
       copied: result.copied,
       deleted: result.deleted,
-      unchanged: result.unchanged
+      unchanged: result.unchanged,
+      centralFolders,
+      centralFiles: centralFiles.length,
+      skippedMissingSkillMd
     };
   };
 
   const syncWorkspaceAgentToCentralNow = async (
     tool: ToolType
-  ): Promise<{ summary: { syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number } }> => {
+  ): Promise<{ summary: { syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }> => {
     const folderSet = new Set(
       args.state.workspaceSkills
         .filter((file) => file.tool === tool)
