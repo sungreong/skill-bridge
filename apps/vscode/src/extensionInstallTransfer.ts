@@ -168,7 +168,12 @@ export function createInstallTransferTools(args: {
 
   const resolveCommandNodes = (side: TreeSide, node?: SkillTreeNode): SkillTreeNode[] => {
     const selection = side === "workspace" ? args.state.workspaceSelection : args.state.centralSelection;
-    if (!node) return selection;
+    const provider = side === "workspace" ? args.workspaceProvider : args.centralProvider;
+    const current = provider.getSelected();
+    if (!node) {
+      if (!current) return selection;
+      return selection.some((item) => item.key === current.key) ? selection : [current];
+    }
     return selection.some((item) => item.key === node.key) ? selection : [node];
   };
 

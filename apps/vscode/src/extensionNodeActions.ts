@@ -167,6 +167,15 @@ export function createNodeActionTools(args: {
     return relativePath.toLowerCase() !== "skills";
   };
 
+  const resolveActionNodes = (side: TreeSide, node?: SkillTreeNode): SkillTreeNode[] => {
+    const provider = providerFor(side);
+    const selectedNodes = side === "workspace" ? args.state.workspaceSelection : args.state.centralSelection;
+    if (node) return selectedNodes.some((item) => item.key === node.key) ? selectedNodes : [node];
+    const current = provider.getSelected();
+    if (!current) return selectedNodes;
+    return selectedNodes.some((item) => item.key === current.key) ? selectedNodes : [current];
+  };
+
   const createSkillItem = async (side: TreeSide, kind: "file" | "folder", node?: SkillTreeNode): Promise<void> => {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
@@ -540,13 +549,12 @@ export function createNodeActionTools(args: {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const provider = providerFor(side);
-      const selectedNodes = side === "workspace" ? args.state.workspaceSelection : args.state.centralSelection;
-      const baseNode = node ?? provider.getSelected() ?? selectedNodes[0];
-      const scopedNodes = node ? [node] : selectedNodes;
+      const scopedNodes = resolveActionNodes(side, node);
+      const baseNode = scopedNodes[0] ?? provider.getSelected();
       const scopedSelections = provider.getSelectionsFromNodes(scopedNodes);
-      const fallbackSelections = !node && scopedSelections.length === 0 ? provider.getAllSelections() : [];
+      const fallbackSelections = !node && scopedNodes.length === 0 && scopedSelections.length === 0 ? provider.getAllSelections() : [];
       const selections = args.uniqueSelections(scopedSelections.length > 0 ? scopedSelections : fallbackSelections);
-      const isAllVisibleTransferScope = !node && scopedSelections.length === 0 && fallbackSelections.length > 0;
+      const isAllVisibleTransferScope = !node && scopedNodes.length === 0 && scopedSelections.length === 0 && fallbackSelections.length > 0;
       const skillRel = getSkillFolderRelativePathFromNode(baseNode);
       const skillNode = baseNode && skillRel ? makeFolderNode(baseNode.tool, skillRel) : undefined;
       const selectedGroup = args.state.selectedGroupId

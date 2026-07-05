@@ -18,6 +18,8 @@ export function registerExtensionCommands(args: {
   state: {
     workspacePath: string;
     centralRepoPath: string;
+    workspaceSelection: SkillTreeNode[];
+    centralSelection: SkillTreeNode[];
     selectedGroupId: string | null;
     groups: SelectionGroup[];
     agents: ToolType[];
@@ -452,11 +454,15 @@ export function registerExtensionCommands(args: {
   };
 
   args.register("skillBridge.selectWorkspaceNode", (node: SkillTreeNode) => {
+    args.state.workspaceSelection = [node];
+    args.state.centralSelection = [];
     args.workspaceProvider.setSelected(node);
     args.centralProvider.setSelected(null);
     void args.openNodeIfFile(args.state.workspacePath, node, "workspace");
   });
   args.register("skillBridge.selectCentralNode", (node: SkillTreeNode) => {
+    args.state.centralSelection = [node];
+    args.state.workspaceSelection = [];
     args.centralProvider.setSelected(node);
     args.workspaceProvider.setSelected(null);
     void args.openNodeIfFile(args.state.centralRepoPath, node, "central");
