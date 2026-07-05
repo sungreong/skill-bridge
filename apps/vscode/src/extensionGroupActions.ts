@@ -91,6 +91,14 @@ export function createGroupActionTools(args: {
     }
   };
 
+  const groupTargetKey = (target: GroupTarget): string => `${target.tool}:${args.normalizeRel(target.relativePath)}`;
+
+  const sameTargetSet = (left: GroupTarget[], right: GroupTarget[]): boolean => {
+    if (left.length !== right.length) return false;
+    const leftKeys = new Set(left.map(groupTargetKey));
+    return right.every((target) => leftKeys.has(groupTargetKey(target)));
+  };
+
   const mutateGroupTargets = async (group: SelectionGroup, mode: GroupMutationMode): Promise<void> => {
     const nodes = args.getSelectedNodes(group.side);
     if (nodes.length === 0) {
@@ -115,11 +123,34 @@ export function createGroupActionTools(args: {
       ));
     }
     let nextTargets: GroupTarget[] = group.targets;
-    if (mode === "append") nextTargets = args.dedupeGroupTargets([...group.targets, ...sameToolTargets]);
-    else if (mode === "replace") nextTargets = args.dedupeGroupTargets(sameToolTargets);
-    else {
+    if (mode === "append") {
+      nextTargets = args.dedupeGroupTargets([...group.targets, ...sameToolTargets]);
+      if (sameTargetSet(nextTargets, group.targets)) {
+        vscode.window.showInformationMessage(args.tr(
+          `All selected targets are already in group "${group.name}".`,
+          `선택한 대상이 이미 모두 그룹 "${group.name}"에 있습니다.`
+        ));
+        return;
+      }
+    } else if (mode === "replace") {
+      nextTargets = args.dedupeGroupTargets(sameToolTargets);
+      if (sameTargetSet(nextTargets, group.targets)) {
+        vscode.window.showInformationMessage(args.tr(
+          `Group "${group.name}" already matches the current selection.`,
+          `그룹 "${group.name}"은 이미 현재 선택 항목과 같습니다.`
+        ));
+        return;
+      }
+    } else {
       const removeKeys = new Set(sameToolTargets.map((target) => `${target.tool}:${args.normalizeRel(target.relativePath)}`));
       nextTargets = group.targets.filter((target) => !removeKeys.has(`${target.tool}:${args.normalizeRel(target.relativePath)}`));
+      if (nextTargets.length === group.targets.length) {
+        vscode.window.showWarningMessage(args.tr(
+          `None of the selected targets are in group "${group.name}".`,
+          `선택한 대상이 그룹 "${group.name}"에 없습니다.`
+        ));
+        return;
+      }
     }
     if (nextTargets.length === 0) {
       vscode.window.showWarningMessage(args.tr("This would leave the group empty. Delete the group instead if needed.", "그룹이 비게 됩니다. 필요하면 그룹 삭제를 사용하세요."));
@@ -141,15 +172,23 @@ export function createGroupActionTools(args: {
       args.workspaceProvider.setSelectedGroup(group.id);
       args.centralProvider.setSelectedGroup(group.id);
       args.applyGroupHighlight(group);
+      const selectedTargets = args.buildGroupTargetsFromNodes(args.getSelectedNodes(group.side));
+      const groupTool = getGroupTool(group);
+      const sameToolSelectedCount = groupTool
+        ? selectedTargets.filter((target) => target.tool === groupTool).length
+        : selectedTargets.length;
+      const selectionDetail = sameToolSelectedCount > 0
+        ? args.tr(`current valid selection ${sameToolSelectedCount}`, `현재 유효 선택 ${sameToolSelectedCount}개`)
+        : args.tr("no current valid selection", "현재 유효 선택 없음");
       const action = await vscode.window.showQuickPick(
         [
-          { label: group.side === "workspace" ? args.tr("Send to Central", "중앙으로 보내기") : args.tr("Bring to Workspace", "작업공간으로 가져오기"), value: "run" as const },
-          { label: args.tr("Copy Group to Another Agent", "다른 에이전트로 그룹 복사"), value: "copyAgent" as const },
+          { label: group.side === "workspace" ? args.tr("Send to Central", "중앙으로 보내기") : args.tr("Bring to Workspace", "작업공간으로 가져오기"), value: "run" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
+          { label: args.tr("Copy Group to Another Agent", "다른 에이전트로 그룹 복사"), value: "copyAgent" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
           { label: args.tr("Rename Group", "그룹 이름 변경"), value: "rename" as const },
           { label: args.tr("Edit Group Description", "그룹 설명 수정"), value: "description" as const },
-          { label: args.tr("Add Current Selection", "현재 선택 항목 추가"), value: "append" as const },
-          { label: args.tr("Replace with Current Selection", "현재 선택 항목으로 교체"), value: "replace" as const },
-          { label: args.tr("Remove Current Selection", "현재 선택 항목 제거"), value: "remove" as const },
+          { label: args.tr("Add Current Selection", "현재 선택 항목 추가"), value: "append" as const, description: selectionDetail },
+          { label: args.tr("Replace with Current Selection", "현재 선택 항목으로 교체"), value: "replace" as const, description: selectionDetail },
+          { label: args.tr("Remove Current Selection", "현재 선택 항목 제거"), value: "remove" as const, description: selectionDetail },
           { label: args.tr("View Group Info", "그룹 정보 보기"), value: "info" as const },
           { label: args.tr("Delete Group", "그룹 삭제"), value: "delete" as const }
         ],
