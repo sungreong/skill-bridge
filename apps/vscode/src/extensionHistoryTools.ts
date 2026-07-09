@@ -282,7 +282,7 @@ export function createHistoryTools(args: {
         lastInstalledAt: group.meta?.lastInstalledAt ?? "-",
         mirroredFrom: group.meta?.mirroredFrom ?? "-",
         rows
-      }, args.getUiLanguage());
+      }, args.getUiLanguage(), { scriptsEnabled: false });
     };
     render();
     args.registerLanguageRefresh(panel, render);

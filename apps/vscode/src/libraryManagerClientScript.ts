@@ -33,7 +33,7 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           const el = document.getElementById("statusLine");
           if (!el) return;
           el.textContent = message || t("Ready", "준비 완료");
-          el.className = "status " + (tone || "");
+          el.className = "status sb-status-bar " + (tone || "info");
         }
         function normalizePath(value){ return String(value || "").replaceAll("\\\\", "/"); }
         function skillPath(folder){ return "skills/" + normalizePath(folder).replace(/^skills\\//, ""); }

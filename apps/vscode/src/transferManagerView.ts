@@ -2,10 +2,13 @@ import type * as vscode from "vscode";
 import { buildTransferReviewMeta } from "./reviewPrompt";
 import type { TransferPlan } from "./types";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewClientCommonScript } from "./webviewClientCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 export function renderTransferManagerHtml(webview: vscode.Webview, plan: TransferPlan, language: UiLanguage = "en"): string {
   void webview;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const initial = JSON.stringify(plan).replace(/</g, "\\u003c");
   const reviewInitial = JSON.stringify(buildTransferReviewMeta(plan)).replace(/</g, "\\u003c");
   const isKo = language === "ko";
@@ -17,6 +20,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${isKo ? "변경 검토" : "Review Changes"}</title>
   <style>
+    ${renderWebviewCommonStyles()}
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { padding: 8px 10px; display: grid; gap: 6px; height: 100vh; box-sizing: border-box; grid-template-areas: "head" "direction" "summary" "review" "feedback" "toolbar" "table" "predict" "foot"; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr) auto auto; }
     .head { grid-area: head; }
@@ -118,8 +122,8 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <h2 style="margin:0;">${isKo ? "변경 검토" : "Review Changes"}</h2>
       <div class="meta">
         <span id="groupLabel"></span>
@@ -147,7 +151,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
         <div id="assetStrip" class="asset-strip"></div>
       </details>
     </div>
-    <div id="feedback" class="feedback info">${isKo ? "작업 결과가 여기에 표시됩니다." : "Action results will appear here."}</div>
+    <div id="feedback" class="feedback sb-status-bar info">${isKo ? "작업 결과가 여기에 표시됩니다." : "Action results will appear here."}</div>
     <div class="toolbar">
       <input id="search" placeholder="${isKo ? "스킬 또는 파일 경로 검색..." : "Search skill or file path..."}" />
       <select id="statusFilter">
@@ -192,6 +196,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     </div>
   </div>
   <script nonce="${nonce}">
+    ${renderWebviewClientCommonScript()}
     const vscode = acquireVsCodeApi();
     const state = ${initial};
     const reviewMeta = ${reviewInitial};
@@ -381,7 +386,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     }
     function setFeedback(message, tone){
       ui.feedback.textContent = message;
-      ui.feedback.className = "feedback " + (tone || "info");
+      ui.feedback.className = "feedback sb-status-bar " + (tone || "info");
     }
     function render(){
       const labels = getSourceTargetLabels();

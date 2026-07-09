@@ -1,6 +1,8 @@
 import type * as vscode from "vscode";
 import type { SelectionGroup } from "./types";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 type GroupSource = SelectionGroup["meta"] extends undefined ? string : NonNullable<SelectionGroup["meta"]>["source"];
 
@@ -135,7 +137,8 @@ export function renderSkillGroupMarkdown(groups: SelectionGroup[], language: UiL
 export function renderGroupInfoHtml(
   webview: vscode.Webview,
   data: GroupInfoPanelData,
-  language: UiLanguage = "en"
+  language: UiLanguage = "en",
+  options: { scriptsEnabled?: boolean } = {}
 ): string {
   void webview;
   const esc = (value: string): string =>
@@ -148,7 +151,8 @@ export function renderGroupInfoHtml(
   const t = (english: string, korean: string): string => isKo ? korean : english;
   const sourceLabel = formatGroupSourceLabel(data.source, language);
   const mirroredFromLabel = formatMirroredFromLabel(data.mirroredFrom, language);
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const scriptsEnabled = options.scriptsEnabled ?? true;
+  const nonce = createWebviewNonce();
   const rowHtml = data.rows.map((row) => {
     const kindLabel = row.kind === "file"
       ? t("file", "파일")
@@ -174,10 +178,10 @@ export function renderGroupInfoHtml(
 <html lang="${language}">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src ${scriptsEnabled ? `'nonce-${nonce}'` : "'none'"};" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(t("Skill Group Info", "스킬 그룹 정보"))}</title>
-  <style>
+  <style>${renderWebviewCommonStyles()}
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto auto minmax(0, 1fr); }
@@ -214,20 +218,20 @@ export function renderGroupInfoHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <h2 title="${esc(data.name)}">${esc(t("Skill Group Info", "스킬 그룹 정보"))}: ${esc(data.name)}</h2>
-      <div id="visibleCount" class="pill">${esc(t("Rows", "행"))} ${data.rows.length}</div>
+      <div id="visibleCount" class="pill sb-chip">${esc(t("Rows", "행"))} ${data.rows.length}</div>
     </div>
     <div class="pills">
-      <span class="pill">${esc(t("Location", "위치"))} <strong>${esc(data.side === "workspace" ? t("Workspace", "작업공간") : t("Central", "중앙"))}</strong></span>
-      <span class="pill">${esc(t("Targets", "대상"))} <strong>${data.count}</strong></span>
-      <span class="pill">${esc(t("Source", "출처"))} <strong>${esc(sourceLabel)}</strong></span>
-      <span class="pill">${esc(t("Repo", "저장소"))} <strong>${esc(data.repoKey)}</strong></span>
+      <span class="pill sb-chip">${esc(t("Location", "위치"))} <strong>${esc(data.side === "workspace" ? t("Workspace", "작업공간") : t("Central", "중앙"))}</strong></span>
+      <span class="pill sb-chip">${esc(t("Targets", "대상"))} <strong>${data.count}</strong></span>
+      <span class="pill sb-chip">${esc(t("Source", "출처"))} <strong>${esc(sourceLabel)}</strong></span>
+      <span class="pill sb-chip">${esc(t("Repo", "저장소"))} <strong>${esc(data.repoKey)}</strong></span>
     </div>
     <div class="controls">
       <input id="search" placeholder="${esc(t("Search path, project, or source...", "경로, 프로젝트, 출처 검색..."))}" />
-      <label class="pill"><input id="historyOnly" type="checkbox" /> ${esc(t("No history only", "히스토리 없는 항목만"))}</label>
+      <label class="pill sb-chip"><input id="historyOnly" type="checkbox" /> ${esc(t("No history only", "히스토리 없는 항목만"))}</label>
     </div>
     <div class="desc"><b>${esc(t("Description:", "설명:"))}</b> ${esc(data.description || "-")}</div>
     <div class="meta">
@@ -235,7 +239,7 @@ export function renderGroupInfoHtml(
       <div class="meta-row"><b>${esc(t("Last Installed:", "마지막 설치:"))}</b> ${esc(data.lastInstalledAt)}</div>
       <div class="meta-row"><b>${esc(t("Mirrored From:", "미러 원본:"))}</b> ${esc(mirroredFromLabel)}</div>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap sb-table-wrap">
       <table>
         <thead>
           <tr>
@@ -252,7 +256,7 @@ export function renderGroupInfoHtml(
       </table>
     </div>
   </div>
-  <script nonce="${nonce}">
+  ${scriptsEnabled ? `<script nonce="${nonce}">
     const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
     const search = document.getElementById("search");
     const historyOnly = document.getElementById("historyOnly");
@@ -285,7 +289,7 @@ export function renderGroupInfoHtml(
       } catch {}
     });
     applyFilters();
-  </script>
+  </script>` : ""}
 </body>
 </html>`;
 }

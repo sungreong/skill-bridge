@@ -2,7 +2,7 @@ export function renderGroupOverviewStyles(): string {
   return `
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-    .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 7px; padding: 8px 10px; overflow: hidden; }
+    .wrap { height: 100vh; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; gap: 7px; padding: 8px 10px; overflow: hidden; }
     .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
     .top-actions, .toolbar, .agent-filter, .actions, .meta, .folder-summary, .batch-actions { min-width: 0; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .top-actions, .actions { justify-content: flex-end; }

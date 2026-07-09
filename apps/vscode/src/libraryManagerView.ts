@@ -3,6 +3,8 @@ import type { UiLanguage } from "./uiLanguage";
 import { renderLibraryManagerClientScript } from "./libraryManagerClientScript";
 import { renderLibraryManagerStyles } from "./libraryManagerStyles";
 import type { LibraryPayload } from "./libraryManagerTypes";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 export function renderLibraryManagerHtml(
   webview: vscode.Webview,
@@ -10,7 +12,7 @@ export function renderLibraryManagerHtml(
   language: UiLanguage = "en"
 ): string {
   void webview;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const initial = JSON.stringify(data).replace(/</g, "\\u003c");
   const lang = language === "ko" ? "ko" : "en";
   const title = lang === "ko" ? "스킬 라이브러리" : "Skill Library";
@@ -23,11 +25,11 @@ export function renderLibraryManagerHtml(
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title}</title>
-  <style>${renderLibraryManagerStyles()}</style>
+  <style>${renderWebviewCommonStyles()}${renderLibraryManagerStyles()}</style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
+  <div class="wrap sb-root">
+    <div class="topbar sb-topbar">
       <div class="title">${title}</div>
       <input id="searchInput" placeholder="${searchPlaceholder}" />
       <button id="refreshBtn">${lang === "ko" ? "새로고침" : "Refresh"}</button>
@@ -100,7 +102,7 @@ export function renderLibraryManagerHtml(
       <div id="centralDetail" class="table-wrap"></div>
     </section>
 
-    <div id="statusLine" class="status">${lang === "ko" ? "준비 완료" : "Ready"}</div>
+    <div id="statusLine" class="status sb-status-bar info">${lang === "ko" ? "준비 완료" : "Ready"}</div>
   </div>
 
   <script nonce="${nonce}">${renderLibraryManagerClientScript(initial, lang)}</script>

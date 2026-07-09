@@ -2,6 +2,12 @@ import type * as vscode from "vscode";
 import type { TransferPlan, TransferPlanItem, TransferStatus, ToolType } from "./types";
 import type { FolderDiffRow, FolderEntryRow } from "./skillPaths";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
+
+type DiffRenderOptions = {
+  scriptsEnabled?: boolean;
+};
 
 export type FolderDiffSummaryRow = {
   key: string;
@@ -67,7 +73,7 @@ export function renderFolderDiffSummaryHtml(
       .replace(/"/g, "&quot;");
   const isKo = language === "ko";
   const t = (english: string, korean: string): string => isKo ? korean : english;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const sourceLabel = data.mode === "workspaceToCentral" ? t("Workspace (Current)", "작업공간 (현재)") : t("Central (Current)", "중앙 (현재)");
   const targetLabel = data.mode === "workspaceToCentral" ? t("Central (After Apply)", "중앙 (반영 후)") : t("Workspace (After Apply)", "작업공간 (반영 후)");
   const stateLabel = (value: string): string => {
@@ -117,7 +123,7 @@ export function renderFolderDiffSummaryHtml(
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(t("Folder Diff Summary", "폴더 Diff 요약"))}</title>
-  <style>
+  <style>${renderWebviewCommonStyles()}
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
@@ -154,21 +160,21 @@ export function renderFolderDiffSummaryHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">${esc(t("Folder Diff Summary", "폴더 Diff 요약"))}: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-      <span id="visibleCount" class="pill">${esc(t("Files", "파일"))} ${data.rows.length}</span>
+      <span id="visibleCount" class="pill sb-chip">${esc(t("Files", "파일"))} ${data.rows.length}</span>
     </div>
     <div class="pills">
-      <span class="pill">${esc(t("Source", "원본"))} <strong>${esc(sourceLabel)}</strong></span>
-      <span class="pill">${esc(t("Target", "대상"))} <strong>${esc(targetLabel)}</strong></span>
-      <span class="pill">${esc(t("Rows", "행"))} <strong>${data.rows.length}</strong></span>
+      <span class="pill sb-chip">${esc(t("Source", "원본"))} <strong>${esc(sourceLabel)}</strong></span>
+      <span class="pill sb-chip">${esc(t("Target", "대상"))} <strong>${esc(targetLabel)}</strong></span>
+      <span class="pill sb-chip">${esc(t("Rows", "행"))} <strong>${data.rows.length}</strong></span>
     </div>
     <div class="controls">
       <input id="search" placeholder="${esc(t("Search path, change, or decision...", "경로, 변경 종류, 판단 검색..."))}" />
-      <label class="pill"><input id="changedOnly" type="checkbox" checked /> ${esc(t("Changed only", "변경 항목만"))}</label>
+      <label class="pill sb-chip"><input id="changedOnly" type="checkbox" checked /> ${esc(t("Changed only", "변경 항목만"))}</label>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap sb-table-wrap">
       <table>
         <thead><tr><th>${esc(t("Change", "변경"))}</th><th>${esc(t("Path", "경로"))}</th><th>${esc(sourceLabel)}</th><th>${esc(targetLabel)}</th><th>${esc(t("Decision", "판단"))}</th><th>${esc(t("Risk", "위험도"))}</th></tr></thead>
         <tbody>${tableRows || `<tr><td colspan="6">${esc(t("No rows to show.", "표시할 행이 없습니다."))}</td></tr>`}</tbody>
@@ -229,7 +235,8 @@ export function renderFolderTransferDiffHtml(
     skillMdCount: number;
     rows: FolderDiffRow[];
   },
-  language: UiLanguage = "en"
+  language: UiLanguage = "en",
+  options: DiffRenderOptions = {}
 ): string {
   void webview;
   const esc = (value: string): string =>
@@ -240,7 +247,8 @@ export function renderFolderTransferDiffHtml(
       .replace(/"/g, "&quot;");
   const isKo = language === "ko";
   const t = (english: string, korean: string): string => isKo ? korean : english;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const scriptsEnabled = options.scriptsEnabled ?? true;
+  const nonce = createWebviewNonce();
   const treeRows = data.rows.map((row) => {
     const isSkill = /(^|\/)SKILL\.md$/i.test(row.relativePath);
     const sizeDelta = row.sourceSize !== null && row.targetSize !== null ? row.sourceSize - row.targetSize : null;
@@ -261,10 +269,10 @@ export function renderFolderTransferDiffHtml(
 <html lang="${language}">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src ${scriptsEnabled ? `'nonce-${nonce}'` : "'none'"};" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(t("Folder Diff", "폴더 Diff"))}</title>
-  <style>
+  <style>${renderWebviewCommonStyles()}
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
@@ -299,32 +307,32 @@ export function renderFolderTransferDiffHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">${esc(t("Folder Diff", "폴더 Diff"))}: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-      <span id="visibleCount" class="pill">${esc(t("Files", "파일"))} ${data.rows.length}</span>
+      <span id="visibleCount" class="pill sb-chip">${esc(t("Files", "파일"))} ${data.rows.length}</span>
     </div>
     <div class="pills">
-      <span class="pill">${esc(t("Status", "상태"))} <strong>${esc(data.status)}</strong></span>
-      <span class="pill">${esc(t("Files", "파일"))} <strong>${data.totalFiles}</strong></span>
-      <span class="pill">${esc(t("Changes", "변경"))} <strong>A ${data.addedCount} / M ${data.modifiedCount} / D ${data.removedCount}</strong></span>
-      <span class="pill">${esc(t("Source", "원본"))} <strong>${data.totalSourceBytes} B</strong></span>
-      <span class="pill">${esc(t("Target", "대상"))} <strong>${data.totalTargetBytes} B</strong></span>
-      <span class="pill">SKILL.md <strong>${data.skillMdCount}</strong></span>
-      <span class="pill">${esc(t("Same", "동일"))} <strong>${data.sameCount}</strong></span>
+      <span class="pill sb-chip">${esc(t("Status", "상태"))} <strong>${esc(data.status)}</strong></span>
+      <span class="pill sb-chip">${esc(t("Files", "파일"))} <strong>${data.totalFiles}</strong></span>
+      <span class="pill sb-chip">${esc(t("Changes", "변경"))} <strong>A ${data.addedCount} / M ${data.modifiedCount} / D ${data.removedCount}</strong></span>
+      <span class="pill sb-chip">${esc(t("Source", "원본"))} <strong>${data.totalSourceBytes} B</strong></span>
+      <span class="pill sb-chip">${esc(t("Target", "대상"))} <strong>${data.totalTargetBytes} B</strong></span>
+      <span class="pill sb-chip">SKILL.md <strong>${data.skillMdCount}</strong></span>
+      <span class="pill sb-chip">${esc(t("Same", "동일"))} <strong>${data.sameCount}</strong></span>
     </div>
     <div class="controls">
       <input id="search" placeholder="${esc(t("Search files, status, or modified date...", "파일, 상태, 수정 시각 검색..."))}" />
-      <label class="pill"><input id="changedOnly" type="checkbox" checked /> ${esc(t("Changed only", "변경 항목만"))}</label>
+      <label class="pill sb-chip"><input id="changedOnly" type="checkbox" checked /> ${esc(t("Changed only", "변경 항목만"))}</label>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap sb-table-wrap">
       <table>
         <thead><tr><th>${esc(t("Change", "변경"))}</th><th>${esc(t("Path", "경로"))}</th><th>${esc(t("Source Size", "원본 크기"))}</th><th>${esc(t("Target Size", "대상 크기"))}</th><th>${esc(t("Difference", "차이"))}</th><th>${esc(t("Source Modified", "원본 수정 시각"))}</th><th>${esc(t("Target Modified", "대상 수정 시각"))}</th></tr></thead>
         <tbody>${treeRows || `<tr><td colspan="7">${esc(t("No files to show.", "표시할 파일이 없습니다."))}</td></tr>`}</tbody>
       </table>
     </div>
   </div>
-  <script nonce="${nonce}">
+  ${scriptsEnabled ? `<script nonce="${nonce}">
     const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
     const search = document.getElementById("search");
     const changedOnly = document.getElementById("changedOnly");
@@ -357,7 +365,7 @@ export function renderFolderTransferDiffHtml(
     search?.addEventListener("input", applyFilters);
     changedOnly?.addEventListener("change", applyFilters);
     applyFilters();
-  </script>
+  </script>` : ""}
 </body>
 </html>`;
 }
@@ -372,7 +380,8 @@ export function renderTypeChangedTransferDiffHtml(
     sourceRows: FolderEntryRow[];
     targetRows: FolderEntryRow[];
   },
-  language: UiLanguage = "en"
+  language: UiLanguage = "en",
+  options: DiffRenderOptions = {}
 ): string {
   void webview;
   const esc = (value: string): string =>
@@ -383,12 +392,13 @@ export function renderTypeChangedTransferDiffHtml(
       .replace(/"/g, "&quot;");
   const isKo = language === "ko";
   const t = (english: string, korean: string): string => isKo ? korean : english;
+  const scriptsEnabled = options.scriptsEnabled ?? true;
   const kindLabel = (value: "file" | "folder" | "none"): string => {
     if (value === "file") return t("file", "파일");
     if (value === "folder") return t("folder", "폴더");
     return t("none", "없음");
   };
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const renderRows = (rows: FolderEntryRow[]): string =>
     rows.map((row) => {
       const isSkill = /(^|\/)SKILL\.md$/i.test(row.relativePath);
@@ -404,10 +414,10 @@ export function renderTypeChangedTransferDiffHtml(
 <html lang="${language}">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src ${scriptsEnabled ? `'nonce-${nonce}'` : "'none'"};" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(t("Type Conflict Diff", "타입 충돌 Diff"))}</title>
-  <style>
+  <style>${renderWebviewCommonStyles()}
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
     .wrap { height: 100vh; padding: 10px; display: grid; gap: 8px; grid-template-rows: auto auto auto minmax(0, 1fr); }
@@ -439,27 +449,27 @@ export function renderTypeChangedTransferDiffHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <h2 title="${esc(`${data.tool}/${data.relativePath}`)}">${esc(t("Type Conflict Diff", "타입 충돌 Diff"))}: ${esc(data.tool)}/${esc(data.relativePath)}</h2>
-      <span id="visibleCount" class="pill">${esc(t("Files", "파일"))} ${data.sourceRows.length + data.targetRows.length}</span>
+      <span id="visibleCount" class="pill sb-chip">${esc(t("Files", "파일"))} ${data.sourceRows.length + data.targetRows.length}</span>
     </div>
     <div class="pills">
-      <span class="pill">${esc(t("Source", "원본"))} <strong>${esc(kindLabel(data.sourceKind))}</strong></span>
-      <span class="pill">${esc(t("Target", "대상"))} <strong>${esc(kindLabel(data.targetKind))}</strong></span>
-      <span class="pill">${esc(t("After Apply", "반영 후"))} <strong>${esc(kindLabel(data.targetKind))} → ${esc(kindLabel(data.sourceKind))}</strong></span>
+      <span class="pill sb-chip">${esc(t("Source", "원본"))} <strong>${esc(kindLabel(data.sourceKind))}</strong></span>
+      <span class="pill sb-chip">${esc(t("Target", "대상"))} <strong>${esc(kindLabel(data.targetKind))}</strong></span>
+      <span class="pill sb-chip">${esc(t("After Apply", "반영 후"))} <strong>${esc(kindLabel(data.targetKind))} → ${esc(kindLabel(data.sourceKind))}</strong></span>
     </div>
     <div class="controls">
       <input id="search" placeholder="${esc(t("Search paths in both trees...", "양쪽 트리 경로 검색..."))}" />
     </div>
     <div class="grid">
-      <div class="table-wrap">
+      <div class="table-wrap sb-table-wrap">
         <table>
           <thead><tr><th colspan="3">${esc(t("Source Tree", "원본 트리"))}</th></tr><tr><th>${esc(t("Path", "경로"))}</th><th>${esc(t("Size", "크기"))}</th><th>${esc(t("Modified", "수정 시각"))}</th></tr></thead>
           <tbody>${renderRows(data.sourceRows)}</tbody>
         </table>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap sb-table-wrap">
         <table>
           <thead><tr><th colspan="3">${esc(t("Target Tree", "대상 트리"))}</th></tr><tr><th>${esc(t("Path", "경로"))}</th><th>${esc(t("Size", "크기"))}</th><th>${esc(t("Modified", "수정 시각"))}</th></tr></thead>
           <tbody>${renderRows(data.targetRows)}</tbody>
@@ -467,7 +477,7 @@ export function renderTypeChangedTransferDiffHtml(
       </div>
     </div>
   </div>
-  <script nonce="${nonce}">
+  ${scriptsEnabled ? `<script nonce="${nonce}">
     const rows = Array.from(document.querySelectorAll("tbody tr[data-search]"));
     const search = document.getElementById("search");
     const visibleCount = document.getElementById("visibleCount");
@@ -496,7 +506,7 @@ export function renderTypeChangedTransferDiffHtml(
     });
     search?.addEventListener("input", applyFilters);
     applyFilters();
-  </script>
+  </script>` : ""}
 </body>
 </html>`;
 }

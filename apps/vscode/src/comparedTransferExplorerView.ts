@@ -1,6 +1,9 @@
 import type * as vscode from "vscode";
 import type { ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewClientCommonScript } from "./webviewClientCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 export function renderComparedTransferExplorerHtml(
   webview: vscode.Webview,
@@ -56,7 +59,7 @@ export function renderComparedTransferExplorerHtml(
   language: UiLanguage = "en"
 ): string {
   void webview;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const initial = JSON.stringify(data).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="${language}">
@@ -66,6 +69,7 @@ export function renderComparedTransferExplorerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${language === "ko" ? "변경 비교/반영" : "Compare and Apply Changes"}</title>
   <style>
+    ${renderWebviewCommonStyles()}
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); }
     .wrap { height: 100vh; min-height: 0; padding: 8px 10px; display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); gap: 6px; }
@@ -139,8 +143,8 @@ export function renderComparedTransferExplorerHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <div class="title">${language === "ko" ? "변경 비교/반영" : "Compare and Apply Changes"}</div>
       <div class="controls">
         <div class="mode-switch" id="modeSwitch"></div>
@@ -152,10 +156,11 @@ export function renderComparedTransferExplorerHtml(
     <div id="summary" class="status-tabs"></div>
     <div id="resultMeta" class="result-meta"></div>
     <div class="hint">${language === "ko" ? "변경 없는 항목은 접어 두고, 변경된 스킬과 스킬 그룹은 수정/신규/삭제 섹션에서 에이전트별로 검토합니다." : "Unchanged items are kept collapsed, while changed skills and skill groups are reviewed by agent in the modified, new, and delete sections."}</div>
-    <div id="statusLine" class="status">${language === "ko" ? "준비 완료" : "Ready"}</div>
+    <div id="statusLine" class="status sb-status-bar info">${language === "ko" ? "준비 완료" : "Ready"}</div>
     <div id="sections" class="sections"></div>
   </div>
   <script nonce="${nonce}">
+    ${renderWebviewClientCommonScript()}
     const vscode = acquireVsCodeApi();
     let currentLanguage = "${language}";
     function isKo(){ return currentLanguage === "ko"; }
@@ -191,7 +196,7 @@ export function renderComparedTransferExplorerHtml(
     function sourceLabel(){ return sourceSide() === "workspace" ? t("Workspace", "작업공간") : t("Central", "중앙"); }
     function targetLabel(){ return targetSide() === "workspace" ? t("Workspace", "작업공간") : t("Central", "중앙"); }
     function directionText(){ return sourceLabel() + " → " + targetLabel(); }
-    function setStatus(message, tone){ const el = document.getElementById("statusLine"); el.textContent = message || t("Ready", "준비 완료"); el.className = "status " + (tone || ""); }
+    function setStatus(message, tone){ const el = document.getElementById("statusLine"); el.textContent = message || t("Ready", "준비 완료"); el.className = "status sb-status-bar " + (tone || "info"); }
     function normalizeStatus(status){ return Object.prototype.hasOwnProperty.call(statusInfoMap(), status) ? status : "modified"; }
     function resetPages(){ for (const status of STATUS_ORDER) uiState.page[status] = 1; }
     function pageCount(total){ return Math.max(1, Math.ceil(total / PAGE_SIZE)); }

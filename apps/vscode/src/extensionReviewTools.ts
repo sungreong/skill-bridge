@@ -152,7 +152,7 @@ export function createReviewTools(args: {
         targetKind: dstKind,
         sourceRows: srcRows,
         targetRows: dstRows
-      }, args.getUiLanguage());
+      }, args.getUiLanguage(), { scriptsEnabled: false });
     };
     args.registerLanguageRefresh(panel, render);
     render();
@@ -185,7 +185,7 @@ export function createReviewTools(args: {
         sameCount: diffRows.filter((entry) => entry.status === "=").length,
         skillMdCount: diffRows.filter((entry) => /(^|\/)SKILL\.md$/i.test(entry.relativePath)).length,
         rows: diffRows
-      }, args.getUiLanguage());
+      }, args.getUiLanguage(), { scriptsEnabled: false });
     };
     args.registerLanguageRefresh(panel, render);
     render();

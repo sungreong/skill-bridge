@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewClientCommonScript } from "./webviewClientCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 type TranslationFn = (english: string, korean: string) => string;
 
@@ -153,7 +156,7 @@ function renderProjectPresetOverviewHtml(
 ): string {
   const isKo = language === "ko";
   const t = (en: string, ko: string): string => isKo ? ko : en;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const active = rows.find((row) => row.id === activePresetId) ?? rows[0];
   const activeTargets = new Set((active?.targets ?? []).map(targetKey));
   const skillOptions = centralSkillFolderTargets(centralSkills);
@@ -174,6 +177,7 @@ function renderProjectPresetOverviewHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <style>
+    ${renderWebviewCommonStyles()}
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
     .wrap { height: 100vh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; padding: 10px; overflow: hidden; }
@@ -230,8 +234,8 @@ function renderProjectPresetOverviewHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
+  <div class="wrap sb-root">
+    <header class="top sb-topbar">
       <h1>${esc(t("Project Presets", "프로젝트 프리셋"))}</h1>
       <div class="summary">${rows.length} ${esc(t("presets", "프리셋"))} · ${centralSkillFolderTargets(centralSkills).length} ${esc(t("Central skills", "Central 스킬"))}</div>
     </header>
@@ -277,11 +281,12 @@ function renderProjectPresetOverviewHtml(
         </article>` : `<div class="detail muted">${esc(t("Create a project preset to start.", "프로젝트 프리셋을 만들어 시작하세요."))}</div>`}
       </section>
     </main>
-    <div id="status" class="status-bar">${esc(t("Ready", "준비됨"))}</div>
+    <div id="statusLine" class="status-bar sb-status-bar info">${esc(t("Ready", "준비됨"))}</div>
   </div>
   <script nonce="${nonce}">
+    ${renderWebviewClientCommonScript()}
     const vscode = acquireVsCodeApi();
-    const status = document.getElementById("status");
+    const status = document.getElementById("statusLine");
     let busy = false;
     function setBusy(message){
       busy = true;

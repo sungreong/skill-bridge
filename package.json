@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:core\" \"npm run dev:vscode\"",
     "check:max-lines": "node scripts/check-max-lines.cjs",
+    "check:webviews": "node scripts/check-webviews.cjs",
     "check:file-ops-workflow": "node scripts/check-file-ops-workflow.cjs",
     "check:file-ops-comparers": "node scripts/check-file-ops-comparers.cjs",
     "check:performance-tools": "node scripts/check-performance-tools.cjs",

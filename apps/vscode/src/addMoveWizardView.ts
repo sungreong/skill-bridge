@@ -1,6 +1,9 @@
 import type * as vscode from "vscode";
 import type { SkillAssetTreeMeta, SkillTreeFilterMode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
+import { createWebviewNonce } from "./webviewCommon";
+import { renderWebviewClientCommonScript } from "./webviewClientCommon";
+import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 export type AddMoveWizardPayload = {
   workspace: {
@@ -30,7 +33,7 @@ export function renderAddMoveWizardHtml(
   payload: AddMoveWizardPayload
 ): string {
   void webview;
-  const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nonce = createWebviewNonce();
   const initial = JSON.stringify(payload).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="${payload.language}">
@@ -40,6 +43,7 @@ export function renderAddMoveWizardHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${payload.language === "ko" ? "스킬 추가/이동 도우미" : "Add or Move Helper"}</title>
   <style>
+    ${renderWebviewCommonStyles()}
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
     .wrap { padding: 8px 10px; display: grid; gap: 7px; }
     .head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
@@ -80,8 +84,8 @@ export function renderAddMoveWizardHtml(
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="head">
+  <div class="wrap sb-root">
+    <div class="head sb-topbar">
       <div>
         <h1 id="title"></h1>
         <div id="subtitle" class="muted"></div>
@@ -106,12 +110,13 @@ export function renderAddMoveWizardHtml(
       <div class="panel" id="workspacePanel"></div>
       <div class="panel" id="centralPanel"></div>
     </div>
-    <div id="feedback" class="feedback"></div>
+    <div id="feedback" class="feedback sb-status-bar info"></div>
     <div class="foot">
       <div class="muted" id="filterLabel"></div>
     </div>
   </div>
   <script nonce="${nonce}">
+    ${renderWebviewClientCommonScript()}
     const vscode = acquireVsCodeApi();
     let state = ${initial};
     const ui = {
