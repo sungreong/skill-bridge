@@ -54,6 +54,8 @@ export const MENU_COMMAND_ALIAS_TARGETS = [
   "skillBridge.pasteCentralNode",
   "skillBridge.pasteWorkspaceNode",
   "skillBridge.promoteSelected",
+  "skillBridge.promoteGroup",
+  "skillBridge.importGroup",
   "skillBridge.quickCentralCrud",
   "skillBridge.quickWorkspaceCrud",
   "skillBridge.refresh",

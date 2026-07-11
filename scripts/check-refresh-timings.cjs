@@ -29,12 +29,12 @@ async function run() {
     await fs.writeFile(logPath, [
       "[Activation] registered in 6ms; initial refresh queued",
       "[Refresh:visible] completed=20ms workspace=20 central=14",
-      "[Refresh:timing] scan=10ms inventory+meta=4ms providers+diagnostics=2ms groups+chrome=3ms watchers=1ms",
+      "[Refresh:timing] scan=10ms inventory+meta=4ms providers+diagnostics=2ms groups+chrome=3ms watchers=1ms fingerprint=6ms",
       "[Refresh:scan] workspaceSkills=8ms/20 centralSkills=5ms/14 workspaceInstructions=1ms/2 centralInstructions=1ms/1 agents=4",
       "[Refresh:enrich] metadata=18ms providers+diagnostics=3ms workspaceMeta=4 centralMeta=3",
       "[Activation] registered in 8ms; initial refresh queued",
       "[Refresh:visible] completed=27ms workspace=22 central=15",
-      "[Refresh:timing] scan=14ms inventory+meta=5ms providers+diagnostics=3ms groups+chrome=4ms watchers=1ms",
+      "[Refresh:timing] scan=14ms inventory+meta=5ms providers+diagnostics=3ms groups+chrome=4ms watchers=1ms fingerprint=8ms",
       "[Refresh:scan] workspaceSkills=11ms/22 centralSkills=7ms/15 workspaceInstructions=2ms/2 centralInstructions=1ms/1 agents=4",
       "[Refresh:enrich] metadata=22ms providers+diagnostics=4ms workspaceMeta=5 centralMeta=4",
       ""
@@ -55,6 +55,7 @@ async function run() {
     if (baseline.activationDetails?.sampleCount !== 2) throw new Error("expected two activation samples");
     if (baseline.visibleDetails?.completed?.medianMs !== 27) throw new Error("expected visible completed median");
     if (baseline.enrichDetails?.sampleCount !== 2) throw new Error("expected two enrich samples");
+    if (baseline.stages?.fingerprint?.medianMs !== 8) throw new Error("expected fingerprint timing summary");
 
     const markdown = await fs.readFile(summaryPath, "utf8");
     requireIncludes("markdown", markdown, "### Scan Breakdown");
@@ -66,7 +67,7 @@ async function run() {
 
     await fs.writeFile(newLogPath, [
       "[Refresh:visible] completed=37ms workspace=20 central=14",
-      "[Refresh:timing] scan=30ms inventory+meta=4ms providers+diagnostics=2ms groups+chrome=3ms watchers=1ms",
+      "[Refresh:timing] scan=30ms inventory+meta=4ms providers+diagnostics=2ms groups+chrome=3ms watchers=1ms fingerprint=8ms",
       "[Refresh:scan] workspaceSkills=25ms/20 centralSkills=5ms/14 workspaceInstructions=1ms/2 centralInstructions=1ms/1 agents=4",
       ""
     ].join("\n"), "utf8");

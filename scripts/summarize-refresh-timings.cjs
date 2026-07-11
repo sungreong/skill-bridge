@@ -1,12 +1,12 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const TIMING_PATTERN = /\[Refresh:timing\]\s+scan=(\d+)ms\s+inventory\+meta=(\d+)ms\s+providers\+diagnostics=(\d+)ms\s+groups\+chrome=(\d+)ms\s+watchers=(\d+)ms/;
+const TIMING_PATTERN = /\[Refresh:timing\]\s+scan=(\d+)ms\s+inventory\+meta=(\d+)ms\s+providers\+diagnostics=(\d+)ms\s+groups\+chrome=(\d+)ms\s+watchers=(\d+)ms\s+fingerprint=(\d+)ms/;
 const SCAN_DETAIL_PATTERN = /\[Refresh:scan\]\s+workspaceSkills=(\d+)ms\/(\d+)\s+centralSkills=(\d+)ms\/(\d+)\s+workspaceInstructions=(\d+)ms\/(\d+)\s+centralInstructions=(\d+)ms\/(\d+)\s+agents=(\d+)/;
 const ACTIVATION_PATTERN = /\[Activation\]\s+registered in (\d+)ms; initial refresh queued/;
 const VISIBLE_PATTERN = /\[Refresh:visible\]\s+completed=(\d+)ms\s+workspace=(\d+)\s+central=(\d+)/;
 const ENRICH_PATTERN = /\[Refresh:enrich\]\s+metadata=(\d+)ms\s+providers\+diagnostics=(\d+)ms\s+workspaceMeta=(\d+)\s+centralMeta=(\d+)/;
-const STAGES = ["scan", "inventoryMeta", "providersDiagnostics", "groupsChrome", "watchers"];
+const STAGES = ["scan", "inventoryMeta", "providersDiagnostics", "groupsChrome", "watchers", "fingerprint"];
 const SCAN_DETAIL_STAGES = ["workspaceSkills", "centralSkills", "workspaceInstructions", "centralInstructions"];
 const ENRICH_STAGES = ["metadata", "providersDiagnostics"];
 
@@ -55,7 +55,7 @@ function parseTimings(text) {
   for (const line of text.split(/\r?\n/)) {
     const match = TIMING_PATTERN.exec(line);
     if (!match) continue;
-    const [scan, inventoryMeta, providersDiagnostics, groupsChrome, watchers] = match
+    const [scan, inventoryMeta, providersDiagnostics, groupsChrome, watchers, fingerprint] = match
       .slice(1)
       .map((value) => Number(value));
     samples.push({
@@ -64,7 +64,8 @@ function parseTimings(text) {
       providersDiagnostics,
       groupsChrome,
       watchers,
-      total: scan + inventoryMeta + providersDiagnostics + groupsChrome + watchers
+      fingerprint,
+      total: scan + inventoryMeta + providersDiagnostics + groupsChrome + watchers + fingerprint
     });
   }
   return samples;

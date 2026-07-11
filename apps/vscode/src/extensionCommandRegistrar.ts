@@ -46,6 +46,7 @@ export function registerExtensionCommands(args: {
   openNodeIfFile: (basePath: string, node: SkillTreeNode, mode: TreeSide) => Promise<void>;
   openFolderInOs: (side: TreeSide, node?: SkillTreeNode) => Promise<void>;
   showGroupActions: (node?: GroupTreeNode) => Promise<void>;
+  resolveGroup: (node?: GroupTreeNode) => SelectionGroup | undefined;
   openGroupOverview: (node?: GroupTreeNode) => Promise<void>;
   openNpxSkillLibrary: () => Promise<void>;
   renameGroup: (node?: GroupTreeNode) => Promise<void>;
@@ -99,7 +100,7 @@ export function registerExtensionCommands(args: {
   runResetPersonalHome: () => Promise<void>;
   promoteSelected: (node?: SkillTreeNode) => Promise<void>;
   importSelected: (node?: SkillTreeNode) => Promise<void>;
-  exportGroup: (side: TreeSide) => Promise<unknown>;
+  exportGroup: (side: TreeSide, group?: SelectionGroup) => Promise<unknown>;
 }): void {
   const findWorkspaceFile = async (fileName: string): Promise<vscode.Uri | null> => {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -734,10 +735,10 @@ export function registerExtensionCommands(args: {
   args.register("skillBridge.createCentralGroup", async () => {
     await args.createGroupFromSelection("central");
   });
-  args.register("skillBridge.promoteGroup", async () => {
-    await args.exportGroup("workspace");
+  args.register("skillBridge.promoteGroup", async (node?: GroupTreeNode) => {
+    await args.exportGroup("workspace", args.resolveGroup(node));
   });
-  args.register("skillBridge.importGroup", async () => {
-    await args.exportGroup("central");
+  args.register("skillBridge.importGroup", async (node?: GroupTreeNode) => {
+    await args.exportGroup("central", args.resolveGroup(node));
   });
 }

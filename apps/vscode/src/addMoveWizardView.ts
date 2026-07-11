@@ -55,7 +55,7 @@ export function renderAddMoveWizardHtml(
     .action:hover { background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
     .action:focus-visible, button.ghost:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .action:active { transform: translateY(1px); }
-    .action.pending { border-color: #60a5fa; background: color-mix(in oklab, var(--vscode-button-secondaryBackground) 78%, #60a5fa 22%); }
+    .action.pending { border-color: var(--sb-accent); background: var(--vscode-list-activeSelectionBackground); }
     button:disabled { opacity: .58; cursor: progress; }
     .action b { font-size: 13px; }
     .action span { font-size: 12px; color: var(--vscode-descriptionForeground); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -71,16 +71,16 @@ export function renderAddMoveWizardHtml(
     .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; font-size: 12px; }
     .row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chip { display: inline-flex; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-    .status-new { color: #4ade80; border-color: #22c55e; }
-    .status-changed { color: #fbbf24; border-color: #f59e0b; }
-    .status-risk, .status-missingSkillMd { color: #fb7185; border-color: #fb7185; }
-    .status-recent { color: #60a5fa; border-color: #3b82f6; }
+    .status-new { color: var(--sb-success); border-color: var(--sb-success); }
+    .status-changed { color: var(--sb-warning); border-color: var(--sb-warning); }
+    .status-risk, .status-missingSkillMd { color: var(--sb-danger); border-color: var(--sb-danger); }
+    .status-recent { color: var(--sb-accent); border-color: var(--sb-accent); }
     .foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
     button.ghost { border: 1px solid var(--vscode-input-border); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
     .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px 7px; font-size: 12px; }
     .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
-    .feedback.warn { border-color: #f59e0b; color: #fbbf24; }
-    .feedback.error { border-color: #fb7185; color: #fb7185; }
+    .feedback.warn { border-color: var(--sb-warning); color: var(--sb-warning); }
+    .feedback.error { border-color: var(--sb-danger); color: var(--sb-danger); }
   </style>
 </head>
 <body>

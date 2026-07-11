@@ -19,6 +19,10 @@ Before choosing, grouping, importing, promoting, or diagnosing skills, inspect t
 
 Use that metadata to understand existing groups, mirrored sources, npx-installed skill sets, and lock information. Do not edit generated `.skillbridge/SKILL_GROUP.md` by hand; update Skill Bridge group data through commands or `.skillbridge/skill-workspace.json`, then regenerate the markdown.
 
+When the user asks to find, locate, recommend, or inspect a specific skill, use group information as part of the search context. Check whether the skill appears in `.skillbridge/SKILL_GROUP.md` or `.skillbridge/skill-workspace.json`, and mention relevant group names, descriptions, source metadata, and neighboring grouped skills when that information helps explain where the skill belongs or what should move with it.
+
+Before recommending or transferring individual skills, check for an existing group that clearly matches the user's workflow. When the matching group's members should move together, prefer the group-level send/bring action over rebuilding the same set through individual selections. Do not force group use when the user needs only one skill or when the group contains unrelated extras.
+
 ## Supported Layouts
 
 Workspace roots:

@@ -25,7 +25,8 @@ async function build() {
     await esbuild.build({
       entryPoints: [
         "src/skillPaths.ts",
-        "src/skillScanner.ts"
+        "src/skillScanner.ts",
+        "src/writeTextFileIfChanged.ts"
       ],
       bundle: false,
       outdir: "dist",

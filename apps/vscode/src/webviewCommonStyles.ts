@@ -1,6 +1,10 @@
 export function renderWebviewCommonStyles(): string {
   return `
     .sb-root {
+      --sb-accent: var(--vscode-focusBorder, var(--vscode-button-background));
+      --sb-success: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+      --sb-warning: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+      --sb-danger: var(--vscode-errorForeground, var(--vscode-charts-red));
       height: 100vh;
       min-height: 0;
       box-sizing: border-box;
@@ -52,11 +56,11 @@ export function renderWebviewCommonStyles(): string {
       white-space: nowrap;
     }
     .sb-status-bar.info { border-color: var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
-    .sb-status-bar.warn { border-color: #f59e0b; color: #fbbf24; }
-    .sb-status-bar.error { border-color: #ef4444; color: #fca5a5; }
+    .sb-status-bar.warn { border-color: var(--sb-warning); color: var(--sb-warning); }
+    .sb-status-bar.error { border-color: var(--sb-danger); color: var(--sb-danger); }
     .sb-button {
       max-width: 100%;
-      min-height: 28px;
+      min-height: 30px;
       border: 1px solid var(--vscode-panel-border);
       border-radius: 5px;
       padding: 4px 8px;
@@ -66,14 +70,20 @@ export function renderWebviewCommonStyles(): string {
       cursor: pointer;
     }
     .sb-button:disabled { opacity: .55; cursor: not-allowed; }
+    .sb-button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
+    .sb-button:focus-visible, .sb-chip:focus-visible {
+      outline: 2px solid var(--sb-accent);
+      outline-offset: 1px;
+    }
     .sb-button-primary {
       border-color: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       background: var(--vscode-button-background);
     }
+    .sb-button-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
     .sb-button-danger {
-      border-color: #ef4444;
-      color: var(--vscode-errorForeground, #fca5a5);
+      border-color: var(--sb-danger);
+      color: var(--sb-danger);
     }
     .sb-button-ghost {
       background: transparent;
@@ -95,9 +105,9 @@ export function renderWebviewCommonStyles(): string {
       background: var(--vscode-input-background);
     }
     .sb-chip.active {
-      border-color: #60a5fa;
+      border-color: var(--sb-accent);
       color: var(--vscode-foreground);
-      box-shadow: inset 0 0 0 1px rgba(96,165,250,.28);
+      box-shadow: inset 0 0 0 1px var(--sb-accent);
     }
     .sb-muted {
       color: var(--vscode-descriptionForeground);
@@ -110,6 +120,9 @@ export function renderWebviewCommonStyles(): string {
     }
     @media (max-width: 640px) {
       .sb-status-bar { white-space: normal; }
+      .sb-button { min-height: 36px; }
+      .sb-toolbar { align-items: stretch; }
+      .sb-toolbar > input, .sb-toolbar > select { flex: 1 1 100%; min-width: 0; }
     }
   `;
 }

@@ -35,7 +35,7 @@ export function renderLibraryManagerStyles(): string {
     }
     input, select, button {
       max-width: 100%;
-      min-height: 28px;
+      min-height: 30px;
       border: 1px solid var(--vscode-panel-border);
       border-radius: 5px;
       padding: 4px 8px;
@@ -46,13 +46,13 @@ export function renderLibraryManagerStyles(): string {
     button { cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
     .primary {
-      border-color: #60a5fa;
-      color: #bfdbfe;
-      background: color-mix(in oklab, var(--vscode-input-background) 82%, #60a5fa 18%);
+      border-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
     }
     .danger {
-      border-color: #fb7185;
-      color: #fecdd3;
+      border-color: var(--sb-danger);
+      color: var(--sb-danger);
     }
     .ghost {
       color: var(--vscode-descriptionForeground);
@@ -74,9 +74,9 @@ export function renderLibraryManagerStyles(): string {
       color: var(--vscode-descriptionForeground);
     }
     .tab.active, .subtab.active, .chip.active {
-      border-color: #60a5fa;
+      border-color: var(--sb-accent);
       color: var(--vscode-foreground);
-      box-shadow: inset 0 0 0 1px rgba(96,165,250,.28);
+      box-shadow: inset 0 0 0 1px var(--sb-accent);
     }
     .button-strip {
       gap: 4px;
@@ -126,9 +126,9 @@ export function renderLibraryManagerStyles(): string {
       cursor: pointer;
     }
     .metric-button.active {
-      border-color: #60a5fa;
-      box-shadow: inset 0 0 0 1px rgba(96,165,250,.28);
-      background: color-mix(in oklab, var(--vscode-input-background) 78%, #60a5fa 22%);
+      border-color: var(--sb-accent);
+      box-shadow: inset 0 0 0 1px var(--sb-accent);
+      background: var(--vscode-list-activeSelectionBackground);
     }
     .panel {
       min-height: 0;
@@ -268,10 +268,10 @@ export function renderLibraryManagerStyles(): string {
       font-weight: 700;
       white-space: nowrap;
     }
-    .b-new { color: #34d399; border-color: #34d399; }
-    .b-modified { color: #fbbf24; border-color: #fbbf24; }
-    .b-same { color: #94a3b8; border-color: #64748b; }
-    .b-target { color: #a78bfa; border-color: #a78bfa; }
+    .b-new { color: var(--sb-success); border-color: var(--sb-success); }
+    .b-modified { color: var(--sb-warning); border-color: var(--sb-warning); }
+    .b-same { color: var(--vscode-descriptionForeground); border-color: var(--vscode-panel-border); }
+    .b-target { color: var(--sb-accent); border-color: var(--sb-accent); }
     .empty {
       padding: 18px;
       color: var(--vscode-descriptionForeground);
@@ -296,8 +296,8 @@ export function renderLibraryManagerStyles(): string {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .status.warn { border-color: #f59e0b; color: #f59e0b; }
-    .status.error { border-color: #ef4444; color: #ef4444; }
+    .status.warn { border-color: var(--sb-warning); color: var(--sb-warning); }
+    .status.error { border-color: var(--sb-danger); color: var(--sb-danger); }
     @media (max-width: 980px) {
       .topbar, .panel-head { grid-template-columns: minmax(0, 1fr); }
       .summary, .detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -308,6 +308,11 @@ export function renderLibraryManagerStyles(): string {
       .summary, .detail-summary { grid-template-columns: minmax(0, 1fr); }
       .tabs, .subtabs, .filters, .actions, .row-actions, .chips, .button-strip { align-items: stretch; }
       .status { white-space: normal; }
+      input, select, button { min-height: 36px; }
+      .panel-head .actions > #runSelectedBtn { flex: 1 1 100%; order: -1; }
+      .panel-head .actions > #selectVisibleBtn,
+      .panel-head .actions > #clearSelectionBtn { flex: 1 1 calc(50% - 3px); }
+      table { min-width: 680px; }
     }
   `;
 }

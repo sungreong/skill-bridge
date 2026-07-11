@@ -2,7 +2,7 @@
   "name": "skill-bridge-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.31",
+  "version": "0.2.34",
   "publisher": "datanewbie-labs",
   "license": "MIT",
   "icon": "resources/skill-bridge-icon.png",
@@ -720,6 +720,18 @@
         "command": "skillBridge.menu.ko.centralGroupActions",
         "title": "그룹 작업",
         "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.menu.en.importGroup",
+        "title": "Bring Group and Skills to Workspace",
+        "category": "Skill Bridge",
+        "icon": "$(repo-pull)"
+      },
+      {
+        "command": "skillBridge.menu.ko.importGroup",
+        "title": "그룹+스킬을 작업공간으로 가져오기",
+        "category": "Skill Bridge",
+        "icon": "$(repo-pull)"
       },
       {
         "command": "skillBridge.menu.en.configureWorkspaceAutoSync",
@@ -1506,6 +1518,18 @@
         "command": "skillBridge.menu.ko.workspaceGroupActions",
         "title": "그룹 작업",
         "category": "Skill Bridge"
+      },
+      {
+        "command": "skillBridge.menu.en.promoteGroup",
+        "title": "Save Group and Skills to Central",
+        "category": "Skill Bridge",
+        "icon": "$(repo-push)"
+      },
+      {
+        "command": "skillBridge.menu.ko.promoteGroup",
+        "title": "그룹+스킬을 중앙에 반영",
+        "category": "Skill Bridge",
+        "icon": "$(repo-push)"
       }
     ],
     "submenus": [
@@ -1889,26 +1913,6 @@
           "group": "navigation@0.2"
         },
         {
-          "command": "skillBridge.menu.en.openWorkspaceFolder",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && !skillBridge.isKoreanUi",
-          "group": "navigation@0"
-        },
-        {
-          "command": "skillBridge.menu.ko.openWorkspaceFolder",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && skillBridge.isKoreanUi",
-          "group": "navigation@0"
-        },
-        {
-          "command": "skillBridge.menu.en.copyWorkspaceNodePath",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
-          "group": "navigation@0.1"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyWorkspaceNodePath",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
-          "group": "navigation@0.1"
-        },
-        {
           "command": "skillBridge.menu.en.createWorkspaceGroupFromNode",
           "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
           "group": "navigation@1.2"
@@ -1917,16 +1921,6 @@
           "command": "skillBridge.menu.ko.createWorkspaceGroupFromNode",
           "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
           "group": "navigation@1.2"
-        },
-        {
-          "command": "skillBridge.menu.en.createProjectPresetFromWorkspace",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.25"
-        },
-        {
-          "command": "skillBridge.menu.ko.createProjectPresetFromWorkspace",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && skillBridge.isKoreanUi",
-          "group": "navigation@1.25"
         },
         {
           "command": "skillBridge.menu.en.promoteSelected",
@@ -1947,26 +1941,6 @@
           "command": "skillBridge.menu.ko.addWorkspaceSelectionToGroup",
           "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
           "group": "navigation@2"
-        },
-        {
-          "command": "skillBridge.menu.en.showWorkspaceWarningReasons",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && !skillBridge.isKoreanUi",
-          "group": "navigation@2.5"
-        },
-        {
-          "command": "skillBridge.menu.ko.showWorkspaceWarningReasons",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && skillBridge.isKoreanUi",
-          "group": "navigation@2.5"
-        },
-        {
-          "command": "skillBridge.menu.en.copyWorkspaceBetweenAgents",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
-          "group": "navigation@2.7"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyWorkspaceBetweenAgents",
-          "when": "(view == skillBridge.workspaceSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
-          "group": "navigation@2.7"
         },
         {
           "command": "skillBridge.menu.en.toggleWorkspaceAgentAutoSync",
@@ -2039,26 +2013,6 @@
           "group": "navigation@0.2"
         },
         {
-          "command": "skillBridge.menu.en.openCentralFolder",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && !skillBridge.isKoreanUi",
-          "group": "navigation@0"
-        },
-        {
-          "command": "skillBridge.menu.ko.openCentralFolder",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && skillBridge.isKoreanUi",
-          "group": "navigation@0"
-        },
-        {
-          "command": "skillBridge.menu.en.copyCentralNodePath",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
-          "group": "navigation@0.1"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyCentralNodePath",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
-          "group": "navigation@0.1"
-        },
-        {
           "command": "skillBridge.menu.en.createCentralGroupFromNode",
           "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
           "group": "navigation@1.2"
@@ -2087,26 +2041,6 @@
           "command": "skillBridge.menu.ko.addCentralSelectionToGroup",
           "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
           "group": "navigation@2"
-        },
-        {
-          "command": "skillBridge.menu.en.showCentralWarningReasons",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && !skillBridge.isKoreanUi",
-          "group": "navigation@2.5"
-        },
-        {
-          "command": "skillBridge.menu.ko.showCentralWarningReasons",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder || viewItem == skillBridge.skillsRoot || viewItem == skillBridge.folderRoot)) && skillBridge.isKoreanUi",
-          "group": "navigation@2.5"
-        },
-        {
-          "command": "skillBridge.menu.en.copyCentralBetweenAgents",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && !skillBridge.isKoreanUi",
-          "group": "navigation@2.7"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyCentralBetweenAgents",
-          "when": "(view == skillBridge.centralSkills && (viewItem == skillBridge.file || viewItem == skillBridge.folder)) && skillBridge.isKoreanUi",
-          "group": "navigation@2.7"
         },
         {
           "submenu": "skillBridge.centralFileActions.en",
@@ -2139,74 +2073,44 @@
           "group": "navigation@0.9"
         },
         {
-          "command": "skillBridge.menu.en.workspaceGroupActions",
+          "command": "skillBridge.menu.en.promoteGroup",
           "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && !skillBridge.isKoreanUi",
           "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.menu.ko.promoteGroup",
+          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && skillBridge.isKoreanUi",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.menu.en.importGroup",
+          "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && !skillBridge.isKoreanUi",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.menu.ko.importGroup",
+          "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && skillBridge.isKoreanUi",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillBridge.menu.en.workspaceGroupActions",
+          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && !skillBridge.isKoreanUi",
+          "group": "navigation@2"
         },
         {
           "command": "skillBridge.menu.ko.workspaceGroupActions",
           "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && skillBridge.isKoreanUi",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "skillBridge.menu.en.centralGroupActions",
           "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && !skillBridge.isKoreanUi",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "skillBridge.menu.ko.centralGroupActions",
           "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && skillBridge.isKoreanUi",
-          "group": "navigation@1"
-        },
-        {
-          "command": "skillBridge.menu.en.renameGroup",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.1"
-        },
-        {
-          "command": "skillBridge.menu.ko.renameGroup",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && skillBridge.isKoreanUi",
-          "group": "navigation@1.1"
-        },
-        {
-          "command": "skillBridge.menu.en.editGroupDescription",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.12"
-        },
-        {
-          "command": "skillBridge.menu.ko.editGroupDescription",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && skillBridge.isKoreanUi",
-          "group": "navigation@1.12"
-        },
-        {
-          "command": "skillBridge.menu.en.copyWorkspaceGroupBetweenAgents",
-          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.15"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyWorkspaceGroupBetweenAgents",
-          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && skillBridge.isKoreanUi",
-          "group": "navigation@1.15"
-        },
-        {
-          "command": "skillBridge.menu.en.createProjectPresetFromWorkspaceGroup",
-          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.18"
-        },
-        {
-          "command": "skillBridge.menu.ko.createProjectPresetFromWorkspaceGroup",
-          "when": "(view == skillBridge.workspaceSkills && viewItem == skillBridge.group.workspace) && skillBridge.isKoreanUi",
-          "group": "navigation@1.18"
-        },
-        {
-          "command": "skillBridge.menu.en.copyCentralGroupBetweenAgents",
-          "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.15"
-        },
-        {
-          "command": "skillBridge.menu.ko.copyCentralGroupBetweenAgents",
-          "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.group.central) && skillBridge.isKoreanUi",
-          "group": "navigation@1.15"
+          "group": "navigation@2"
         },
         {
           "command": "skillBridge.menu.en.openProjectPresetOverview",
@@ -2287,16 +2191,6 @@
           "command": "skillBridge.menu.ko.deleteProjectPreset",
           "when": "(view == skillBridge.centralSkills && viewItem == skillBridge.preset.central) && skillBridge.isKoreanUi",
           "group": "navigation@4"
-        },
-        {
-          "command": "skillBridge.menu.en.deleteGroup",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && !skillBridge.isKoreanUi",
-          "group": "navigation@1.2"
-        },
-        {
-          "command": "skillBridge.menu.ko.deleteGroup",
-          "when": "((view == skillBridge.workspaceSkills || view == skillBridge.centralSkills) && (viewItem == skillBridge.group.workspace || viewItem == skillBridge.group.central)) && skillBridge.isKoreanUi",
-          "group": "navigation@1.2"
         },
         {
           "submenu": "skillBridge.settings.en",
@@ -3922,7 +3816,7 @@
     "vendor:core": "node ../../scripts/vendor-vscode-core.cjs",
     "check:manifest": "node scripts/check-manifest.cjs",
     "check:action-labels": "node scripts/check-action-labels.cjs",
-    "check:pre-vsix": "npm run check:manifest && npm run check:action-labels",
+    "check:pre-vsix": "npm run check:manifest && npm run check:action-labels && npm --prefix ../.. run check:context-menu-density",
     "check:runtime-deps": "node ../../scripts/check-vscode-runtime-deps.cjs",
     "check:vsix-runtime-deps": "node ../../scripts/check-vsix-runtime-deps.cjs",
     "prepackage:vsix": "npm run check:pre-vsix",

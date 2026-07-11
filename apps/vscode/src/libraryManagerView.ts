@@ -32,8 +32,8 @@ export function renderLibraryManagerHtml(
     <div class="topbar sb-topbar">
       <div class="title">${title}</div>
       <input id="searchInput" placeholder="${searchPlaceholder}" />
-      <button id="refreshBtn">${lang === "ko" ? "새로고침" : "Refresh"}</button>
-      <button id="languageBtn">${lang === "ko" ? "English" : "한국어"}</button>
+      <button id="refreshBtn" class="sb-button sb-button-ghost">${lang === "ko" ? "새로고침" : "Refresh"}</button>
+      <button id="languageBtn" class="sb-button sb-button-ghost">${lang === "ko" ? "English" : "한국어"}</button>
     </div>
 
     <div class="tabs" role="tablist">
@@ -60,7 +60,7 @@ export function renderLibraryManagerHtml(
           <div id="agentButtons" class="button-strip"></div>
           <button id="selectVisibleBtn" class="ghost">${lang === "ko" ? "보이는 항목 선택" : "Select visible"}</button>
           <button id="clearSelectionBtn" class="ghost">${lang === "ko" ? "선택 해제" : "Clear"}</button>
-          <button id="runSelectedBtn" class="primary">${lang === "ko" ? "선택 항목 반영" : "Apply selected"}</button>
+          <button id="runSelectedBtn" class="primary sb-button sb-button-primary">${lang === "ko" ? "선택 항목 반영" : "Apply selected"}</button>
         </div>
       </div>
       <div id="compareTable" class="table-wrap"></div>

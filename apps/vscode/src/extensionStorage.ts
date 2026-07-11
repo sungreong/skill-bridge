@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { renderSkillGroupMarkdown, sanitizeGroupMeta } from "./groupMetadata";
 import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLanguage";
+import { writeTextFileIfChanged } from "./writeTextFileIfChanged";
 import {
   compactPathForDisplay as compactCentralPathForDisplay,
   DEFAULT_CENTRAL_REPO_PATH_SETTING,
@@ -148,7 +149,10 @@ async function ensureSkillBridgeStateForBase(basePath: string): Promise<SkillBri
 
   const groups = await loadGroupFile(groupPath);
   const markdownPath = groupMarkdownPath(basePath);
-  await fs.writeFile(markdownPath, renderSkillGroupMarkdown(groups, getUiLanguage()), "utf8");
+  const regeneratedGroupMarkdown = await writeTextFileIfChanged(
+    markdownPath,
+    renderSkillGroupMarkdown(groups, getUiLanguage())
+  );
 
   let migratedSkillsLock = false;
   const lockPath = skillsLockPath(basePath);
@@ -162,7 +166,7 @@ async function ensureSkillBridgeStateForBase(basePath: string): Promise<SkillBri
     createdStateDir,
     createdGroupFile,
     migratedGroupFile,
-    regeneratedGroupMarkdown: true,
+    regeneratedGroupMarkdown,
     migratedSkillsLock
   };
 }

@@ -935,7 +935,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerExtensionCommands({
     register, tr, toUserError, handleError, settingsSection: SETTINGS_SECTION, state,
     workspaceProvider, centralProvider, unwrapSkillNode,
-    openNodeIfFile, openFolderInOs, showGroupActions,
+    openNodeIfFile, openFolderInOs, showGroupActions, resolveGroup: (node) => resolveGroup(node),
     openGroupOverview, openNpxSkillLibrary, renameGroup, editGroupDescription,
     refresh: async () => { await refresh(); }, saveSelectionGroups,
     applyGroupHighlight: (group) => applyGroupHighlight(state, group, workspaceProvider, centralProvider),
@@ -965,7 +965,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     runResetPersonalHome: runResetPersonalSkillHome,
     promoteSelected,
     importSelected,
-    exportGroup: async (side) => await exportGroup(side)
+    exportGroup: async (side, group) => await exportGroup(side, group)
   });
 
   const centralPathRepairTools = createCentralPathRepairTools({

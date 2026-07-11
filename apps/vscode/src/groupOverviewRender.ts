@@ -17,6 +17,7 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
   const activeAgent = data.agentFilter ?? "all";
   const agentButtons = [`<button class="chip sb-chip ${activeAgent === "all" ? "active" : ""}" data-agent-filter="all" type="button">All</button>`, ...data.agents.map((agent) => `<button class="chip sb-chip ${activeAgent === agent.agent ? "active" : ""}" data-agent-filter="${escAttr(agent.agent)}" type="button">${esc(formatAgent(agent.agent))}</button>`)].join("");
   const groupsForView = data.agents.flatMap((agent) => agent.groups);
+  const isSingleGroupView = groupsForView.length === 1;
   const selectedGroupId = groupsForView[0]?.id ?? "";
   const groupRows = groupsForView.map((group, index) => renderGroupRow(group, t, index === 0)).join("");
   const groupDetails = groupsForView.map((group, index) => renderGroupCard(group, t, index === 0)).join("");
@@ -31,7 +32,7 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
   <style>${renderWebviewCommonStyles()}${renderGroupOverviewStyles()}</style>
 </head>
 <body>
-  <div class="wrap sb-root">
+  <div class="wrap sb-root ${isSingleGroupView ? "single-group-view" : ""}" data-selection-mode="none">
     <div class="top sb-topbar">
       <h1>${esc(t("Group Overview", "그룹 개요"))}: ${esc(data.side)}${data.agentFilter ? ` / ${esc(data.agentFilter)}` : ""}</h1>
       <div class="top-actions">
@@ -99,6 +100,8 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
       const ids = selectedGroupIds();
       if (selectedGroupCount) selectedGroupCount.textContent = ids.length === 0 ? "${esc(t("No groups selected", "선택 그룹 없음"))}" : ids.length + " ${esc(t("groups selected", "개 그룹 선택"))}";
       document.querySelectorAll("#batchAddSkills,#batchTransferWithSkills,#batchTransferGroupOnly").forEach((item) => { if (item instanceof HTMLButtonElement) item.disabled = ids.length === 0; });
+      const root = document.querySelector(".sb-root");
+      root?.setAttribute("data-selection-mode", ids.length > 1 ? "multiple" : ids.length === 1 ? "single" : "none");
       const visibleChecks = Array.from(document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]"));
       if (toggleGroups instanceof HTMLInputElement) {
         toggleGroups.checked = visibleChecks.length > 0 && visibleChecks.every((item) => item instanceof HTMLInputElement && item.checked);
@@ -215,8 +218,11 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
   const folderHtml = skillFolders.slice(0, 80).map((folder) => renderSkillFolder(folder, t)).join("");
   const searchText = `${group.agent} ${group.sourceDetail} ${group.name} ${group.description} ${group.targets.map((target) => `${target.path} ${target.description} ${target.historyProject}`).join(" ")}`;
   const primaryAction = group.side === "workspace"
-    ? t("Save group + skills to Central", "그룹+스킬을 중앙에 반영")
-    : t("Bring group + skills to Workspace", "그룹+스킬을 작업공간으로 가져오기");
+    ? t("Save to Central", "중앙에 반영")
+    : t("Bring to Workspace", "작업공간으로 가져오기");
+  const transferHelp = group.side === "workspace"
+    ? t("Send this group's skills to your Central library.", "이 그룹의 스킬을 중앙 라이브러리에 보냅니다.")
+    : t("Bring this group's skills into the current Workspace.", "이 그룹의 스킬을 현재 작업공간으로 가져옵니다.");
   return `
     <article class="group-detail ${active ? "" : "hidden"}" data-group-id="${escAttr(group.id)}" data-search="${esc(searchText.toLowerCase())}">
       <div class="group-head">
@@ -234,18 +240,29 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
           </div>
         </div>
         <div class="actions">
-          <button class="primary sb-button sb-button-primary" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="withSkills">${esc(primaryAction)}</button>
-          <button class="sb-button" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group info only", "그룹 정보만"))}</button>
-          <button class="sb-button" data-add-skills="${escAttr(group.id)}">${esc(t("Add existing skills", "기존 스킬 추가"))}</button>
-          <button class="sb-button" data-remove-skills="${escAttr(group.id)}">${esc(t("Remove from group", "그룹에서 제외"))}</button>
-          <button class="sb-button" data-install-npx="${escAttr(group.side)}">${esc(t("Install from npx", "npx에서 설치"))}</button>
+          <div class="primary-transfer">
+            <button class="primary sb-button sb-button-primary" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="withSkills">${esc(primaryAction)}</button>
+            <span class="transfer-help sb-muted">${esc(transferHelp)}</span>
+          </div>
+          <details class="more-actions">
+            <summary>${esc(t("More actions", "추가 작업"))}</summary>
+            <div class="more-actions-panel">
+              <button class="sb-button" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group info only", "그룹 정보만"))}</button>
+              <button class="sb-button" data-add-skills="${escAttr(group.id)}">${esc(t("Add existing skills", "기존 스킬 추가"))}</button>
+              <button class="sb-button" data-remove-skills="${escAttr(group.id)}">${esc(t("Remove from group", "그룹에서 제외"))}</button>
+              <button class="sb-button" data-install-npx="${escAttr(group.side)}">${esc(t("Install from npx", "npx에서 설치"))}</button>
+            </div>
+          </details>
         </div>
       </div>
-      <div class="edit">
-        <input data-name value="${escAttr(group.name)}" aria-label="${escAttr(t("Group name", "그룹 이름"))}" />
-        <textarea data-description aria-label="${escAttr(t("Group description", "그룹 설명"))}">${esc(group.description)}</textarea>
-        <button class="primary sb-button sb-button-primary" data-save="${escAttr(group.id)}">${esc(t("Save", "저장"))}</button>
-      </div>
+      <details class="group-edit">
+        <summary>${esc(t("Edit group info", "그룹 정보 편집"))}</summary>
+        <div class="edit">
+          <input data-name value="${escAttr(group.name)}" aria-label="${escAttr(t("Group name", "그룹 이름"))}" />
+          <textarea data-description aria-label="${escAttr(t("Group description", "그룹 설명"))}">${esc(group.description)}</textarea>
+          <button class="sb-button" data-save="${escAttr(group.id)}">${esc(t("Save changes", "변경 저장"))}</button>
+        </div>
+      </details>
       <details class="skill-section" open>
         <summary>${esc(t("Skills in this group", "이 그룹의 스킬"))} <span class="meta-inline">${skillFolders.length} ${esc(t("skills", "스킬"))}</span></summary>
         <div class="skill-folders">

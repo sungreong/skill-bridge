@@ -35,15 +35,15 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .head { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
     .head h2 { font-size: 17px; line-height: 1.2; }
     .meta { font-size: 11px; opacity: 0.9; display: flex; gap: 8px; flex-wrap: wrap; }
-    .direction-panel { min-width: 0; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 6px 8px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 7px; align-items: center; background: color-mix(in oklab, var(--vscode-editor-background) 88%, #2563eb 12%); }
-    .direction-panel.import { background: color-mix(in oklab, var(--vscode-editor-background) 88%, #16a34a 12%); }
+    .direction-panel { min-width: 0; border: 1px solid var(--sb-accent); border-radius: 6px; padding: 6px 8px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 7px; align-items: center; background: var(--vscode-sideBar-background); }
+    .direction-panel.import { background: var(--vscode-sideBar-background); }
     .direction-title { font-weight: 800; font-size: 13px; white-space: nowrap; }
-    .direction-title .arrow { padding: 0 6px; color: #93c5fd; }
-    .direction-panel.import .direction-title .arrow { color: #86efac; }
+    .direction-title .arrow { padding: 0 6px; color: var(--sb-accent); }
+    .direction-panel.import .direction-title .arrow { color: var(--sb-accent); }
     .scope-line { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .scope-chip { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); max-width: min(620px, 60vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .scope-chip.locked { border-color: #60a5fa; color: #bfdbfe; }
-    .direction-panel.import .scope-chip.locked { border-color: #22c55e; color: #bbf7d0; }
+    .scope-chip.locked { border-color: var(--sb-accent); color: var(--vscode-foreground); }
+    .direction-panel.import .scope-chip.locked { border-color: var(--sb-accent); color: var(--vscode-foreground); }
     .scope-action { background: transparent; color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 3px 7px; font-size: 12px; }
     .summary { display: flex; flex-wrap: wrap; gap: 5px; align-items: stretch; min-height: 0; }
     .card { flex: 1 1 150px; min-width: 0; border: 1px solid var(--vscode-panel-border); padding: 4px 7px; border-radius: 5px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -53,9 +53,9 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .review-strip strong { margin-right: 2px; }
     .review-note { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 180px; flex: 1 1 240px; }
     .risk-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; border: 1px solid var(--vscode-panel-border); padding: 1px 7px; font-size: 11px; white-space: nowrap; }
-    .risk-high { border-color: #fb7185; color: #fb7185; }
-    .risk-medium { border-color: #f59e0b; color: #fbbf24; }
-    .risk-low { border-color: #22c55e; color: #4ade80; }
+    .risk-high { border-color: var(--sb-danger); color: var(--sb-danger); }
+    .risk-medium { border-color: var(--sb-warning); color: var(--sb-warning); }
+    .risk-low { border-color: var(--sb-success); color: var(--sb-success); }
     .risk-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
     .asset-details { border-top: 1px solid var(--vscode-panel-border); padding-top: 4px; }
     .asset-details summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 12px; user-select: none; }
@@ -64,9 +64,9 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .asset-card .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .asset-card .line { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
     .asset-empty { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px 0; }
-    .recommend-apply { color: #4ade80; border-color: #22c55e; }
-    .recommend-inspect { color: #fbbf24; border-color: #f59e0b; }
-    .recommend-skip { color: #fb7185; border-color: #fb7185; }
+    .recommend-apply { color: var(--sb-success); border-color: var(--sb-success); }
+    .recommend-inspect { color: var(--sb-warning); border-color: var(--sb-warning); }
+    .recommend-skip { color: var(--sb-danger); border-color: var(--sb-danger); }
     .toolbar { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
     .toolbar input, .toolbar select, .toolbar button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 4px 7px; min-height: 28px; }
     .toolbar input { flex: 1 1 280px; min-width: 200px; }
@@ -77,34 +77,34 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     thead { background: var(--vscode-sideBar-background); }
     th, td { padding: 5px 7px; border-bottom: 1px solid var(--vscode-panel-border); text-align: left; }
     tbody tr:hover { background: var(--vscode-list-hoverBackground); }
-    .status-added { color: #22c55e; }
-    .status-removed { color: #ef4444; }
-    .status-modified { color: #f59e0b; }
-    .status-typeChanged { color: #fb7185; }
-    .status-same { color: #94a3b8; }
+    .status-added { color: var(--sb-success); }
+    .status-removed { color: var(--sb-danger); }
+    .status-modified { color: var(--sb-warning); }
+    .status-typeChanged { color: var(--sb-danger); }
+    .status-same { color: var(--vscode-descriptionForeground); }
     .change-code { font-weight: 800; font-size: 13px; }
     .relation-main { display: block; font-weight: 700; }
-    .predict-box { border: 1px solid #f59e0b; color: #fbbf24; border-radius: 6px; padding: 5px 7px; font-size: 12px; background: color-mix(in oklab, var(--vscode-editor-background) 88%, #f59e0b 12%); }
+    .predict-box { border: 1px solid var(--sb-warning); color: var(--vscode-foreground); border-radius: 6px; padding: 5px 7px; font-size: 12px; background: var(--vscode-sideBar-background); }
     .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 4px 7px; font-size: 12px; }
-    .feedback.warn { border-color: #f59e0b; color: #fbbf24; }
+    .feedback.warn { border-color: var(--sb-warning); color: var(--sb-warning); }
     .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-foreground); }
     .path-main { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
     .path-sub { opacity: 0.85; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 580px; }
-    .foot { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: color-mix(in oklab, var(--vscode-editor-background) 92%, #111827 8%); box-shadow: 0 -10px 24px rgba(0,0,0,.14); }
+    .foot { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-sideBar-background); box-shadow: 0 -8px 20px var(--vscode-widget-shadow); }
     .foot-copy { min-width: 0; display: grid; gap: 2px; }
-    .foot-kicker { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: color-mix(in oklab, var(--vscode-descriptionForeground) 82%, #f8fafc 18%); }
+    .foot-kicker { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--vscode-descriptionForeground); }
     .foot-title { font-size: 13px; font-weight: 700; color: var(--vscode-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .foot-note { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .foot-actions { display: inline-flex; justify-content: flex-end; gap: 8px; align-items: center; }
     .btn { min-height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--vscode-panel-border); background: color-mix(in oklab, var(--vscode-button-secondaryBackground, var(--vscode-input-background)) 72%, transparent); color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); font-weight: 700; letter-spacing: 0; transition: background .16s ease, border-color .16s ease, transform .16s ease, opacity .16s ease, color .16s ease; }
     .btn:hover:not(:disabled) { transform: translateY(-1px); }
     .btn:active:not(:disabled) { transform: translateY(0); }
-    .btn-ghost { background: transparent; border-color: color-mix(in oklab, var(--vscode-panel-border) 76%, #94a3b8 24%); color: var(--vscode-foreground); }
+    .btn-ghost { background: transparent; border-color: var(--vscode-panel-border); color: var(--vscode-foreground); }
     .btn-ghost:hover:not(:disabled) { background: color-mix(in oklab, var(--vscode-list-hoverBackground) 75%, transparent); }
-    .btn-primary { border-color: color-mix(in oklab, #22c55e 70%, var(--vscode-panel-border) 30%); background: linear-gradient(180deg, color-mix(in oklab, #22c55e 84%, white 16%), color-mix(in oklab, #15803d 90%, black 10%)); color: #f7fee7; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 1px rgba(34,197,94,.08); }
-    .btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, color-mix(in oklab, #4ade80 86%, white 14%), color-mix(in oklab, #166534 92%, black 8%)); border-color: color-mix(in oklab, #4ade80 74%, var(--vscode-panel-border) 26%); }
+    .btn-primary { border-color: var(--vscode-button-background); background: var(--vscode-button-background); color: var(--vscode-button-foreground); box-shadow: none; }
+    .btn-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); border-color: var(--vscode-button-hoverBackground); }
     .btn:disabled { opacity: .42; cursor: default; transform: none; box-shadow: none; }
-    .btn-primary:disabled { background: color-mix(in oklab, var(--vscode-button-background, var(--vscode-input-background)) 34%, #22c55e 14%); color: color-mix(in oklab, var(--vscode-disabledForeground, var(--vscode-descriptionForeground)) 90%, #f8fafc 10%); border-color: var(--vscode-panel-border); }
+    .btn-primary:disabled { background: var(--vscode-button-background); color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground)); border-color: var(--vscode-panel-border); }
     @media (max-width: 960px) {
       .direction-panel { grid-template-columns: minmax(0, 1fr); align-items: start; }
       .direction-title { white-space: normal; }
@@ -118,6 +118,10 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       .summary { grid-template-columns: minmax(0, 1fr); }
       .toolbar input { min-width: 100%; }
       .foot-title, .foot-note { white-space: normal; }
+      .toolbar button { min-height: 36px; flex: 1 1 calc(50% - 3px); }
+      .foot-actions { flex-direction: column-reverse; }
+      .foot-actions .btn { width: 100%; min-height: 40px; }
+      table { min-width: 760px; }
     }
   </style>
 </head>
