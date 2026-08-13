@@ -2,6 +2,7 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { collectFiles as collectCoreFiles } from "./vendor/core";
 import type { SkillTreeNode, ToolType } from "./types";
+import { localize } from "./uiLanguage";
 
 export const INSTRUCTION_ROOT = "instructions";
 export const ROOT_INSTRUCTION_FILES = [
@@ -66,10 +67,10 @@ export function getSkillRootCandidates(basePath: string, tool: ToolType, mode: "
 }
 
 export function resolveSkillPath(basePath: string, tool: ToolType, relativePath: string, mode: "workspace" | "central"): string {
-  if (hasAbsolutePathSyntax(relativePath)) throw new Error("skills 하위 상대 경로만 허용됩니다.");
+  if (hasAbsolutePathSyntax(relativePath)) throw new Error(localize("Only relative paths under skills are allowed."));
   const normalized = normalizeRel(relativePath);
   if (!isManagedSkillPath(normalized) || normalized.includes("..")) {
-    throw new Error("skills 하위 경로만 허용됩니다.");
+    throw new Error(localize("Only paths under skills are allowed."));
   }
   return path.join(getSkillRoot(basePath, tool, mode), normalized);
 }
@@ -112,13 +113,13 @@ export function isManagedInstructionPath(relativePath: string): boolean {
 
 export function resolveWorkspaceInstructionPath(workspacePath: string, relativePath: string): string {
   const normalized = normalizeInstructionRelativePath(relativePath);
-  if (!isManagedInstructionPath(normalized)) throw new Error("지원하는 instruction 파일 경로만 허용됩니다.");
+  if (!isManagedInstructionPath(normalized)) throw new Error(localize("Only supported instruction file paths are allowed."));
   return path.join(workspacePath, ...normalized.split("/"));
 }
 
 export function resolveCentralInstructionPath(centralRepoPath: string, profileId: string, relativePath: string): string {
   const normalized = normalizeInstructionRelativePath(relativePath);
-  if (!isManagedInstructionPath(normalized)) throw new Error("지원하는 instruction 파일 경로만 허용됩니다.");
+  if (!isManagedInstructionPath(normalized)) throw new Error(localize("Only supported instruction file paths are allowed."));
   return path.join(centralRepoPath, INSTRUCTION_ROOT, sanitizeInstructionProfileName(profileId), ...normalized.split("/"));
 }
 

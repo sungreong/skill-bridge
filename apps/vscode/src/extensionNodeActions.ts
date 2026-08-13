@@ -5,7 +5,7 @@ import { getSkillRoot, getWritableSkillRoot, resolveOpenFolderTarget, resolveSki
 import { createFileUriFromAbsolutePath, isManagedSkillPath, isWithinPath, normalizeRel } from "./extensionSupport";
 import type { SkillTreeNode, ToolType } from "./types";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TreeSide = "workspace" | "central";
 type NodeCrudAction = "rename" | "delete" | "duplicate";
 type ClipboardEntry = { kind: "file" | "folder"; tool: ToolType; relativePath: string };
@@ -140,7 +140,7 @@ export function createNodeActionTools(args: {
       if (!(await args.exists(path.join(sourceRoot, candidate)))) return candidate;
       index += 1;
     }
-    throw new Error(args.tr("Could not generate a copy target name.", "복사 대상 이름을 생성하지 못했습니다."));
+    throw new Error(args.tr("Could not generate a copy target name."));
   };
 
   const getSkillFolderRelativePathFromNode = (node: SkillTreeNode | null | undefined): string | null => {
@@ -190,19 +190,19 @@ export function createNodeActionTools(args: {
       const baseRel = normalizeRel(baseRelRaw) || "skills";
       const toolRoot = getWritableSkillRoot(basePath, tool, side);
       const name = await vscode.window.showInputBox({
-        title: kind === "folder" ? args.tr("New Folder Name", "새 폴더 이름") : args.tr("New File Name", "새 파일 이름"),
-        prompt: kind === "folder" ? args.tr("Enter a folder name", "폴더 이름을 입력하세요") : args.tr("Enter a file name", "파일 이름을 입력하세요"),
+        title: kind === "folder" ? args.tr("New Folder Name") : args.tr("New File Name"),
+        prompt: kind === "folder" ? args.tr("Enter a folder name") : args.tr("Enter a file name"),
         value: kind === "file" ? "SKILL.md" : ""
       });
       if (!name?.trim()) return;
       const nextRel = normalizeRel(path.join(baseRel, name.trim()));
       if (!isManagedSkillPath(nextRel) || nextRel.includes("..")) {
-        vscode.window.showWarningMessage(args.tr("Items can only be created under the skills folder.", "skills 폴더 하위만 생성할 수 있습니다."));
+        vscode.window.showWarningMessage(args.tr("Items can only be created under the skills folder."));
         return;
       }
       const target = path.join(toolRoot, nextRel);
       if (await args.exists(target)) {
-        vscode.window.showWarningMessage(args.tr("An item with the same name already exists.", "이미 같은 이름이 있습니다."));
+        vscode.window.showWarningMessage(args.tr("An item with the same name already exists."));
         return;
       }
       await fs.mkdir(toolRoot, { recursive: true });
@@ -213,7 +213,7 @@ export function createNodeActionTools(args: {
         await fs.writeFile(target, "", "utf8");
       }
       await args.refresh();
-      vscode.window.showInformationMessage(args.tr(`${kind === "folder" ? "Folder" : "File"} created.`, `${kind === "folder" ? "폴더" : "파일"} 생성 완료`));
+      vscode.window.showInformationMessage(args.tr("{0} created.", String(kind === "folder" ? "Folder" : "File")));
     } catch (error) {
       await args.handleError(error);
     }
@@ -226,17 +226,14 @@ export function createNodeActionTools(args: {
       const targetPath = resolveOpenFolderTarget(basePath, side, node);
       let folderPath = targetPath;
       if (!(await args.exists(targetPath))) {
-        const createLabel = args.tr("Create Folder", "폴더 만들기");
+        const createLabel = args.tr("Create Folder");
         const targetFolderPath = node?.kind === "file" ? path.dirname(targetPath) : targetPath;
         const picked = await vscode.window.showWarningMessage(
-          args.tr(
-            `Folder does not exist: ${targetFolderPath}`,
-            `열 폴더가 없습니다: ${targetFolderPath}`
-          ),
+          args.tr("Folder does not exist: {0}", String(targetFolderPath)),
           createLabel,
-          args.tr("Check Setup", "설정 점검")
+          args.tr("Check Setup")
         );
-        if (picked === args.tr("Check Setup", "설정 점검")) {
+        if (picked === args.tr("Check Setup")) {
           await vscode.commands.executeCommand("skillBridge.diagnoseEnvironment");
           return;
         }
@@ -247,9 +244,9 @@ export function createNodeActionTools(args: {
       const stat = await fs.stat(folderPath);
       folderPath = stat.isDirectory() ? folderPath : path.dirname(folderPath);
       await vscode.env.openExternal(createFileUriFromAbsolutePath(folderPath));
-      const sideLabel = side === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
+      const sideLabel = side === "workspace" ? args.tr("Workspace") : args.tr("Central");
       vscode.window.setStatusBarMessage(
-        args.tr(`Skill Bridge: Opened ${sideLabel} folder ${args.compactPathForDisplay(folderPath)}`, `Skill Bridge: ${sideLabel} 폴더 열기 ${args.compactPathForDisplay(folderPath)}`),
+        args.tr("Skill Bridge: Opened {0} folder {1}", String(sideLabel), String(args.compactPathForDisplay(folderPath))),
         2500
       );
     } catch (error) {
@@ -263,7 +260,7 @@ export function createNodeActionTools(args: {
       if (action === "delete") {
         const deleteNodes = collapseCopyNodes(resolveDeleteNodes(side, node, selectedNodes));
         if (deleteNodes.length === 0) {
-          vscode.window.showWarningMessage(args.tr("Select a target file or folder first.", "먼저 대상 파일 또는 폴더를 선택하세요."));
+          vscode.window.showWarningMessage(args.tr("Select a target file or folder first."));
           return;
         }
         const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
@@ -271,33 +268,33 @@ export function createNodeActionTools(args: {
         for (const deleteNode of deleteNodes) {
           const relativePath = normalizeRel(deleteNode.relativePath);
           if (!relativePath) {
-            vscode.window.showWarningMessage(args.tr(`The agent root (${deleteNode.tool}) cannot be edited. Work inside the skills folder.`, `에이전트 루트(${deleteNode.tool})는 수정할 수 없습니다. skills 하위 항목에서 작업해주세요.`));
+            vscode.window.showWarningMessage(args.tr("The agent root ({0}) cannot be edited. Work inside the skills folder.", String(deleteNode.tool)));
             return;
           }
           if (!isManagedSkillPath(relativePath) || relativePath.split("/").includes("..")) {
-            vscode.window.showWarningMessage(args.tr(`Only items under the skills folder can be edited. (Current: ${deleteNode.tool}/${deleteNode.relativePath})`, `skills 폴더 하위 항목만 수정할 수 있습니다. (현재: ${deleteNode.tool}/${deleteNode.relativePath})`));
+            vscode.window.showWarningMessage(args.tr("Only items under the skills folder can be edited. (Current: {0}/{1})", String(deleteNode.tool), String(deleteNode.relativePath)));
             return;
           }
           if (relativePath.toLowerCase() === "skills") {
-            vscode.window.showWarningMessage(args.tr("The skills root cannot be changed.", "skills 루트는 변경할 수 없습니다."));
+            vscode.window.showWarningMessage(args.tr("The skills root cannot be changed."));
             return;
           }
           const sourceRoot = getSkillRoot(basePath, deleteNode.tool, side);
           const sourceAbs = path.join(sourceRoot, relativePath);
           if (!isWithinPath(sourceRoot, sourceAbs)) {
-            vscode.window.showWarningMessage(args.tr("Only paths under the skills folder are allowed.", "skills 폴더 하위만 허용됩니다."));
+            vscode.window.showWarningMessage(args.tr("Only paths under the skills folder are allowed."));
             return;
           }
           deleteTargets.push({ node: deleteNode, absolutePath: sourceAbs, relativePath });
         }
 
-        const deleteLabel = args.tr("Delete", "삭제");
+        const deleteLabel = args.tr("Delete");
         const preview = deleteTargets.slice(0, 6).map((target) => `${target.node.tool}/${target.relativePath}`).join("\n");
-        const more = deleteTargets.length > 6 ? args.tr(`\n...and ${deleteTargets.length - 6} more`, `\n...외 ${deleteTargets.length - 6}개`) : "";
+        const more = deleteTargets.length > 6 ? args.tr("\n...and {0} more", String(deleteTargets.length - 6)) : "";
         const ok = await vscode.window.showWarningMessage(
           deleteTargets.length === 1
-            ? args.tr(`Delete ${deleteTargets[0].node.kind} "${deleteTargets[0].relativePath}"?`, `${deleteTargets[0].node.kind === "folder" ? "폴더" : "파일"} "${deleteTargets[0].relativePath}"을(를) 삭제할까요?`)
-            : args.tr(`Delete ${deleteTargets.length} selected items?\n\n${preview}${more}`, `선택한 항목 ${deleteTargets.length}개를 삭제할까요?\n\n${preview}${more}`),
+            ? args.tr("Delete {0} \"{1}\"?", String(deleteTargets[0].node.kind), String(deleteTargets[0].relativePath))
+            : args.tr("Delete {0} selected items?\n\n{1}{2}", String(deleteTargets.length), String(preview), String(more)),
           { modal: true },
           deleteLabel
         );
@@ -315,66 +312,66 @@ export function createNodeActionTools(args: {
         }
         await args.refresh();
         if (deleteTargets.length === 1 && deleted === 1 && skipped === 0) {
-          vscode.window.showInformationMessage(args.tr("Deleted.", "삭제 완료"));
+          vscode.window.showInformationMessage(args.tr("Deleted."));
           return;
         }
-        vscode.window.showInformationMessage(args.tr(`Delete completed: deleted ${deleted}, skipped ${skipped}.`, `삭제 완료: 삭제 ${deleted}개, 건너뜀 ${skipped}개.`));
+        vscode.window.showInformationMessage(args.tr("Delete completed: deleted {0}, skipped {1}.", String(deleted), String(skipped)));
         return;
       }
       const targetNode = node ?? providerFor(side).getSelected();
       if (!targetNode) {
-        vscode.window.showWarningMessage(args.tr("Select a target file or folder first.", "먼저 대상 파일 또는 폴더를 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a target file or folder first."));
         return;
       }
       if (!targetNode.relativePath) {
-        vscode.window.showWarningMessage(args.tr(`The agent root (${targetNode.tool}) cannot be edited. Work inside the skills folder.`, `에이전트 루트(${targetNode.tool})는 수정할 수 없습니다. skills 하위 항목에서 작업해주세요.`));
+        vscode.window.showWarningMessage(args.tr("The agent root ({0}) cannot be edited. Work inside the skills folder.", String(targetNode.tool)));
         return;
       }
       if (!isManagedSkillPath(targetNode.relativePath)) {
-        vscode.window.showWarningMessage(args.tr(`Only items under the skills folder can be edited. (Current: ${targetNode.tool}/${targetNode.relativePath})`, `skills 폴더 하위 항목만 수정할 수 있습니다. (현재: ${targetNode.tool}/${targetNode.relativePath})`));
+        vscode.window.showWarningMessage(args.tr("Only items under the skills folder can be edited. (Current: {0}/{1})", String(targetNode.tool), String(targetNode.relativePath)));
         return;
       }
       if (normalizeRel(targetNode.relativePath).toLowerCase() === "skills") {
-        vscode.window.showWarningMessage(args.tr("The skills root cannot be changed.", "skills 루트는 변경할 수 없습니다."));
+        vscode.window.showWarningMessage(args.tr("The skills root cannot be changed."));
         return;
       }
       const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
       const sourceRoot = getSkillRoot(basePath, targetNode.tool, side);
       const sourceAbs = path.join(sourceRoot, targetNode.relativePath);
       if (!(await args.exists(sourceAbs))) {
-        vscode.window.showWarningMessage(args.tr("Could not find the target path.", "대상 경로를 찾을 수 없습니다."));
+        vscode.window.showWarningMessage(args.tr("Could not find the target path."));
         return;
       }
       const currentName = path.posix.basename(targetNode.relativePath);
       const parentRel = normalizeRel(path.posix.dirname(targetNode.relativePath));
       const defaultName = action === "duplicate" ? suggestDuplicateName(currentName) : currentName;
       const nextName = await vscode.window.showInputBox({
-        title: action === "rename" ? args.tr("Rename", "이름 변경") : args.tr("Duplicate Name", "복제 이름"),
-        prompt: action === "rename" ? args.tr("Enter a new name", "새 이름을 입력하세요") : args.tr("Enter the duplicate name", "복제 대상 이름을 입력하세요"),
+        title: action === "rename" ? args.tr("Rename") : args.tr("Duplicate Name"),
+        prompt: action === "rename" ? args.tr("Enter a new name") : args.tr("Enter the duplicate name"),
         value: defaultName
       });
       if (!nextName?.trim()) return;
       const nextRel = normalizeRel(parentRel === "." ? nextName.trim() : path.posix.join(parentRel, nextName.trim()));
       if (!isManagedSkillPath(nextRel) || nextRel.includes("..")) {
-        vscode.window.showWarningMessage(args.tr("Only paths under the skills folder are allowed.", "skills 폴더 하위만 허용됩니다."));
+        vscode.window.showWarningMessage(args.tr("Only paths under the skills folder are allowed."));
         return;
       }
       if (nextRel === targetNode.relativePath) return;
       const nextAbs = path.join(sourceRoot, nextRel);
       if (await args.exists(nextAbs)) {
-        vscode.window.showWarningMessage(args.tr("An item with the same name already exists.", "이미 같은 이름이 있습니다."));
+        vscode.window.showWarningMessage(args.tr("An item with the same name already exists."));
         return;
       }
       if (action === "rename") {
         await fs.mkdir(path.dirname(nextAbs), { recursive: true });
         await fs.rename(sourceAbs, nextAbs);
         await args.refresh();
-        vscode.window.showInformationMessage(args.tr("Renamed.", "이름 변경 완료"));
+        vscode.window.showInformationMessage(args.tr("Renamed."));
         return;
       }
       await args.copyNode(sourceAbs, nextAbs);
       await args.refresh();
-      vscode.window.showInformationMessage(args.tr("Duplicated.", "복제 완료"));
+      vscode.window.showInformationMessage(args.tr("Duplicated."));
     } catch (error) {
       await args.handleError(error);
     }
@@ -385,7 +382,7 @@ export function createNodeActionTools(args: {
     const selectedNodes = side === "workspace" ? args.state.workspaceSelection : args.state.centralSelection;
     const sourceNodes = node ? [node] : (selectedNodes.length > 0 ? selectedNodes : [provider.getSelected()].filter(Boolean) as SkillTreeNode[]);
     if (sourceNodes.length === 0) {
-      vscode.window.showWarningMessage(args.tr("Select items to copy.", "복사할 항목을 선택하세요."));
+      vscode.window.showWarningMessage(args.tr("Select items to copy."));
       return;
     }
     const normalized = collapseCopyNodes(sourceNodes)
@@ -394,11 +391,11 @@ export function createNodeActionTools(args: {
       .filter((item) => normalizeRel(item.relativePath).toLowerCase() !== "skills")
       .map((item) => ({ kind: item.kind, tool: item.tool, relativePath: item.relativePath }));
     if (normalized.length === 0) {
-      vscode.window.showWarningMessage(args.tr("Only items under the skills folder can be copied.", "skills 폴더 하위 항목만 복사할 수 있습니다."));
+      vscode.window.showWarningMessage(args.tr("Only items under the skills folder can be copied."));
       return;
     }
     args.state.clipboard = { side, entries: normalized };
-    vscode.window.setStatusBarMessage(args.tr(`Skill Bridge: Copied ${normalized.length} file/folder item(s).`, `Skill Bridge: 파일/폴더 항목 ${normalized.length}개를 복사했습니다.`), 1800);
+    vscode.window.setStatusBarMessage(args.tr("Skill Bridge: Copied {0} file/folder item(s).", String(normalized.length)), 1800);
   };
 
   const copyNodePathToClipboard = async (side: TreeSide, node?: SkillTreeNode): Promise<void> => {
@@ -406,18 +403,18 @@ export function createNodeActionTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const targetNode = node ?? providerFor(side).getSelected();
       if (!isPathCopyableNode(targetNode)) {
-        vscode.window.showWarningMessage(args.tr("Only skill files and folders have paths to copy.", "스킬 파일/폴더만 복사할 경로가 있습니다."));
+        vscode.window.showWarningMessage(args.tr("Only skill files and folders have paths to copy."));
         return;
       }
       const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
       const absolutePath = resolveSkillPath(basePath, targetNode.tool, targetNode.relativePath, side);
       if (!(await args.exists(absolutePath))) {
-        vscode.window.showWarningMessage(args.tr("Could not find the target path.", "대상 경로를 찾을 수 없습니다."));
+        vscode.window.showWarningMessage(args.tr("Could not find the target path."));
         return;
       }
       await vscode.env.clipboard.writeText(absolutePath);
       vscode.window.setStatusBarMessage(
-        args.tr(`Skill Bridge: Copied path ${args.compactPathForDisplay(absolutePath)}`, `Skill Bridge: 경로 복사 ${args.compactPathForDisplay(absolutePath)}`),
+        args.tr("Skill Bridge: Copied path {0}", String(args.compactPathForDisplay(absolutePath))),
         2200
       );
     } catch (error) {
@@ -429,11 +426,11 @@ export function createNodeActionTools(args: {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       if (!args.state.clipboard.side || args.state.clipboard.entries.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Select items to copy (Ctrl+C) first.", "먼저 복사(Ctrl+C)할 항목을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select items to copy (Ctrl+C) first."));
         return;
       }
       if (args.state.clipboard.side !== side) {
-        vscode.window.showWarningMessage(args.tr("Pasting into the other panel is not supported. Use Save to Central or Bring to Workspace.", "다른 패널로 붙여넣기는 지원하지 않습니다. 중앙에 반영하거나 작업공간으로 가져오기를 사용하세요."));
+        vscode.window.showWarningMessage(args.tr("Pasting into the other panel is not supported. Use Save to Central or Bring to Workspace."));
         return;
       }
       const selected = node ?? providerFor(side).getSelected();
@@ -457,10 +454,10 @@ export function createNodeActionTools(args: {
       }
       await args.refresh();
       if (copied === 0) {
-        vscode.window.showWarningMessage(args.tr("There are no items that can be pasted.", "붙여넣을 수 있는 항목이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("There are no items that can be pasted."));
         return;
       }
-      vscode.window.showInformationMessage(args.tr(`Paste complete: ${copied} item(s)`, `붙여넣기 완료: 항목 ${copied}개`));
+      vscode.window.showInformationMessage(args.tr("Paste complete: {0} item(s)", String(copied)));
     } catch (error) {
       await args.handleError(error);
     }
@@ -471,19 +468,19 @@ export function createNodeActionTools(args: {
     const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
     const target = node ?? providerFor(side).getSelected();
     if (!target) {
-      vscode.window.showWarningMessage(args.tr("Select a skill folder first.", "먼저 스킬 폴더를 선택하세요."));
+      vscode.window.showWarningMessage(args.tr("Select a skill folder first."));
       return;
     }
     const skillRel = getSkillFolderRelativePathFromNode(target);
     if (!skillRel) {
-      vscode.window.showWarningMessage(args.tr("This is only available in a skill folder (skills/<name>).", "스킬 폴더(skills/<name>)에서만 사용할 수 있습니다."));
+      vscode.window.showWarningMessage(args.tr("This is only available in a skill folder (skills/<name>)."));
       return;
     }
     const fileRel = `${skillRel}/SKILL.md`;
     const fileAbs = resolveSkillPath(basePath, target.tool, fileRel, side);
     if (!(await args.exists(fileAbs))) {
-      const createLabel = args.tr("Create", "만들기");
-      const create = await vscode.window.showInformationMessage(args.tr("SKILL.md does not exist. Create it now?", "SKILL.md가 없습니다. 새로 만들까요?"), createLabel);
+      const createLabel = args.tr("Create");
+      const create = await vscode.window.showInformationMessage(args.tr("SKILL.md does not exist. Create it now?"), createLabel);
       if (create !== createLabel) return;
       await fs.mkdir(path.dirname(fileAbs), { recursive: true });
       await fs.writeFile(fileAbs, "", "utf8");
@@ -499,29 +496,29 @@ export function createNodeActionTools(args: {
       const target = node ?? providerFor(side).getSelected();
       const skillRel = getSkillFolderRelativePathFromNode(target);
       const skillNode = target && skillRel ? makeFolderNode(target.tool, skillRel) : undefined;
-      const title = side === "workspace" ? args.tr("Workspace Skill Files", "작업공간 스킬 파일 만들기/수정") : args.tr("Central Skill Files", "중앙 스킬 파일 만들기/수정");
+      const title = side === "workspace" ? args.tr("Workspace Skill Files") : args.tr("Central Skill Files");
       const actions: Array<{ label: string; value: string; description?: string }> = [
-        { label: args.tr("Create New Skill", "새 스킬 생성"), value: "createSkill", description: args.tr("Create skills/<name> + SKILL.md", "skills/<name> + SKILL.md 생성") },
-        { label: args.tr("Create New File", "새 파일 생성"), value: "createFile", description: args.tr("Create a file at the current location", "현재 위치에 파일 생성") },
-        { label: args.tr("Create New Folder", "새 폴더 생성"), value: "createFolder", description: args.tr("Create a folder at the current location", "현재 위치에 폴더 생성") }
+        { label: args.tr("Create New Skill"), value: "createSkill", description: args.tr("Create skills/<name> + SKILL.md") },
+        { label: args.tr("Create New File"), value: "createFile", description: args.tr("Create a file at the current location") },
+        { label: args.tr("Create New Folder"), value: "createFolder", description: args.tr("Create a folder at the current location") }
       ];
       if (skillNode) {
         actions.push(
-          { label: args.tr("Open SKILL.md", "SKILL.md 열기"), value: "openSkillMd", description: args.tr("Edit the skill description file", "스킬 설명 파일 편집") },
-          { label: args.tr("Rename Skill", "스킬 이름 변경"), value: "renameSkill", description: args.tr("Rename the skills/<name> folder", "skills/<name> 폴더 이름 변경") },
-          { label: args.tr("Duplicate Skill", "스킬 복제"), value: "duplicateSkill", description: args.tr("Duplicate the whole skill folder", "스킬 폴더 전체 복제") },
-          { label: args.tr("Delete Skill", "스킬 삭제"), value: "deleteSkill", description: args.tr("Delete the whole skill folder", "스킬 폴더 전체 삭제") }
+          { label: args.tr("Open SKILL.md"), value: "openSkillMd", description: args.tr("Edit the skill description file") },
+          { label: args.tr("Rename Skill"), value: "renameSkill", description: args.tr("Rename the skills/<name> folder") },
+          { label: args.tr("Duplicate Skill"), value: "duplicateSkill", description: args.tr("Duplicate the whole skill folder") },
+          { label: args.tr("Delete Skill"), value: "deleteSkill", description: args.tr("Delete the whole skill folder") }
         );
       }
       if (target) {
         actions.push(
-          { label: args.tr("Open Selected Folder", "선택 항목 폴더 열기"), value: "openFolder" },
+          { label: args.tr("Open Selected Folder"), value: "openFolder" },
           ...(isPathCopyableNode(target)
             ? [
-              { label: args.tr("Copy Selected Path", "선택 항목 경로 복사"), value: "copyPath", description: `${target.tool}/${target.relativePath}` },
-              { label: args.tr("Rename Selected Item", "선택 항목 이름 변경"), value: "renameNode" },
-              { label: args.tr("Duplicate Selected Item", "선택 항목 복제"), value: "duplicateNode" },
-              { label: args.tr("Delete Selected Item", "선택 항목 삭제"), value: "deleteNode" }
+              { label: args.tr("Copy Selected Path"), value: "copyPath", description: `${target.tool}/${target.relativePath}` },
+              { label: args.tr("Rename Selected Item"), value: "renameNode" },
+              { label: args.tr("Duplicate Selected Item"), value: "duplicateNode" },
+              { label: args.tr("Delete Selected Item"), value: "deleteNode" }
             ]
             : [])
         );
@@ -568,91 +565,88 @@ export function createNodeActionTools(args: {
       const actions: Array<{ label: string; value: string; description?: string }> = [
         ...(canTransfer ? [{
           label: isAllVisibleTransferScope
-            ? args.tr("Review All Visible Skills Before Applying", "현재 보이는 전체 스킬 반영 전 검토")
-            : side === "workspace" ? args.tr("Save This to Central", "이 항목 중앙에 반영") : args.tr("Bring This to Workspace", "이 항목 작업공간으로 가져오기"),
+            ? args.tr("Review All Visible Skills Before Applying")
+            : side === "workspace" ? args.tr("Save This to Central") : args.tr("Bring This to Workspace"),
           value: "transfer",
           description: isAllVisibleTransferScope
-            ? args.tr(`${selections.length} visible file target(s); confirmation required`, `현재 보이는 파일 대상 ${selections.length}개 · 확인 후 진행`)
-            : args.tr(`${selections.length} file target(s) from the clicked item`, `클릭한 항목 기준 파일 대상 ${selections.length}개`)
+            ? args.tr("{0} visible file target(s); confirmation required", String(selections.length))
+            : args.tr("{0} file target(s) from the clicked item", String(selections.length))
         }] : []),
         ...(canCreateGroupFromTarget ? [{
-          label: args.tr("Create Group from This", "이 항목으로 그룹 만들기"),
+          label: args.tr("Create Group from This"),
           value: "createGroup",
-          description: args.tr("Create a new skill group from the clicked item or current scoped selection", "클릭한 항목 또는 현재 범위 선택으로 새 스킬 그룹 생성")
+          description: args.tr("Create a new skill group from the clicked item or current scoped selection")
         }] : []),
         ...(canCreateGroupFromTarget ? [{
-          label: args.tr("Add This to Existing Group", "이 항목을 기존 그룹에 추가"),
+          label: args.tr("Add This to Existing Group"),
           value: "addToGroup",
-          description: args.tr("Add the clicked skill to one or more existing groups", "클릭한 스킬을 하나 이상의 기존 그룹에 추가")
+          description: args.tr("Add the clicked skill to one or more existing groups")
         }] : []),
         ...(skillNode ? [{
-          label: args.tr("Open SKILL.md", "SKILL.md 열기"),
+          label: args.tr("Open SKILL.md"),
           value: "openSkillMd",
           description: `${skillNode.tool}/${skillNode.relativePath}`
         }] : []),
         {
-          label: baseNode ? args.tr("Open Selected Location", "선택 위치 폴더 열기") : args.tr(`Open ${side === "workspace" ? "Workspace" : "Central"} Folder`, `${side === "workspace" ? "작업공간" : "중앙"} 폴더 열기`),
+          label: baseNode ? args.tr("Open Selected Location") : args.tr("Open {0} Folder", String(side === "workspace" ? "Workspace" : "Central")),
           value: "openFolder",
-          description: baseNode ? `${baseNode.tool}/${baseNode.relativePath || "."}` : args.tr("Open the root folder in the OS file explorer", "루트 폴더를 OS 탐색기로 열기")
+          description: baseNode ? `${baseNode.tool}/${baseNode.relativePath || "."}` : args.tr("Open the root folder in the OS file explorer")
         },
         ...(isPathCopyableNode(baseNode) ? [{
-          label: args.tr("Copy Selected Path", "선택 항목 경로 복사"),
+          label: args.tr("Copy Selected Path"),
           value: "copyPath",
           description: `${baseNode.tool}/${baseNode.relativePath}`
         }] : []),
         ...(isPathCopyableNode(baseNode) ? [{
-          label: side === "workspace" ? args.tr("Copy This to Another Workspace Agent", "이 항목을 다른 작업공간 에이전트로 복사") : args.tr("Copy This to Another Central Agent", "이 항목을 다른 중앙 에이전트로 복사"),
+          label: side === "workspace" ? args.tr("Copy This to Another Workspace Agent") : args.tr("Copy This to Another Central Agent"),
           value: "copyAgent",
-          description: args.tr("Copy the clicked skill or folder to another agent on this side", "클릭한 스킬/폴더를 같은 쪽의 다른 에이전트로 복사")
+          description: args.tr("Copy the clicked skill or folder to another agent on this side")
         }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
           label: isScopedAgentAutoSyncEnabled
-            ? args.tr(`Turn Off Auto Save to Central for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영 끄기`)
-            : args.tr(`Turn On Auto Save to Central for ${args.formatAgentFolderLabel(scopedAgentTool)}`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영 켜기`),
+            ? args.tr("Turn Off Auto Save to Central for {0}", String(args.formatAgentFolderLabel(scopedAgentTool)))
+            : args.tr("Turn On Auto Save to Central for {0}", String(args.formatAgentFolderLabel(scopedAgentTool))),
           value: "toggleAutoSync",
           description: isScopedAgentAutoSyncEnabled
-            ? args.tr("Stop saving this workspace agent's changes to Central automatically", "이 작업공간 에이전트의 변경 사항을 중앙에 자동 반영하지 않습니다")
-            : args.tr("Start saving this workspace agent's changes to Central automatically", "이 작업공간 에이전트의 변경 사항을 중앙에 자동 반영합니다")
+            ? args.tr("Stop saving this workspace agent's changes to Central automatically")
+            : args.tr("Start saving this workspace agent's changes to Central automatically")
         }] : []),
         ...(side === "workspace" && scopedAgentTool ? [{
-          label: args.tr(`Save ${args.formatAgentFolderLabel(scopedAgentTool)} to Central Now`, `${args.formatAgentFolderLabel(scopedAgentTool)}를 지금 중앙에 반영`),
+          label: args.tr("Save {0} to Central Now", String(args.formatAgentFolderLabel(scopedAgentTool))),
           value: "syncAgentNow",
-          description: args.tr("Copy this agent's skill folders now and mirror only related groups", "이 에이전트의 스킬 폴더를 지금 복사하고 관련 그룹만 미러링합니다")
+          description: args.tr("Copy this agent's skill folders now and mirror only related groups")
         }] : []),
         {
-          label: args.tr("Open Skill File Tools", "스킬 파일 만들기/수정 열기"),
+          label: args.tr("Open Skill File Tools"),
           value: "crud",
-          description: args.tr("Create, rename, duplicate, or delete", "생성/이름변경/복제/삭제")
+          description: args.tr("Create, rename, duplicate, or delete")
         }
       ];
       if (selectedGroup) {
         actions.push({
-          label: args.tr(`Open Selected Group Actions (${selectedGroup.name})`, `선택 그룹 작업 열기 (${selectedGroup.name})`),
+          label: args.tr("Open Selected Group Actions ({0})", String(selectedGroup.name)),
           value: "groupActions",
-          description: args.tr("Apply, rename, add, replace, or remove group items", "반영/이름변경/그룹 항목 추가·교체·제외")
+          description: args.tr("Apply, rename, add, replace, or remove group items")
         });
       }
       actions.push(
-        { label: args.tr("Choose Visible Agents", "보일 에이전트 선택"), value: "switchTab" },
-        { label: args.tr("Refresh", "새로고침"), value: "refresh" }
+        { label: args.tr("Choose Visible Agents"), value: "switchTab" },
+        { label: args.tr("Refresh"), value: "refresh" }
       );
       const pick = await vscode.window.showQuickPick(actions, {
-        title: side === "workspace" ? args.tr("Workspace Smart Actions", "작업공간 스마트 액션") : args.tr("Central Smart Actions", "중앙 스마트 액션"),
+        title: side === "workspace" ? args.tr("Workspace Smart Actions") : args.tr("Central Smart Actions"),
         matchOnDescription: true
       });
       if (!pick) return;
       if (pick.value === "transfer") {
         if (selections.length === 0) {
-          vscode.window.showWarningMessage(args.tr("Could not find files to apply.", "반영할 파일을 찾지 못했습니다."));
+          vscode.window.showWarningMessage(args.tr("Could not find files to apply."));
           return;
         }
         if (isAllVisibleTransferScope) {
-          const reviewLabel = args.tr("Review All Visible", "전체 검토");
+          const reviewLabel = args.tr("Review All Visible");
           const confirm = await vscode.window.showWarningMessage(
-            args.tr(
-              `No item is selected. Review all ${selections.length} visible file target(s) before applying?`,
-              `선택된 항목이 없습니다. 현재 보이는 파일 대상 ${selections.length}개 전체를 반영 전 검토할까요?`
-            ),
+            args.tr("No item is selected. Review all {0} visible file target(s) before applying?", String(selections.length)),
             { modal: true },
             reviewLabel
           );
@@ -666,10 +660,7 @@ export function createNodeActionTools(args: {
           args.selectPreferredGroupIds(side, result.affectedGroupIds, selectedGroup ? [selectedGroup.id] : undefined)
         );
         await args.refresh();
-        vscode.window.showInformationMessage(args.tr(
-          `${side === "workspace" ? "Save to Central" : "Bring to Workspace"} complete: copied ${result.copied}, deleted ${result.deleted}, unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : ""}`,
-          `${side === "workspace" ? "중앙 반영" : "작업공간 가져오기"} 완료: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 반영 ${mirroredGroups}개` : ""}`
-        ));
+        vscode.window.showInformationMessage(args.tr("{0} complete: copied {1}, deleted {2}, unchanged {3}{4}", String(side === "workspace" ? "Save to Central" : "Bring to Workspace"), String(result.copied), String(result.deleted), String(result.unchanged), String(mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : "")));
         return;
       }
       if (pick.value === "createGroup") return await args.createGroupFromSelection(side, groupedNodes);
@@ -679,19 +670,16 @@ export function createNodeActionTools(args: {
       if (pick.value === "toggleAutoSync" && scopedAgentTool) {
         const enabled = await args.toggleWorkspaceAgentAutoSync(scopedAgentTool);
         vscode.window.showInformationMessage(enabled
-          ? args.tr(`Auto save to Central turned on for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영을 켰습니다.`)
-          : args.tr(`Auto save to Central turned off for ${args.formatAgentFolderLabel(scopedAgentTool)}.`, `${args.formatAgentFolderLabel(scopedAgentTool)} 자동 중앙 반영을 껐습니다.`));
+          ? args.tr("Auto save to Central turned on for {0}.", String(args.formatAgentFolderLabel(scopedAgentTool)))
+          : args.tr("Auto save to Central turned off for {0}.", String(args.formatAgentFolderLabel(scopedAgentTool))));
         return;
       }
       if (pick.value === "syncAgentNow" && scopedAgentTool) {
         const { summary } = await args.syncWorkspaceAgentToCentralNow(scopedAgentTool);
         const skippedSuffix = summary.skippedMissingSkillMd > 0
-          ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+          ? args.tr(" · skipped missing SKILL.md {0}", String(summary.skippedMissingSkillMd))
           : "";
-        const message = args.tr(
-          `Workspace agent saved to Central: ${scopedAgentTool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-          `작업공간 에이전트 중앙 반영 완료: ${scopedAgentTool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
-        );
+        const message = args.tr("Workspace agent saved to Central: {0} · folders {1} · copied {2} · deleted {3} · groups {4} · central {5} folder(s), {6} file(s){7}", String(scopedAgentTool), String(summary.syncedFolders), String(summary.copied), String(summary.deleted), String(summary.mirroredGroups), String(summary.centralFolders), String(summary.centralFiles), String(skippedSuffix));
         if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
           vscode.window.showWarningMessage(message);
         } else {

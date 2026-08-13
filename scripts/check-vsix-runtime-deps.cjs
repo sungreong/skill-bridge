@@ -99,6 +99,7 @@ async function run() {
   const buffer = await fs.readFile(vsixPath);
   const entries = readZipEntries(buffer);
   const requiredEntries = [
+    "extension/CHANGELOG.md",
     "extension/dist/vendor/core.js",
     "extension/dist/vendor/core-runtime/index.js",
     "extension/dist/vendor/core-runtime/shared.js",

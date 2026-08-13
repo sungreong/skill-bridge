@@ -4,15 +4,14 @@ import { healthLabel, renderBadge, sideLabel, sourceLabel, syncLabel } from "./g
 import { renderGroupOverviewStyles } from "./groupOverviewStyles";
 import type { GroupOverviewData, GroupOverviewGroup, GroupOverviewSkillFolder, GroupOverviewTarget } from "./groupOverviewTypes";
 import type { ToolType } from "./types";
-import type { UiLanguage } from "./uiLanguage";
+import { localize, type UiLanguage } from "./uiLanguage";
 import { renderWebviewClientCommonScript } from "./webviewClientCommon";
 import { createWebviewNonce } from "./webviewCommon";
 import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
 export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOverviewData, language: UiLanguage): string {
   void webview;
-  const isKo = language === "ko";
-  const t = (english: string, korean: string): string => isKo ? korean : english;
+  const t = localize;
   const nonce = createWebviewNonce();
   const activeAgent = data.agentFilter ?? "all";
   const agentButtons = [`<button class="chip sb-chip ${activeAgent === "all" ? "active" : ""}" data-agent-filter="all" type="button">All</button>`, ...data.agents.map((agent) => `<button class="chip sb-chip ${activeAgent === agent.agent ? "active" : ""}" data-agent-filter="${escAttr(agent.agent)}" type="button">${esc(formatAgent(agent.agent))}</button>`)].join("");
@@ -28,29 +27,28 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(t("Group Overview", "그룹 개요"))}</title>
+  <title>${esc(t("Group Overview"))}</title>
   <style>${renderWebviewCommonStyles()}${renderGroupOverviewStyles()}</style>
 </head>
 <body>
-  <div class="wrap sb-root ${isSingleGroupView ? "single-group-view" : ""}" data-selection-mode="none">
+  <div class="wrap sb-root ${isSingleGroupView ? "single-group-view" : "multi-group-view"} ${data.agentFilter ? "filtered-agent-view" : ""}" data-selection-mode="none">
     <div class="top sb-topbar">
-      <h1>${esc(t("Group Overview", "그룹 개요"))}: ${esc(data.side)}${data.agentFilter ? ` / ${esc(data.agentFilter)}` : ""}</h1>
+      <h1>${esc(t("Group Overview"))}: ${esc(data.side)}${data.agentFilter ? ` / ${esc(data.agentFilter)}` : ""}</h1>
       <div class="top-actions">
-        <div id="summary" class="summary sb-muted">${data.groups.length} ${esc(t("groups", "그룹"))}</div>
-        <button id="languageToggle" class="sb-button sb-button-ghost" type="button">${esc(isKo ? "English" : "한국어")}</button>
+        <div id="summary" class="summary sb-muted">${data.groups.length} ${esc(t("groups"))}</div>
       </div>
     </div>
     <div class="controls">
       <div class="toolbar sb-toolbar">
-        <input id="search" placeholder="${esc(t("Search agent, group, skill, or description...", "에이전트, 그룹, 스킬, 설명 검색..."))}" />
-        <button id="expandAll" class="sb-button" type="button">${esc(t("Expand all", "모두 펼치기"))}</button>
-        <button id="collapseAll" class="sb-button" type="button">${esc(t("Collapse all", "모두 접기"))}</button>
+        <input id="search" aria-label="${escAttr(t("Search groups and skills"))}" placeholder="${esc(t("Search agent, group, skill, or description..."))}" />
+        <button id="expandAll" class="sb-button" type="button">${esc(t("Expand skill details"))}</button>
+        <button id="collapseAll" class="sb-button" type="button">${esc(t("Collapse skill details"))}</button>
       </div>
       <div class="batch-actions sb-toolbar">
-        <span id="selectedGroupCount" class="summary sb-muted">${esc(t("No groups selected", "선택 그룹 없음"))}</span>
-        <button id="batchAddSkills" class="sb-button" type="button">${esc(t("Add existing skills to selected groups", "선택 그룹에 기존 스킬 추가"))}</button>
-        <button id="batchTransferWithSkills" class="primary sb-button sb-button-primary" type="button">${esc(t("Apply selected groups + skills", "선택 그룹+스킬 반영"))}</button>
-        <button id="batchTransferGroupOnly" class="sb-button" type="button">${esc(t("Apply selected group info only", "선택 그룹 정보만 반영"))}</button>
+        <span id="selectedGroupCount" class="summary sb-muted">${esc(t("No groups selected"))}</span>
+        <button id="batchAddSkills" class="sb-button" type="button">${esc(t("Add existing skills to selected groups"))}</button>
+        <button id="batchTransferWithSkills" class="primary sb-button sb-button-primary" type="button">${esc(t("Apply selected groups + skills"))}</button>
+        <button id="batchTransferGroupOnly" class="sb-button" type="button">${esc(t("Apply selected group info only"))}</button>
       </div>
     </div>
     <div id="agentFilter" class="agent-filter">
@@ -61,24 +59,23 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
         <table>
           <thead>
             <tr>
-              <th style="width: 96px;">${esc(t("Agent", "에이전트"))}</th>
-              <th class="group-check"><input id="toggleGroups" type="checkbox" title="${escAttr(t("Select visible groups", "보이는 그룹 선택"))}" /></th>
-              <th>${esc(t("Group", "그룹"))}</th>
-              <th style="width: 96px;">${esc(t("Side", "위치"))}</th>
-              <th style="width: 96px;">${esc(t("Source", "출처"))}</th>
-              <th style="width: 94px;">${esc(t("Status", "상태"))}</th>
-              <th style="width: 82px;">${esc(t("Skills", "스킬"))}</th>
-              <th style="width: 180px;">${esc(t("Latest file", "최신 파일"))}</th>
+              <th style="width: 96px;">${esc(t("Agent"))}</th>
+              <th class="group-check"><input id="toggleGroups" type="checkbox" aria-label="${escAttr(t("Select visible groups"))}" title="${escAttr(t("Select visible groups"))}" /></th>
+              <th>${esc(t("Group"))}</th>
+              <th style="width: 96px;">${esc(t("Source"))}</th>
+              <th style="width: 94px;">${esc(t("Status"))}</th>
+              <th style="width: 82px;">${esc(t("Skills"))}</th>
+              <th style="width: 180px;">${esc(t("Latest file"))}</th>
             </tr>
           </thead>
-          <tbody>${groupRows || `<tr><td colspan="8">${esc(t("No groups to show.", "표시할 그룹이 없습니다."))}</td></tr>`}</tbody>
+          <tbody>${groupRows || `<tr><td colspan="7">${esc(t("No groups to show."))}</td></tr>`}</tbody>
         </table>
       </section>
       <section class="detail-shell sb-panel">
-        ${groupDetails || `<div class="empty sb-empty">${esc(t("Select a group to inspect.", "살펴볼 그룹을 선택하세요."))}</div>`}
+        ${groupDetails || `<div class="empty sb-empty">${esc(t("Select a group to inspect."))}</div>`}
       </section>
     </main>
-    <div id="statusLine" class="sb-status-bar info">${esc(t("Ready", "준비 완료"))}</div>
+    <div id="statusLine" class="sb-status-bar info" role="status" aria-live="polite">${esc(t("Ready"))}</div>
   </div>
   <script nonce="${nonce}">
     ${renderWebviewClientCommonScript()}
@@ -98,7 +95,7 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
     function selectedGroupIds() { return Array.from(document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]:checked")).map((item) => item.getAttribute("data-group-select") || "").filter(Boolean); }
     function syncBatchState() {
       const ids = selectedGroupIds();
-      if (selectedGroupCount) selectedGroupCount.textContent = ids.length === 0 ? "${esc(t("No groups selected", "선택 그룹 없음"))}" : ids.length + " ${esc(t("groups selected", "개 그룹 선택"))}";
+      if (selectedGroupCount) selectedGroupCount.textContent = ids.length === 0 ? "${esc(t("No groups selected"))}" : ids.length + " ${esc(t("groups selected"))}";
       document.querySelectorAll("#batchAddSkills,#batchTransferWithSkills,#batchTransferGroupOnly").forEach((item) => { if (item instanceof HTMLButtonElement) item.disabled = ids.length === 0; });
       const root = document.querySelector(".sb-root");
       root?.setAttribute("data-selection-mode", ids.length > 1 ? "multiple" : ids.length === 1 ? "single" : "none");
@@ -111,7 +108,7 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
     function postAction(message, button) {
       if (busy) return;
       busy = true;
-      setStatus("${esc(t("Working...", "작업 중..."))}", "info");
+      setStatus("${esc(t("Working..."))}", "info");
       window.SkillBridgeWebview?.setBusy(document.querySelector(".sb-root"), true);
       document.querySelectorAll("button,input,textarea,select").forEach((item) => { if ("disabled" in item) item.disabled = true; });
       vscode.postMessage(message);
@@ -132,10 +129,18 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
       }
       if (!activeGroup || !rows.some((row) => !row.classList.contains("hidden") && row.getAttribute("data-group-id") === activeGroup)) activeGroup = firstVisible;
       showGroup(activeGroup);
-      if (summary) summary.textContent = visible + " ${esc(t("groups", "그룹"))}";
+      if (summary) summary.textContent = visible + " ${esc(t("groups"))}";
       syncBatchState();
     }
-    function showGroup(groupId) { activeGroup = groupId || ""; for (const row of rows) row.classList.toggle("active", row.getAttribute("data-group-id") === activeGroup); for (const detail of details) detail.classList.toggle("hidden", detail.getAttribute("data-group-id") !== activeGroup); }
+    function showGroup(groupId) {
+      activeGroup = groupId || "";
+      for (const row of rows) {
+        const selected = row.getAttribute("data-group-id") === activeGroup;
+        row.classList.toggle("active", selected);
+        row.setAttribute("aria-selected", String(selected));
+      }
+      for (const detail of details) detail.classList.toggle("hidden", detail.getAttribute("data-group-id") !== activeGroup);
+    }
     function chooseAgent(value) {
       if (!value || value === "all") activeAgents.clear();
       else if (activeAgents.has(value)) activeAgents.delete(value);
@@ -172,6 +177,10 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
       if (installNpx instanceof HTMLButtonElement) {
         postAction({ type: "installNpx", side: installNpx.getAttribute("data-install-npx") || "workspace" }, installNpx);
       }
+      const updateNpx = target instanceof Element ? target.closest("button[data-update-npx]") : null;
+      if (updateNpx instanceof HTMLButtonElement) {
+        postAction({ type: "updateNpxGroup", groupId: updateNpx.getAttribute("data-update-npx") || "" }, updateNpx);
+      }
       const addSkills = target instanceof Element ? target.closest("button[data-add-skills]") : null;
       if (addSkills instanceof HTMLButtonElement) {
         postAction({ type: "addSkills", groupId: addSkills.getAttribute("data-add-skills") || "" }, addSkills);
@@ -189,9 +198,8 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
       if (target instanceof HTMLElement && target.id === "batchAddSkills") postAction({ type: "addSkillsToGroups", groupIds: selectedGroupIds() }, target);
       if (target instanceof HTMLElement && target.id === "batchTransferWithSkills") postAction({ type: "transferGroups", groupIds: selectedGroupIds(), mode: "withSkills" }, target);
       if (target instanceof HTMLElement && target.id === "batchTransferGroupOnly") postAction({ type: "transferGroups", groupIds: selectedGroupIds(), mode: "groupOnly" }, target);
-      if (target instanceof HTMLElement && target.id === "expandAll") document.querySelectorAll("details").forEach((item) => { item.open = true; });
-      if (target instanceof HTMLElement && target.id === "collapseAll") document.querySelectorAll("details").forEach((item) => { item.open = false; });
-      if (target instanceof HTMLElement && target.id === "languageToggle") postAction({ type: "toggleLanguage" }, target);
+      if (target instanceof HTMLElement && target.id === "expandAll") document.querySelectorAll("details.skill-folder").forEach((item) => { item.open = true; });
+      if (target instanceof HTMLElement && target.id === "collapseAll") document.querySelectorAll("details.skill-folder").forEach((item) => { item.open = false; });
       if (target instanceof HTMLInputElement && target.hasAttribute("data-group-select")) { syncBatchState(); return; }
       if (target instanceof HTMLInputElement && target.id === "toggleGroups") {
         document.querySelectorAll(".group-row:not(.hidden) input[data-group-select]").forEach((item) => { if (item instanceof HTMLInputElement) item.checked = target.checked; });
@@ -205,6 +213,14 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
     });
     document.querySelectorAll("input[data-skill-target]").forEach((item) => item.addEventListener("click", (event) => event.stopPropagation()));
     document.querySelectorAll("input[data-group-select]").forEach((item) => { item.addEventListener("click", (event) => event.stopPropagation()); item.addEventListener("change", syncBatchState); });
+    document.querySelector(".group-list")?.addEventListener("keydown", (event) => {
+      if (!(event instanceof KeyboardEvent) || (event.key !== "Enter" && event.key !== " ")) return;
+      const target = event.target;
+      const row = target instanceof Element ? target.closest(".group-row") : null;
+      if (!(row instanceof HTMLElement) || target instanceof HTMLInputElement) return;
+      event.preventDefault();
+      showGroup(row.getAttribute("data-group-id") || "");
+    });
     agentFilter?.addEventListener("click", (event) => { const target = event.target; const button = target instanceof Element ? target.closest("[data-agent-filter]") : null; if (button instanceof HTMLElement) chooseAgent(button.getAttribute("data-agent-filter") || "all"); });
     search?.addEventListener("input", applySearch);
     applySearch();
@@ -213,16 +229,22 @@ export function renderGroupOverviewHtml(webview: vscode.Webview, data: GroupOver
 </html>`;
 }
 
-function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean: string) => string, active: boolean): string {
+function renderGroupCard(group: GroupOverviewGroup, t: (message: string, ...args: Array<string | number | boolean>) => string, active: boolean): string {
   const skillFolders = groupTargetsBySkillFolder(group.targets);
   const folderHtml = skillFolders.slice(0, 80).map((folder) => renderSkillFolder(folder, t)).join("");
   const searchText = `${group.agent} ${group.sourceDetail} ${group.name} ${group.description} ${group.targets.map((target) => `${target.path} ${target.description} ${target.historyProject}`).join(" ")}`;
   const primaryAction = group.side === "workspace"
-    ? t("Save to Central", "중앙에 반영")
-    : t("Bring to Workspace", "작업공간으로 가져오기");
+    ? t("Save to Central")
+    : t("Bring to Workspace");
   const transferHelp = group.side === "workspace"
-    ? t("Send this group's skills to your Central library.", "이 그룹의 스킬을 중앙 라이브러리에 보냅니다.")
-    : t("Bring this group's skills into the current Workspace.", "이 그룹의 스킬을 현재 작업공간으로 가져옵니다.");
+    ? t("Send this group's skills to your Central library.")
+    : t("Bring this group's skills into the current Workspace.");
+  const hasAvailableTargets = group.availableTargetCount > 0;
+  const unavailableTransferHelp = group.source === "npx"
+    ? t("No source skill files are currently available. Run Install from npx on this side first.")
+    : t("No source skill files are currently available for this group.");
+  const transferTitle = hasAvailableTargets ? transferHelp : unavailableTransferHelp;
+  const latestAppliedLabel = hasHistoryValue(group.latestHistoryAt) ? compactTimestamp(group.latestHistoryAt) : t("Not applied");
   return `
     <article class="group-detail ${active ? "" : "hidden"}" data-group-id="${escAttr(group.id)}" data-search="${esc(searchText.toLowerCase())}">
       <div class="group-head">
@@ -231,105 +253,177 @@ function renderGroupCard(group: GroupOverviewGroup, t: (english: string, korean:
           <div class="meta">
             ${renderBadge(sideLabel(group.side, t), group.side)}
             ${renderBadge(sourceLabel(group.source, t), group.source)}
-            ${group.sourceDetail ? `<span class="pill sb-chip source-detail" title="${escAttr(group.sourceDetail)}">${esc(group.sourceDetail)}</span>` : ""}
             ${renderBadge(syncLabel(group.syncStatus, t), group.syncStatus)}
             ${renderBadge(healthLabel(group.health, group.brokenTargetCount, t), group.health)}
-            <span class="pill sb-chip">${esc(t("Targets", "대상"))}: ${group.targetCount}</span>
-            <span class="pill sb-chip">${esc(t("Latest file", "최신 파일"))}: ${esc(group.latestUpdatedAt)}</span>
-            <span class="pill sb-chip">${esc(t("Latest applied", "최근 반영"))}: ${esc(group.latestHistoryAt)}</span>
           </div>
-        </div>
+          ${group.sourceDetail ? `<div class="group-source-detail" title="${escAttr(group.sourceDetail)}">${esc(group.sourceDetail)}</div>` : ""}
+          <div class="group-facts sb-muted">
+            <span>${skillFolders.length} ${esc(t("skills"))}</span>
+            <span>${group.availableTargetCount} ${esc(t("files available"))}</span>
+            <span title="${escAttr(group.latestUpdatedAt)}">${esc(t("Updated"))}: ${esc(compactTimestamp(group.latestUpdatedAt))}</span>
+            <span title="${escAttr(group.latestHistoryAt)}">${esc(t("Latest applied"))}: ${esc(latestAppliedLabel)}</span>
+          </div>
+          </div>
         <div class="actions">
-          <div class="primary-transfer">
-            <button class="primary sb-button sb-button-primary" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="withSkills">${esc(primaryAction)}</button>
-            <span class="transfer-help sb-muted">${esc(transferHelp)}</span>
+          <div class="action-buttons">
+            <button class="primary sb-button sb-button-primary" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="withSkills" ${hasAvailableTargets ? "" : "disabled"} title="${escAttr(transferTitle)}">${esc(primaryAction)}</button>
+            <details class="more-actions">
+              <summary>${esc(t("More actions"))}</summary>
+              <div class="more-actions-panel">
+                <button class="sb-button" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group info only (no files)"))}</button>
+                <button class="sb-button" data-add-skills="${escAttr(group.id)}">${esc(t("Add existing skills"))}</button>
+                <button class="sb-button" data-remove-skills="${escAttr(group.id)}">${esc(t("Remove from group"))}</button>
+                ${group.source === "npx" ? `<button class="sb-button" data-update-npx="${escAttr(group.id)}" ${group.npxUpdateAvailable ? "" : "disabled"} title="${escAttr(group.npxUpdateAvailable ? t("Update tracked skills from the original npx repository.") : t("This npx group needs a repository URL and tracked skills before it can be updated."))}">${esc(t("Update from npx"))}</button>` : ""}
+                <button class="sb-button" data-install-npx="${escAttr(group.side)}">${esc(t("Install from npx"))}</button>
+              </div>
+            </details>
           </div>
-          <details class="more-actions">
-            <summary>${esc(t("More actions", "추가 작업"))}</summary>
-            <div class="more-actions-panel">
-              <button class="sb-button" data-transfer-group="${escAttr(group.id)}" data-transfer-mode="groupOnly">${esc(t("Group info only", "그룹 정보만"))}</button>
-              <button class="sb-button" data-add-skills="${escAttr(group.id)}">${esc(t("Add existing skills", "기존 스킬 추가"))}</button>
-              <button class="sb-button" data-remove-skills="${escAttr(group.id)}">${esc(t("Remove from group", "그룹에서 제외"))}</button>
-              <button class="sb-button" data-install-npx="${escAttr(group.side)}">${esc(t("Install from npx", "npx에서 설치"))}</button>
-            </div>
-          </details>
+          <span class="transfer-help sb-muted">${esc(transferTitle)}</span>
         </div>
       </div>
       <details class="group-edit">
-        <summary>${esc(t("Edit group info", "그룹 정보 편집"))}</summary>
+        <summary>${esc(t("Edit group info"))}</summary>
         <div class="edit">
-          <input data-name value="${escAttr(group.name)}" aria-label="${escAttr(t("Group name", "그룹 이름"))}" />
-          <textarea data-description aria-label="${escAttr(t("Group description", "그룹 설명"))}">${esc(group.description)}</textarea>
-          <button class="sb-button" data-save="${escAttr(group.id)}">${esc(t("Save changes", "변경 저장"))}</button>
+          <label class="edit-field edit-name">
+            <span>${esc(t("Group name"))}</span>
+            <input data-name value="${escAttr(group.name)}" />
+          </label>
+          <div class="edit-actions">
+            <button class="sb-button" type="button" data-save="${escAttr(group.id)}">${esc(t("Save changes"))}</button>
+          </div>
+          <label class="edit-field edit-description">
+            <span>${esc(t("Description"))}</span>
+            <textarea data-description rows="4" placeholder="${escAttr(t("Describe the purpose of this group and when its skills should be used together."))}">${esc(group.description)}</textarea>
+            <small class="edit-help sb-muted">${esc(t("This description is included in group search and generated Skill Bridge metadata."))}</small>
+          </label>
         </div>
       </details>
       <details class="skill-section" open>
-        <summary>${esc(t("Skills in this group", "이 그룹의 스킬"))} <span class="meta-inline">${skillFolders.length} ${esc(t("skills", "스킬"))}</span></summary>
+        <summary>${esc(t("Skills in this group"))} <span class="meta-inline">${skillFolders.length} ${esc(t("skills"))}</span></summary>
         <div class="skill-folders">
-          ${folderHtml || `<div class="empty sb-empty">${esc(t("No skills found.", "스킬을 찾지 못했습니다."))}</div>`}
+          ${folderHtml || `<div class="empty sb-empty">${esc(t("No skills found."))}</div>`}
         </div>
       </details>
     </article>
   `;
 }
 
-function renderGroupRow(group: GroupOverviewGroup, t: (english: string, korean: string) => string, active: boolean): string {
+function renderGroupRow(group: GroupOverviewGroup, t: (message: string, ...args: Array<string | number | boolean>) => string, active: boolean): string {
   const skillCount = groupTargetsBySkillFolder(group.targets).length;
   const searchText = `${group.agent} ${group.side} ${group.source} ${group.sourceDetail} ${group.syncStatus} ${group.name} ${group.description} ${group.targets.map((target) => `${target.path} ${target.description} ${target.historyProject}`).join(" ")}`;
   return `
-    <tr class="group-row ${active ? "active" : ""}" data-group-id="${escAttr(group.id)}" data-agent="${escAttr(group.agent)}" data-search="${esc(searchText.toLowerCase())}">
+    <tr class="group-row ${active ? "active" : ""}" data-group-id="${escAttr(group.id)}" data-agent="${escAttr(group.agent)}" data-search="${esc(searchText.toLowerCase())}" tabindex="0" aria-selected="${active}">
       <td><span class="agent-label">${esc(formatAgent(group.agent))}</span></td>
-      <td class="group-check"><input type="checkbox" data-group-select="${escAttr(group.id)}" title="${escAttr(t("Select group", "그룹 선택"))}" /></td>
+      <td class="group-check"><input type="checkbox" data-group-select="${escAttr(group.id)}" aria-label="${escAttr(t("Select group {0}", group.name))}" title="${escAttr(t("Select group"))}" /></td>
       <td>
-        <div class="group-name">${esc(group.name)}</div>
-        <div class="group-desc" title="${escAttr(group.description || "-")}">${esc(group.description || t("No description", "설명 없음"))}</div>
+        <div class="group-title-line">
+          <div class="group-name">${esc(group.name)}</div>
+          <span class="group-compact-meta">${esc(sourceLabel(group.source, t))} · ${skillCount} ${esc(t("skills"))}</span>
+        </div>
+        <div class="group-desc" title="${escAttr(group.description || "-")}">${esc(group.description || t("No description"))}</div>
       </td>
-      <td>${renderBadge(sideLabel(group.side, t), group.side)}</td>
       <td>${renderBadge(sourceLabel(group.source, t), group.source)}</td>
       <td>${renderBadge(syncLabel(group.syncStatus, t), group.syncStatus)}</td>
       <td>${skillCount}</td>
-      <td>${esc(group.latestUpdatedAt)}</td>
+      <td><span title="${escAttr(group.latestUpdatedAt)}">${esc(compactTimestamp(group.latestUpdatedAt))}</span></td>
     </tr>
   `;
 }
 
-function renderSkillFolder(folder: GroupOverviewSkillFolder, t: (english: string, korean: string) => string): string {
-  const rowHtml = folder.files.map((target) => `
-    <tr>
-      <td><div class="path" title="${esc(target.path)}">${esc(relativeFileLabel(target.path, folder.path))}</div></td>
-      <td>${esc(target.kind)}</td>
-      <td>${esc(target.updatedAt)}</td>
-      <td>${esc(target.historyAt)}</td>
-      <td>${esc(target.historyProject)}</td>
-      <td><div class="skill-desc">${esc(target.description || "-")}</div></td>
-    </tr>
-  `).join("");
+function renderSkillFolder(folder: GroupOverviewSkillFolder, t: (message: string, ...args: Array<string | number | boolean>) => string): string {
+  const entries = folder.files.map((target) => ({
+    target,
+    label: normalizeRel(relativeFileLabel(target.path, folder.path))
+  }));
+  const mainEntry = entries.find((entry) => entry.label.toLowerCase() === "skill.md");
+  const supportingEntries = entries.filter((entry) => entry !== mainEntry);
+  const rootEntries = supportingEntries.filter((entry) => !entry.label.includes("/"));
+  const directoryGroups = new Map<string, Array<(typeof entries)[number]>>();
+  for (const entry of supportingEntries) {
+    const separatorIndex = entry.label.indexOf("/");
+    if (separatorIndex < 0) continue;
+    const directory = entry.label.slice(0, separatorIndex);
+    const groupedEntries = directoryGroups.get(directory) ?? [];
+    groupedEntries.push(entry);
+    directoryGroups.set(directory, groupedEntries);
+  }
+  const directoryPriority = ["references", "scripts", "assets", "templates"];
+  const sortedDirectories = [...directoryGroups.entries()].sort(([left], [right]) => {
+    const leftIndex = directoryPriority.indexOf(left);
+    const rightIndex = directoryPriority.indexOf(right);
+    if (leftIndex >= 0 || rightIndex >= 0) return (leftIndex < 0 ? directoryPriority.length : leftIndex) - (rightIndex < 0 ? directoryPriority.length : rightIndex);
+    return left.localeCompare(right);
+  });
+  const renderFileRows = (files: Array<(typeof entries)[number]>, directory = ""): string => files
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((entry) => {
+      const displayLabel = directory ? entry.label.slice(directory.length + 1) : entry.label;
+      const historyHtml = hasHistoryValue(entry.target.historyAt)
+        ? `<div class="file-history">${esc(t("Applied"))}: ${esc(compactTimestamp(entry.target.historyAt))}${hasHistoryValue(entry.target.historyProject) ? ` · ${esc(entry.target.historyProject)}` : ""}</div>`
+        : "";
+      return `
+        <tr>
+          <td><div class="path" title="${escAttr(entry.target.path)}">${esc(displayLabel)}</div></td>
+          <td><span title="${escAttr(entry.target.updatedAt)}">${esc(compactTimestamp(entry.target.updatedAt))}</span>${historyHtml}</td>
+          <td><div class="skill-desc">${esc(entry.target.description || "-")}</div></td>
+        </tr>
+      `;
+    }).join("");
+  const renderFileGroup = (label: string, files: Array<(typeof entries)[number]>, directory = "", open = false): string => `
+    <details class="file-directory" ${open ? "open" : ""}>
+      <summary>
+        <span class="file-directory-name">${esc(label)}</span>
+        <span class="meta-inline">${files.length} ${esc(t("files"))}</span>
+      </summary>
+      <table class="file-table">
+        <thead>
+          <tr>
+            <th>${esc(t("File"))}</th>
+            <th>${esc(t("Updated / applied"))}</th>
+            <th>${esc(t("Description"))}</th>
+          </tr>
+        </thead>
+        <tbody>${renderFileRows(files, directory)}</tbody>
+      </table>
+    </details>
+  `;
+  const mainDescription = mainEntry?.target.description || folder.description;
+  const mainHistoryHtml = mainEntry && hasHistoryValue(mainEntry.target.historyAt)
+    ? `<span title="${escAttr(mainEntry.target.historyAt)}">${esc(t("Applied"))}: ${esc(compactTimestamp(mainEntry.target.historyAt))}</span>`
+    : "";
+  const mainFileHtml = mainEntry ? `
+    <div class="main-skill-file">
+      <div class="main-file-heading">
+        <span class="main-file-name">SKILL.md</span>
+        <span class="badge same">${esc(t("Main instructions"))}</span>
+      </div>
+      ${mainDescription ? `<div class="main-file-description">${esc(mainDescription)}</div>` : ""}
+      <div class="main-file-meta sb-muted">
+        <span title="${escAttr(mainEntry.target.updatedAt)}">${esc(t("Updated"))}: ${esc(compactTimestamp(mainEntry.target.updatedAt))}</span>
+        ${mainHistoryHtml}
+      </div>
+    </div>
+  ` : `<div class="main-skill-file missing-main"><strong>SKILL.md</strong> ${esc(t("was not found."))}</div>`;
+  const fileGroupsHtml = [
+    rootEntries.length > 0 ? renderFileGroup(t("Root files"), rootEntries, "", rootEntries.length <= 4) : "",
+    ...sortedDirectories.map(([directory, files]) => renderFileGroup(`${directory}/`, files, directory))
+  ].join("");
   return `
     <details class="skill-folder">
       <summary>
-        <input type="checkbox" data-skill-target data-tool="${escAttr(folder.tool)}" data-relative-path="${escAttr(folder.relativePath)}" />
+        <input type="checkbox" data-skill-target data-tool="${escAttr(folder.tool)}" data-relative-path="${escAttr(folder.relativePath)}" aria-label="${escAttr(t("Select skill {0}", folder.name))}" />
         <span class="folder-name">${esc(folder.name)}</span>
         <span class="folder-path">${esc(folder.path)}</span>
-        <span class="meta-inline">${folder.files.length} ${esc(t("files", "파일"))}</span>
+        <span class="meta-inline">${folder.files.length} ${esc(t("files"))}</span>
       </summary>
       <div class="folder-summary">
-        <span class="pill sb-chip">${esc(t("Latest file", "최신 파일"))}: ${esc(folder.latestUpdatedAt)}</span>
-        <span class="pill sb-chip">${esc(t("Latest applied", "최근 반영"))}: ${esc(folder.latestHistoryAt)}</span>
-        ${folder.description ? `<span class="skill-desc">${esc(folder.description)}</span>` : ""}
+        <span class="pill sb-chip" title="${escAttr(folder.latestUpdatedAt)}">${esc(t("Latest file"))}: ${esc(compactTimestamp(folder.latestUpdatedAt))}</span>
+        <span class="pill sb-chip" title="${escAttr(folder.latestHistoryAt)}">${esc(t("Latest applied"))}: ${esc(compactTimestamp(folder.latestHistoryAt))}</span>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>${esc(t("File", "파일"))}</th>
-            <th>${esc(t("Type", "종류"))}</th>
-            <th>${esc(t("File updated", "파일 수정"))}</th>
-            <th>${esc(t("Applied", "반영"))}</th>
-            <th>${esc(t("Source", "출처"))}</th>
-            <th>${esc(t("Description", "설명"))}</th>
-          </tr>
-        </thead>
-        <tbody>${rowHtml}</tbody>
-      </table>
+      <div class="skill-file-structure">
+        ${mainFileHtml}
+        ${fileGroupsHtml}
+      </div>
     </details>
   `;
 }
@@ -403,6 +497,15 @@ function relativeFileLabel(value: string, folderPath: string): string {
   if (value === folderPath) return ".";
   const prefix = `${folderPath}/`;
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+}
+
+function compactTimestamp(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) ? `${value.slice(0, 10)} ${value.slice(11, 16)}` : value;
+}
+
+function hasHistoryValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "-" && normalized !== "no record" && normalized !== localize("No record").toLowerCase();
 }
 
 function formatAgent(agent: ToolType | "mixed"): string {

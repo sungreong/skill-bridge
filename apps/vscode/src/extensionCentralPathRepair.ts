@@ -6,7 +6,7 @@ import {
 } from "./centralPath";
 import type { ToolType } from "./types";
 
-type TranslatePair = (english: string, korean: string) => string;
+type TranslatePair = (message: string, ...args: Array<string | number | boolean>) => string;
 
 type RefreshResult = {
   centralRepoPath: string;
@@ -60,15 +60,12 @@ export function createCentralPathRepairTools(args: {
     await args.clearCentralRepoPathOverrides();
     const result = await args.refresh();
     args.output.appendLine(`[CentralPathRepair:${target.logLabel}] central=${result.centralRepoPath}`);
-    vscode.window.showInformationMessage(args.tr(
-      `Central library path updated for this session: ${args.compactPathForDisplay(result.centralRepoPath)}`,
-      `현재 세션에 맞게 Central 라이브러리 경로를 변경했습니다: ${args.compactPathForDisplay(result.centralRepoPath)}`
-    ));
+    vscode.window.showInformationMessage(args.tr("Central library path updated for this session: {0}", String(args.compactPathForDisplay(result.centralRepoPath))));
   };
 
   const chooseCentralPathForCurrentSession = async (fallbackPath: string): Promise<void> => {
     const picked = await vscode.window.showOpenDialog({
-      title: args.tr("Choose Central Library Folder", "Central 라이브러리 폴더 선택"),
+      title: args.tr("Choose Central Library Folder"),
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: false,
@@ -92,14 +89,11 @@ export function createCentralPathRepairTools(args: {
       : resolveCentralRepoPath(DEFAULT_CENTRAL_REPO_PATH_SETTING, workspacePath, "default");
     if (centralResolution.ok) return false;
 
-    const useFallbackLabel = args.tr("Use Suggested Path", "권장 경로 사용");
-    const chooseFolderLabel = args.tr("Choose Folder", "폴더 선택");
-    const checkSetupLabel = args.tr("Check Setup", "환경 진단");
+    const useFallbackLabel = args.tr("Use Suggested Path");
+    const chooseFolderLabel = args.tr("Choose Folder");
+    const checkSetupLabel = args.tr("Check Setup");
     const picked = await vscode.window.showWarningMessage(
-      `${formatCentralPathIssue(centralResolution)} ${args.tr(
-        "Choose a Central folder that is reachable from the current VS Code session.",
-        "현재 VS Code 세션에서 접근 가능한 Central 폴더를 선택하거나 권장 경로로 바꿀 수 있습니다."
-      )}`,
+      `${formatCentralPathIssue(centralResolution)} ${args.tr("Choose a Central folder that is reachable from the current VS Code session.")}`,
       useFallbackLabel,
       chooseFolderLabel,
       checkSetupLabel
@@ -142,10 +136,7 @@ export function createCentralPathRepairTools(args: {
   const openCentralPathRepairPicker = async (): Promise<void> => {
     const workspacePath = args.state.workspacePath || args.getActiveWorkspacePath();
     if (!workspacePath) {
-      vscode.window.showWarningMessage(args.tr(
-        "Open a workspace folder before choosing the Central library path.",
-        "Central 라이브러리 경로를 선택하기 전에 작업공간 폴더를 먼저 여세요."
-      ));
+      vscode.window.showWarningMessage(args.tr("Open a workspace folder before choosing the Central library path."));
       return;
     }
     const configuredCentralRepoPath = getConfiguredCentralRepoPath();
@@ -156,15 +147,12 @@ export function createCentralPathRepairTools(args: {
     const suggestedPath = centralResolution.ok
       ? (defaultResolution.ok ? defaultResolution.absolutePath : centralResolution.absolutePath)
       : centralResolution.fallbackPath;
-    const useFallbackLabel = args.tr("Use Suggested Path", "권장 경로 사용");
-    const chooseFolderLabel = args.tr("Choose Folder", "폴더 선택");
-    const checkSetupLabel = args.tr("Check Setup", "환경 진단");
+    const useFallbackLabel = args.tr("Use Suggested Path");
+    const chooseFolderLabel = args.tr("Choose Folder");
+    const checkSetupLabel = args.tr("Check Setup");
     const currentPath = centralResolution.ok ? centralResolution.absolutePath : centralResolution.rawValue;
     const picked = await vscode.window.showInformationMessage(
-      args.tr(
-        `Central library path: ${currentPath}. Suggested for this session: ${suggestedPath}`,
-        `Central 라이브러리 경로: ${currentPath}. 현재 세션 권장 경로: ${suggestedPath}`
-      ),
+      args.tr("Central library path: {0}. Suggested for this session: {1}", String(currentPath), String(suggestedPath)),
       useFallbackLabel,
       chooseFolderLabel,
       checkSetupLabel

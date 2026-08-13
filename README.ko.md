@@ -114,7 +114,7 @@ Preset을 적용하면 Workspace에 `Preset: <name>` 그룹으로 결과가 남�
 
 ### Quick Tools 관리
 
-기본 상태의 Quick Tools는 핵심 명령만 표시합니다. `빠른 도구 관리`에서 트리에 보일 명령을 체크할 수 있습니다.
+기본 상태의 빠른 작업에는 핵심 명령만 표시됩니다. `빠른 작업 설정`에서 사이드바에 표시할 명령을 선택할 수 있습니다.
 
 선택값은 `skillBridge.visibleQuickTools`에 저장되고 VS Code를 다시 열어도 유지됩니다.
 
@@ -126,13 +126,14 @@ Preset을 적용하면 Workspace에 `Preset: <name>` 그룹으로 결과가 남�
 
 ## 설정
 
+UI는 VS Code 표시 언어를 따릅니다. 영어와 한국어를 지원하며, 그 외 VS Code 언어에서는 영어로 표시됩니다.
+
 | 설정 | 설명 |
 | --- | --- |
 | `skillBridge.centralRepoPath` | Central 스킬 라이브러리 경로입니다. `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, `${env:NAME}` 변수를 지원합니다. 확장이 실행 중인 같은 호스트에서 접근 가능한 경로여야 합니다. |
 | `skillBridge.defaultAgents` | Skill Bridge가 관리할 agent 목록입니다. |
 | `skillBridge.visibleAgents` | 트리에 표시할 agent 목록입니다. 비어 있으면 전체를 표시합니다. |
 | `skillBridge.visibleQuickTools` | Quick Tools에 표시할 명령 목록입니다. 비어 있으면 기본 핵심 도구 세트를 표시합니다. |
-| `skillBridge.language` | UI 언어입니다. `en` 또는 `ko`를 사용합니다. |
 | `skillBridge.autoSyncWorkspaceAgents` | 변경된 스킬 폴더를 Central로 자동 sync할 Workspace agent 목록입니다. |
 
 ## 프로젝트 구조

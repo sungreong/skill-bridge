@@ -1,10 +1,6 @@
 import * as vscode from "vscode";
 import { ALL_AGENTS, type GroupTreeNode, type SelectionGroup, type ToolType } from "../types";
-import type { UiLanguage } from "../uiLanguage";
-
-function localize(language: UiLanguage, english: string, korean: string): string {
-  return language === "ko" ? korean : english;
-}
+import { localize, type UiLanguage } from "../uiLanguage";
 
 export class GroupTreeItem extends vscode.TreeItem {
   constructor(public readonly node: GroupTreeNode, private readonly language: UiLanguage) {
@@ -23,20 +19,20 @@ export class GroupTreeItem extends vscode.TreeItem {
         : `skillBridge.group.${node.side}`;
     if (node.kind === "group") {
       this.description = node.selected
-        ? localize(this.language, `selected · targets ${node.count}`, `선택됨 · 대상 ${node.count}`)
-        : localize(this.language, `targets ${node.count}`, `대상 ${node.count}`);
-      this.tooltip = localize(this.language, `${node.label} (targets ${node.count})`, `${node.label} (대상 ${node.count})`);
+        ? localize("selected · targets {0}", String(node.count))
+        : localize("targets {0}", String(node.count));
+      this.tooltip = localize("{0} (targets {1})", String(node.label), String(node.count));
     } else if (node.kind === "tool") {
-      this.description = localize(this.language, `groups ${node.count}`, `그룹 ${node.count}`);
-      this.tooltip = localize(this.language, `${node.label} groups ${node.count}`, `${node.label} 그룹 ${node.count}`);
+      this.description = localize("groups {0}", String(node.count));
+      this.tooltip = localize("{0} groups {1}", String(node.label), String(node.count));
     } else {
-      this.description = localize(this.language, `groups ${node.count}`, `그룹 ${node.count}`);
-      this.tooltip = localize(this.language, `${node.label} (groups ${node.count})`, `${node.label} (그룹 ${node.count})`);
+      this.description = localize("groups {0}", String(node.count));
+      this.tooltip = localize("{0} (groups {1})", String(node.label), String(node.count));
     }
     if (node.kind === "group") {
       this.command = {
         command: "skillBridge.selectGroup",
-        title: localize(this.language, "Select Group", "그룹 선택"),
+        title: localize("Select Group"),
         arguments: [node]
       };
     }
@@ -154,14 +150,14 @@ function buildGroupTree(
       id: "workspace",
       kind: "root",
       side: "workspace",
-      label: localize(language, "Workspace Groups", "작업공간 그룹"),
+      label: localize("Workspace Groups"),
       count: workspaceCount
     },
     {
       id: "central",
       kind: "root",
       side: "central",
-      label: localize(language, "Central Groups", "중앙 그룹"),
+      label: localize("Central Groups"),
       count: centralCount
     }
   ];
@@ -184,6 +180,6 @@ function buildToolBuckets(
 }
 
 function toolLabel(tool: ToolType | "mixed", language: UiLanguage): string {
-  if (tool === "mixed") return localize(language, "Mixed", "혼합");
+  if (tool === "mixed") return localize("Mixed");
   return tool;
 }

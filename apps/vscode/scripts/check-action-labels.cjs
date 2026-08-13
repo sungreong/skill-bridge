@@ -65,30 +65,14 @@ for (const fileName of koreanFiles) {
 const catalogLabels = extractCommonToolLabels(path.join(root, "src", "views", "commonToolCatalog.ts"));
 const englishLabels = JSON.parse(fs.readFileSync(path.join(root, "package.nls.json"), "utf8"));
 const koreanLabels = JSON.parse(fs.readFileSync(path.join(root, "package.nls.ko.json"), "utf8"));
-const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const manifestCommands = manifest.contributes?.commands ?? [];
-const manifestCommandById = new Map(manifestCommands.map((command) => [command.command, command]));
+const koreanRuntimeLabels = JSON.parse(fs.readFileSync(path.join(root, "l10n", "bundle.l10n.ko.json"), "utf8"));
 for (const [command, label] of catalogLabels.entries()) {
   const key = command.replace(/^skillBridge\./, "command.");
-  if (englishLabels[key] !== label.english) {
-    failures.push(`package.nls.json: ${key} does not match Quick Tools English label: ${englishLabels[key]} !== ${label.english}`);
+  if (englishLabels[key] !== label) {
+    failures.push(`package.nls.json: ${key} does not match Quick Tools English label: ${englishLabels[key]} !== ${label}`);
   }
-  if (koreanLabels[key] !== label.korean) {
-    failures.push(`package.nls.ko.json: ${key} does not match Quick Tools Korean label: ${koreanLabels[key]} !== ${label.korean}`);
-  }
-}
-
-for (const command of manifestCommands) {
-  const alias = /^skillBridge\.menu\.(en|ko)\.(.+)$/.exec(command.command);
-  if (!alias) continue;
-  const targetCommand = manifestCommandById.get(`skillBridge.${alias[2]}`);
-  const expected = resolveManifestTitle(targetCommand?.title, alias[1] === "ko" ? koreanLabels : englishLabels);
-  if (typeof expected !== "string") {
-    failures.push(`package.json: ${command.command} has no localization target command.${alias[2]}`);
-    continue;
-  }
-  if (command.title !== expected) {
-    failures.push(`package.json: ${command.command} title mismatch: ${command.title} !== ${expected}`);
+  if (koreanLabels[key] !== koreanRuntimeLabels[label]) {
+    failures.push(`package.nls.ko.json: ${key} does not match Quick Tools Korean runtime label: ${koreanLabels[key]} !== ${koreanRuntimeLabels[label]}`);
   }
 }
 
@@ -147,12 +131,9 @@ function extractCommonToolLabels(filePath) {
   while (blockMatch) {
     const block = blockMatch[0];
     const command = /command:\s*"([^"]+)"/.exec(block)?.[1];
-    const labelMatch = /label:\s*localize\(language,\s*"((?:\\"|[^"])*)",\s*"((?:\\"|[^"])*)"\)/.exec(block);
+    const labelMatch = /label:\s*localize\(\s*"((?:\\"|[^"])*)"\)/.exec(block);
     if (command && labelMatch) {
-      labels.set(command, {
-        english: unescapeTsString(labelMatch[1]),
-        korean: unescapeTsString(labelMatch[2])
-      });
+      labels.set(command, unescapeTsString(labelMatch[1]));
     }
     blockMatch = blockRegex.exec(text);
   }
@@ -161,10 +142,4 @@ function extractCommonToolLabels(filePath) {
 
 function unescapeTsString(value) {
   return value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-}
-
-function resolveManifestTitle(value, labels) {
-  if (typeof value !== "string") return undefined;
-  const match = /^%([^%]+)%$/.exec(value);
-  return match ? labels[match[1]] : value;
 }

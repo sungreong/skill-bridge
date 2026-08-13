@@ -41,8 +41,8 @@ export function buildEmbeddedCommonTools(language: UiLanguage, side: "workspace"
       kind: "toolSection",
       tool: "agents",
       relativePath: "__quick_tools_advanced__",
-      label: localize(language, "Advanced Tools", "고급 도구"),
-      description: localize(language, "Less common actions", "자주 쓰지 않는 기능"),
+      label: localize("Advanced Tools"),
+      description: localize("Less common actions"),
       icon: "settings-gear",
       count: advancedChildren.length,
       collapsed: true,
@@ -54,10 +54,10 @@ export function buildEmbeddedCommonTools(language: UiLanguage, side: "workspace"
     kind: "toolSection",
     tool: "agents",
     relativePath: "",
-    label: localize(language, "Quick Tools", "빠른 도구"),
+    label: localize("Quick Tools"),
     description: side === "workspace"
-      ? localize(language, "Common and workspace actions", "공통/작업공간 기능")
-      : localize(language, "Central actions", "중앙 기능"),
+      ? localize("Common and workspace actions")
+      : localize("Central actions"),
     icon: "tools",
     count: children.length,
     collapsed: true,
@@ -71,15 +71,15 @@ function getVisibleQuickToolCommands(): Set<string> {
 }
 
 function sectionLabel(sectionId: CommonToolSectionId, language: UiLanguage): string {
-  if (sectionId === "common") return localize(language, "Common Functions", "공통 기능");
-  if (sectionId === "workspace") return localize(language, "Workspace Functions", "작업공간 기능");
-  return localize(language, "Central Functions", "중앙 기능");
+  if (sectionId === "common") return localize("Common Functions");
+  if (sectionId === "workspace") return localize("Workspace Functions");
+  return localize("Central Functions");
 }
 
 function sectionDescription(sectionId: CommonToolSectionId, language: UiLanguage): string {
-  if (sectionId === "common") return localize(language, "Shared tools", "공통 사용");
-  if (sectionId === "workspace") return localize(language, "Workspace-only actions", "작업공간 전용 동작");
-  return localize(language, "Central-only actions", "중앙 전용 동작");
+  if (sectionId === "common") return localize("Shared tools");
+  if (sectionId === "workspace") return localize("Workspace-only actions");
+  return localize("Central-only actions");
 }
 
 function sectionIcon(sectionId: CommonToolSectionId): string {

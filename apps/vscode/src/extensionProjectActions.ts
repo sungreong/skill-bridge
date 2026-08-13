@@ -23,7 +23,7 @@ type ProjectContext = {
 };
 
 export function createExtensionProjectActions(args: {
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   toUserError: (error: unknown) => string;
   handleError: (error: unknown) => Promise<void>;
   output: vscode.OutputChannel;
@@ -116,7 +116,7 @@ export function createExtensionProjectActions(args: {
     }
 
     if (!workspacePath) {
-      throw new Error(args.tr("Open a workspace folder first.", "먼저 작업공간 폴더를 여세요."));
+      throw new Error(args.tr("Open a workspace folder first."));
     }
 
     const configuredCentralRepoPath = getConfiguredCentralRepoPath();
@@ -143,7 +143,7 @@ export function createExtensionProjectActions(args: {
     }
 
     if (!centralRepoPath) {
-      throw new Error(args.tr("Central library path is not configured.", "Central 라이브러리 경로가 설정되지 않았습니다."));
+      throw new Error(args.tr("Central library path is not configured."));
     }
 
     args.state.workspacePath = workspacePath;
@@ -159,18 +159,18 @@ export function createExtensionProjectActions(args: {
   };
 
   const runNewSkillWizard = async (): Promise<void> => {
-    const side = await args.pickWizardSide(args.tr("Choose where to create the new skill", "새 스킬을 만들 위치"));
+    const side = await args.pickWizardSide(args.tr("Choose where to create the new skill"));
     if (!side) return;
     const tool = await args.pickTool();
     if (!tool) return;
     const name = await vscode.window.showInputBox({
-      title: args.tr("New Skill Name", "새 스킬 이름"),
-      prompt: args.tr("Creates skills/<name>/SKILL.md.", "skills/<name>/SKILL.md 형태로 생성됩니다."),
+      title: args.tr("New Skill Name"),
+      prompt: args.tr("Creates skills/<name>/SKILL.md."),
       validateInput: (value) => {
         const normalized = value.trim();
-        if (!normalized) return args.tr("Enter a skill name.", "스킬 이름을 입력하세요.");
+        if (!normalized) return args.tr("Enter a skill name.");
         if (normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
-          return args.tr("Skill names cannot include path separators or '..'.", "스킬 이름에는 경로 구분자나 '..'을 사용할 수 없습니다.");
+          return args.tr("Skill names cannot include path separators or '..'.");
         }
         return null;
       },
@@ -183,19 +183,19 @@ export function createExtensionProjectActions(args: {
     const folderRel = args.normalizeRel(path.posix.join("skills", name.trim()));
     const folderAbs = path.join(toolRoot, folderRel);
     if (await args.exists(folderAbs)) {
-      vscode.window.showWarningMessage(args.tr(`A skill already exists: ${tool}/${folderRel}`, `이미 같은 스킬이 있습니다: ${tool}/${folderRel}`));
+      vscode.window.showWarningMessage(args.tr("A skill already exists: {0}/{1}", String(tool), String(folderRel)));
       return;
     }
     await fs.mkdir(folderAbs, { recursive: true });
     await fs.writeFile(path.join(folderAbs, "SKILL.md"), args.buildSkillMdTemplate(name.trim()), "utf8");
-    vscode.window.showInformationMessage(args.tr(`New skill created: ${side} ${tool}/${folderRel}`, `새 스킬 생성 완료: ${side} ${tool}/${folderRel}`));
+    vscode.window.showInformationMessage(args.tr("New skill created: {0} {1}/{2}", String(side), String(tool), String(folderRel)));
   };
 
   const runAssetTransferWizard = async (sourceSide: TreeSide): Promise<void> => {
-    const asset = await args.pickWizardAsset(sourceSide, sourceSide === "workspace" ? args.tr("Choose a skill to save to Central", "중앙에 반영할 스킬") : args.tr("Choose a skill to bring to Workspace", "작업공간으로 가져올 스킬"));
+    const asset = await args.pickWizardAsset(sourceSide, sourceSide === "workspace" ? args.tr("Choose a skill to save to Central") : args.tr("Choose a skill to bring to Workspace"));
     if (!asset) return;
     if (asset.status === "missingSkillMd") {
-      vscode.window.showWarningMessage(args.tr("Skills without SKILL.md cannot be applied.", "SKILL.md가 없는 스킬은 반영할 수 없습니다."));
+      vscode.window.showWarningMessage(args.tr("Skills without SKILL.md cannot be applied."));
       return;
     }
     const sourceFiles = sourceSide === "workspace" ? args.state.workspaceSkills : args.state.centralSkills;
@@ -205,7 +205,7 @@ export function createExtensionProjectActions(args: {
         .map((file) => ({ tool: file.tool, relativePath: file.relativePath }))
     );
     if (selections.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No files were found to apply.", "반영할 파일을 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No files were found to apply."));
       return;
     }
     const result = await args.transferSelections(sourceSide, selections, {
@@ -214,10 +214,7 @@ export function createExtensionProjectActions(args: {
     const mirroredGroups = await args.mirrorGroupsByIds(sourceSide, result.affectedGroupIds);
     await args.refresh();
     vscode.window.showInformationMessage(
-      args.tr(
-        `Skill apply result: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : ""}`,
-        `스킬 반영 결과: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? ` · 그룹 반영 ${mirroredGroups}개` : ""}`
-      )
+      args.tr("Skill apply result: copied {0} · deleted {1} · unchanged {2}{3}", String(result.copied), String(result.deleted), String(result.unchanged), String(mirroredGroups > 0 ? ` · applied groups ${mirroredGroups}` : ""))
     );
   };
 
@@ -228,7 +225,7 @@ export function createExtensionProjectActions(args: {
         ? projectContext.centralRepoPath
         : projectContext.centralResolution.fallbackPath;
       const picked = await vscode.window.showOpenDialog({
-        title: args.tr("Choose Central Library Folder", "Central 라이브러리 폴더 선택"),
+        title: args.tr("Choose Central Library Folder"),
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
@@ -245,7 +242,7 @@ export function createExtensionProjectActions(args: {
       await vscode.workspace.getConfiguration(args.settingsSection).update("centralRepoPath", folder, vscode.ConfigurationTarget.Global);
       await args.clearCentralRepoPathOverrides();
       await args.refresh();
-      vscode.window.showInformationMessage(args.tr(`Central library folder set: ${folder}`, `Central 라이브러리 폴더 설정 완료: ${folder}`));
+      vscode.window.showInformationMessage(args.tr("Central library folder set: {0}", String(folder)));
     } catch (error) {
       await args.handleError(error);
     }

@@ -14,7 +14,7 @@ type PersistGroupsFn = (
 ) => Promise<void>;
 
 export function createExtensionGroupStateTools(args: {
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   toUserError: (error: unknown) => string;
   handleError: (error: unknown) => Promise<void>;
   state: {
@@ -62,7 +62,7 @@ export function createExtensionGroupStateTools(args: {
   uniqueSelections: (selections: Array<{ tool: ToolType; relativePath: string }>) => Array<{ tool: ToolType; relativePath: string }>;
   ensureUniqueGroupNameForTool: (args: {
     groups: SelectionGroup[];
-    tr: (english: string, korean: string) => string;
+    tr: (message: string, ...args: Array<string | number | boolean>) => string;
     side: TreeSide;
     tool: ToolType;
     name: string;
@@ -107,13 +107,13 @@ export function createExtensionGroupStateTools(args: {
     side === "workspace" ? args.state.workspaceSkills : args.state.centralSkills;
 
   const sideLabel = (side: TreeSide): string =>
-    side === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
+    side === "workspace" ? args.tr("Workspace") : args.tr("Central");
 
   const uniqueTargetTools = (targets: GroupTarget[]): ToolType[] =>
     [...new Set(targets.map((target) => target.tool))].sort((left, right) => left.localeCompare(right));
 
   const formatTools = (tools: ToolType[]): string =>
-    tools.length === 0 ? args.tr("unknown agent", "알 수 없는 에이전트") : tools.join(", ");
+    tools.length === 0 ? args.tr("unknown agent") : tools.join(", ");
 
   const groupNameKey = (name: string): string => name.trim().toLocaleLowerCase("ko-KR");
 
@@ -172,15 +172,12 @@ export function createExtensionGroupStateTools(args: {
     );
     const missingSelectedTargets = normalizedTargets.filter((target) => !args.targetExistsInFiles(target, targetFiles));
     const tools = uniqueTargetTools(normalizedTargets);
-    const groupSuffix = mirroredGroup ? args.tr(" · group applied", " · 그룹 반영됨") : "";
+    const groupSuffix = mirroredGroup ? args.tr(" · group applied") : "";
 
     if (missingSelectedTargets.length > 0) {
       return {
         warning: true,
-        message: args.tr(
-          `Group copy made no file changes, but ${sideLabel(targetSide)} still misses ${missingSelectedTargets.length} selected target(s): ${formatTargetSample(missingSelectedTargets)}. Refresh and review the apply plan for this group.${groupSuffix}`,
-          `그룹 복사 결과 파일 변경이 없었지만 ${sideLabel(targetSide)}에 선택 대상 ${missingSelectedTargets.length}개가 아직 없습니다: ${formatTargetSample(missingSelectedTargets)}. 새로고침 후 이 그룹의 반영 계획을 다시 확인하세요.${groupSuffix}`
-        )
+        message: args.tr("Group copy made no file changes, but {0} still misses {1} selected target(s): {2}. Refresh and review the apply plan for this group.{3}", String(sideLabel(targetSide)), String(missingSelectedTargets.length), String(formatTargetSample(missingSelectedTargets)), String(groupSuffix))
       };
     }
 
@@ -191,19 +188,13 @@ export function createExtensionGroupStateTools(args: {
         .join(", ");
       return {
         warning: true,
-        message: args.tr(
-          `No file changes for group "${group.name}" (${formatTools(tools)}): those targets already exist in ${sideLabel(targetSide)}. Same-named ${sideLabel(group.side)} groups are still missing in ${sideLabel(targetSide)} for: ${missingSummary}. Bring those agent groups separately.${groupSuffix}`,
-          `그룹 "${group.name}" (${formatTools(tools)})은 ${sideLabel(targetSide)}에 이미 있어서 파일 변경이 없습니다. 같은 이름의 ${sideLabel(group.side)} 그룹 중 ${sideLabel(targetSide)}에 아직 없는 에이전트: ${missingSummary}. 해당 에이전트 그룹을 별도로 가져오세요.${groupSuffix}`
-        )
+        message: args.tr("No file changes for group \"{0}\" ({1}): those targets already exist in {2}. Same-named {3} groups are still missing in {4} for: {5}. Bring those agent groups separately.{6}", String(group.name), String(formatTools(tools)), String(sideLabel(targetSide)), String(sideLabel(group.side)), String(sideLabel(targetSide)), String(missingSummary), String(groupSuffix))
       };
     }
 
     return {
       warning: false,
-      message: args.tr(
-        `Group copy made no file changes for "${group.name}" (${formatTools(tools)}) · unchanged ${result.unchanged} · failed ${result.failed}${groupSuffix}`,
-        `그룹 "${group.name}" (${formatTools(tools)}) 복사 결과 적용된 파일 없음 · 변경없음 ${result.unchanged}개 · 실패 ${result.failed}개${groupSuffix}`
-      )
+      message: args.tr("Group copy made no file changes for \"{0}\" ({1}) · unchanged {2} · failed {3}{4}", String(group.name), String(formatTools(tools)), String(result.unchanged), String(result.failed), String(groupSuffix))
     };
   };
 
@@ -233,10 +224,7 @@ export function createExtensionGroupStateTools(args: {
       ? selectedGroupId
       : null;
     if (normalized.changed) {
-      args.output.appendLine(args.tr(
-        `[GroupNormalize] normalized during persist - split=${normalized.splitCount}, removedTargets=${normalized.removedTargetCount}, removedGroups=${normalized.removedGroupCount}`,
-        `[GroupNormalize] persist 시 정규화 적용 - split=${normalized.splitCount}, removedTargets=${normalized.removedTargetCount}, removedGroups=${normalized.removedGroupCount}`
-      ));
+      args.output.appendLine(args.tr("[GroupNormalize] normalized during persist - split={0}, removedTargets={1}, removedGroups={2}", String(normalized.splitCount), String(normalized.removedTargetCount), String(normalized.removedGroupCount)));
     }
     await args.saveSelectionGroups(args.state.workspacePath, args.state.centralRepoPath, args.state.groups);
     args.workspaceProvider.setGroups(args.state.groups);
@@ -326,10 +314,7 @@ export function createExtensionGroupStateTools(args: {
         const nextGroups = args.state.groups.filter((_, index) => !indexesToRemove.has(index));
         await persistGroups(nextGroups, args.state.selectedGroupId, { skipExistenceValidation: true });
       }
-      args.output.appendLine(args.tr(
-        `[GroupMirror] skipped "${sourceGroup.name}": no target-side skills were found after transfer.`,
-        `[GroupMirror] "${sourceGroup.name}" 건너뜀: 반영 후 대상 측 스킬을 찾지 못했습니다.`
-      ));
+      args.output.appendLine(args.tr("[GroupMirror] skipped \"{0}\": no target-side skills were found after transfer.", String(sourceGroup.name)));
       return false;
     }
 
@@ -363,10 +348,10 @@ export function createExtensionGroupStateTools(args: {
         label: group.name,
         description: group.description?.trim()
           ? group.description.trim()
-          : args.tr(`${group.targets.length} target(s)`, `대상 ${group.targets.length}개`),
+          : args.tr("{0} target(s)", String(group.targets.length)),
         value: group.id
       })),
-      { title: side === "workspace" ? args.tr("Select Group to Save to Central", "중앙에 반영할 그룹 선택") : args.tr("Select Group to Bring to Workspace", "작업공간으로 가져올 그룹 선택") }
+      { title: side === "workspace" ? args.tr("Select Group to Save to Central") : args.tr("Select Group to Bring to Workspace") }
     );
     if (!pick) return undefined;
     return groups.find((item) => item.id === pick.value);
@@ -380,26 +365,26 @@ export function createExtensionGroupStateTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const nodes = (overrideNodes && overrideNodes.length > 0) ? overrideNodes : resolveGroupingNodes(side);
       if (nodes.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Select items in the tree first.", "먼저 트리에서 항목을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select items in the tree first."));
         return;
       }
 
       const targets = args.buildGroupTargetsFromNodes(nodes);
       if (targets.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Only items under a skills folder can be saved as a group.", "skills 폴더 하위 항목만 그룹으로 저장할 수 있습니다."));
+        vscode.window.showWarningMessage(args.tr("Only items under a skills folder can be saved as a group."));
         return;
       }
 
       const name = await vscode.window.showInputBox({
-        title: args.tr("Group Name", "그룹 이름"),
-        prompt: args.tr("Enter a group name.", "그룹 이름을 입력하세요"),
+        title: args.tr("Group Name"),
+        prompt: args.tr("Enter a group name."),
         value: `group-${new Date().toISOString().slice(0, 10)}`
       });
       if (!name?.trim()) return;
       const trimmedName = name.trim();
       const description = await args.promptGroupDescription({
-        title: side === "workspace" ? args.tr("Workspace Group Description", "작업공간 그룹 설명") : args.tr("Central Group Description", "중앙 그룹 설명"),
-        prompt: args.tr("Describe what this group is for. This helps agents understand when to use it.", "이 그룹의 용도를 설명하세요. 에이전트가 그룹 목적을 이해하는 데 사용됩니다."),
+        title: side === "workspace" ? args.tr("Workspace Group Description") : args.tr("Central Group Description"),
+        prompt: args.tr("Describe what this group is for. This helps agents understand when to use it."),
         value: ""
       });
       if (description === undefined) return;
@@ -407,17 +392,14 @@ export function createExtensionGroupStateTools(args: {
       const selectedTools = [...new Set<ToolType>(targets.map((target) => target.tool))];
       const baseTool = selectedTools[0];
       if (!baseTool) {
-        vscode.window.showWarningMessage(args.tr("Select a valid skill first.", "유효한 스킬을 먼저 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a valid skill first."));
         return;
       }
       args.ensureUniqueGroupNameForTool({ groups: args.state.groups, tr: args.tr, side, tool: baseTool, name: trimmedName });
 
       const sameToolTargets = targets.filter((target) => target.tool === baseTool);
       if (sameToolTargets.length !== targets.length) {
-        vscode.window.showInformationMessage(args.tr(
-          `Skipped ${targets.length - sameToolTargets.length} targets from other agents and saved only ${baseTool} skills in the group.`,
-          `다른 에이전트 대상 ${targets.length - sameToolTargets.length}개는 제외하고 ${baseTool} 스킬만 그룹에 저장합니다.`
-        ));
+        vscode.window.showInformationMessage(args.tr("Skipped {0} targets from other agents and saved only {1} skills in the group.", String(targets.length - sameToolTargets.length), String(baseTool)));
       }
 
       const group: SelectionGroup = {
@@ -432,7 +414,7 @@ export function createExtensionGroupStateTools(args: {
       const saved = args.state.groups.find((item) => item.id === args.state.selectedGroupId)
         ?? args.state.groups.find((item) => item.name === group.name && item.side === group.side);
       if (saved) args.applyGroupHighlight(saved);
-      vscode.window.showInformationMessage(args.tr(`Group saved: ${group.name} (${sameToolTargets.length} skills)`, `그룹 저장 완료: ${group.name} (스킬 ${sameToolTargets.length}개)`));
+      vscode.window.showInformationMessage(args.tr("Group saved: {0} ({1} skills)", String(group.name), String(sameToolTargets.length)));
     } catch (error) {
       await args.handleError(error);
     }
@@ -446,12 +428,12 @@ export function createExtensionGroupStateTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const nodes = resolveGroupingNodes(side, targetNode);
       if (nodes.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Select skill folders or files first.", "먼저 스킬 폴더/파일을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select skill folders or files first."));
         return;
       }
       const targets = args.buildGroupTargetsFromNodes(nodes);
       if (targets.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Only valid skills with SKILL.md can be added to a group.", "SKILL.md가 있는 유효 스킬만 그룹에 추가할 수 있습니다."));
+        vscode.window.showWarningMessage(args.tr("Only valid skills with SKILL.md can be added to a group."));
         return;
       }
 
@@ -468,15 +450,12 @@ export function createExtensionGroupStateTools(args: {
         const created = await args.promptCreateGroupForTargets(
           side,
           targets.map((target) => ({ tool: target.tool, relativePath: target.relativePath, kind: "folder" as const })),
-          args.tr("No Existing Group", "기존 그룹 없음"),
-          args.tr("No matching group exists for this agent. Enter a group name to create it and add the selected skills.", "이 에이전트에 맞는 그룹이 없습니다. 그룹 이름을 입력하면 새 그룹을 만들고 선택한 스킬을 추가합니다.")
+          args.tr("No Existing Group"),
+          args.tr("No matching group exists for this agent. Enter a group name to create it and add the selected skills.")
         );
         if (created) {
-          const skipSuffix = created.skippedCount > 0 ? args.tr(` · skipped ${created.skippedCount}`, ` · 제외 대상 ${created.skippedCount}개`) : "";
-          vscode.window.showInformationMessage(args.tr(
-            `Group created and selected skills added: ${created.name} (${created.addedCount} skills${skipSuffix})`,
-            `그룹 생성 및 선택 스킬 추가 완료: ${created.name} (스킬 ${created.addedCount}개${skipSuffix})`
-          ));
+          const skipSuffix = created.skippedCount > 0 ? args.tr(" · skipped {0}", String(created.skippedCount)) : "";
+          vscode.window.showInformationMessage(args.tr("Group created and selected skills added: {0} ({1} skills{2})", String(created.name), String(created.addedCount), String(skipSuffix)));
         }
         return;
       }
@@ -486,13 +465,13 @@ export function createExtensionGroupStateTools(args: {
           label: group.name,
           description: group.description?.trim()
             ? group.description.trim()
-            : `${group.targets[0]?.tool ?? "-"} · ${group.targets.length} ${args.tr("skills", "스킬")}`,
+            : `${group.targets[0]?.tool ?? "-"} · ${group.targets.length} ${args.tr("skills")}`,
           value: group.id
         })),
         {
           canPickMany: true,
-          title: side === "workspace" ? args.tr("Add to Existing Workspace Groups", "기존 작업공간 그룹에 추가") : args.tr("Add to Existing Central Groups", "기존 중앙 그룹에 추가"),
-          placeHolder: args.tr("Choose one or more groups to add to.", "추가할 그룹을 하나 이상 선택하세요.")
+          title: side === "workspace" ? args.tr("Add to Existing Workspace Groups") : args.tr("Add to Existing Central Groups"),
+          placeHolder: args.tr("Choose one or more groups to add to.")
         }
       );
       if (!picks || picks.length === 0) return;
@@ -508,8 +487,8 @@ export function createExtensionGroupStateTools(args: {
         affectedTotal += result.affectedCount;
         skippedTotal += result.skippedCount;
       }
-      const skipSuffix = skippedTotal > 0 ? args.tr(` · skipped ${skippedTotal}`, ` · 제외 대상 ${skippedTotal}개`) : "";
-      vscode.window.showInformationMessage(args.tr(`Added to existing groups: ${affectedTotal} targets${skipSuffix}`, `기존 그룹 추가 완료: 반영 대상 ${affectedTotal}개${skipSuffix}`));
+      const skipSuffix = skippedTotal > 0 ? args.tr(" · skipped {0}", String(skippedTotal)) : "";
+      vscode.window.showInformationMessage(args.tr("Added to existing groups: {0} targets{1}", String(affectedTotal), String(skipSuffix)));
     } catch (error) {
       await args.handleError(error);
     }
@@ -524,7 +503,7 @@ export function createExtensionGroupStateTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const groups = args.state.groups.filter((item) => item.side === side);
       if (groups.length === 0) {
-        vscode.window.showWarningMessage(args.tr("No groups are registered.", "등록된 그룹이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("No groups are registered."));
         return null;
       }
 
@@ -534,12 +513,9 @@ export function createExtensionGroupStateTools(args: {
       const selections = args.targetsToSelections(getSideSkillFiles(side), group.targets);
       const scopeHints = group.targets.map((target) => ({ ...target }));
       if (selections.length === 0) {
-        const refreshLabel = args.tr("Refresh", "새로고침");
+        const refreshLabel = args.tr("Refresh");
         const picked = await vscode.window.showWarningMessage(
-          args.tr(
-            `Group "${group.name}" has no currently available skill files to apply. Its targets may be missing SKILL.md or no longer exist.`,
-            `그룹 "${group.name}"에는 현재 반영할 수 있는 스킬 파일이 없습니다. 대상에 SKILL.md가 없거나 더 이상 존재하지 않을 수 있습니다.`
-          ),
+          args.tr("Group \"{0}\" has no currently available skill files to apply. Its targets may be missing SKILL.md or no longer exist.", String(group.name)),
           refreshLabel
         );
         if (picked === refreshLabel) await args.refresh();
@@ -548,17 +524,14 @@ export function createExtensionGroupStateTools(args: {
 
       if (!options?.skipConfirm) {
         const directionLabel = side === "workspace"
-          ? args.tr("Workspace → Central", "작업공간 → 중앙")
-          : args.tr("Central → Workspace", "중앙 → 작업공간");
+          ? args.tr("Workspace → Central")
+          : args.tr("Central → Workspace");
         const ok = await vscode.window.showWarningMessage(
-          args.tr(
-            `Apply group "${group.name}" (${group.targets.length} skill folders) via ${directionLabel}?`,
-            `그룹 "${group.name}" (스킬 폴더 ${group.targets.length}개)를 ${directionLabel} 방향으로 반영할까요?`
-          ),
+          args.tr("Apply group \"{0}\" ({1} skill folders) via {2}?", String(group.name), String(group.targets.length), String(directionLabel)),
           { modal: true },
-          args.tr("Continue", "진행")
+          args.tr("Continue")
         );
-        if (ok !== args.tr("Continue", "진행")) return null;
+        if (ok !== args.tr("Continue")) return null;
       }
 
       const result = await args.transferSelections(side, selections, {
@@ -586,11 +559,8 @@ export function createExtensionGroupStateTools(args: {
             vscode.window.showInformationMessage(diagnosis.message);
           }
         } else {
-          const groupSuffix = mirroredGroup ? args.tr(" · opposite panel group updated", " · 반대 패널 그룹 반영됨") : "";
-          vscode.window.showInformationMessage(args.tr(
-            `Group applied: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${groupSuffix}`,
-            `그룹 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${groupSuffix}`
-          ));
+          const groupSuffix = mirroredGroup ? args.tr(" · opposite panel group updated") : "";
+          vscode.window.showInformationMessage(args.tr("Group applied: copied {0} · deleted {1} · unchanged {2}{3}", String(result.copied), String(result.deleted), String(result.unchanged), String(groupSuffix)));
         }
       }
       return { copied: result.copied, deleted: result.deleted, unchanged: result.unchanged };

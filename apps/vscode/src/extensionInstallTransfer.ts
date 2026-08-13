@@ -11,10 +11,11 @@ import {
   inferNewSkillFolderNames
 } from "./installGrouping";
 import { getWritableSkillRoot } from "./skillPaths";
-import type { SelectionGroup, SkillFile, SkillSelection, SkillTreeNode, ToolType, TransferPlan, TransferPlanItem } from "./types";
+import { parseNpxSkillsAddCommand } from "./npxSkillsCommand";
+import { ALL_AGENTS, type SelectionGroup, type SkillFile, type SkillSelection, type SkillTreeNode, type ToolType, type TransferPlan, type TransferPlanItem } from "./types";
 
 type TreeSide = "workspace" | "central";
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TransferScopeHint = { tool: ToolType; relativePath: string; kind: "file" | "folder" };
 type TransferPlanOptions = Pick<TransferPlan, "groupContext" | "repoContext" | "scopeContext"> & { scopeHints?: TransferScopeHint[] };
 export type NpxInstallPreset = {
@@ -22,6 +23,7 @@ export type NpxInstallPreset = {
   skills: string[];
   cwd?: string;
   tool?: ToolType;
+  tools?: ToolType[];
   skipCommandConfirm?: boolean;
   skipPostInstallSyncPrompt?: boolean;
 };
@@ -54,7 +56,7 @@ export function createInstallTransferTools(args: {
   parseSkillInputs: (value: string) => string[];
   formatCommandForDisplay: (command: string, args: string[]) => string;
   loadSkillFilesBySide: (side: TreeSide, workspacePath: string, centralRepoPath: string, agents: ToolType[]) => Promise<SkillFile[]>;
-  runSkillsAdd: (cwd: string, repo: string, skills: string[]) => Promise<{ ok: boolean; command: string; stdout: string; stderr: string }>;
+  runSkillsAdd: (cwd: string, repo: string, skills: string[], tools?: ToolType[]) => Promise<{ ok: boolean; command: string; stdout: string; stderr: string }>;
   resolveSelectedAgentToolForSide: (side: TreeSide, node?: SkillTreeNode) => ToolType | undefined;
   formatAgentFolderLabel: (tool: ToolType) => string;
   getAutoSyncWorkspaceAgents: () => ToolType[];
@@ -84,6 +86,7 @@ export function createInstallTransferTools(args: {
 }): {
   installSkills: (node?: SkillTreeNode) => Promise<void>;
   installSkillsForSide: (side: TreeSide) => Promise<void>;
+  installSkillsCommandForSide: (side: TreeSide) => Promise<void>;
   installNpxRepoForSide: (side: TreeSide, preset: NpxInstallPreset) => Promise<boolean>;
   resolveInstallSide: (node?: SkillTreeNode) => Promise<TreeSide | undefined>;
   transferSelections: (
@@ -119,10 +122,10 @@ export function createInstallTransferTools(args: {
     if (args.state.centralSelection.length > 0 && args.state.workspaceSelection.length === 0) return "central";
     const pick = await vscode.window.showQuickPick(
       [
-        { label: args.tr("Workspace", "작업공간"), value: "workspace" as TreeSide },
-        { label: args.tr("Central", "중앙"), value: "central" as TreeSide }
+        { label: args.tr("Workspace"), value: "workspace" as TreeSide },
+        { label: args.tr("Central"), value: "central" as TreeSide }
       ],
-      { title: args.tr("Select Where to Run npx skills add", "npx skills add 실행 위치 선택") }
+      { title: args.tr("Select Where to Run npx skills add") }
     );
     return pick?.value;
   };
@@ -141,7 +144,7 @@ export function createInstallTransferTools(args: {
         ? async () => await args.buildTransferPlan(side, getAllSelectionsForSide(side), {
             scopeContext: {
               type: "all",
-              label: side === "workspace" ? args.tr("All Workspace", "작업공간 전체") : args.tr("All Central", "중앙 전체"),
+              label: side === "workspace" ? args.tr("All Workspace") : args.tr("All Central"),
               count: 0,
               expandable: false
             }
@@ -158,10 +161,7 @@ export function createInstallTransferTools(args: {
         : [];
     const result = await args.applyTransferPlan(resolved.items, side === "workspace" ? args.state.workspacePath : null);
     if (result.failed > 0) {
-      vscode.window.showWarningMessage(args.tr(
-        `Apply result: copied ${result.copied}, deleted ${result.deleted}, unchanged ${result.unchanged}, failed ${result.failed}`,
-        `반영 결과: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개 / 실패 행 ${result.failed}개`
-      ));
+      vscode.window.showWarningMessage(args.tr("Apply result: copied {0}, deleted {1}, unchanged {2}, failed {3}", String(result.copied), String(result.deleted), String(result.unchanged), String(result.failed)));
     }
     return { ...result, appliedScopeHints, affectedGroupIds };
   };
@@ -178,24 +178,24 @@ export function createInstallTransferTools(args: {
   };
 
   const pickEmptyTransferScope = async (side: TreeSide): Promise<"all" | "cancel"> => {
-    const direction = side === "workspace" ? args.tr("Save to Central", "중앙에 반영") : args.tr("Bring to Workspace", "작업공간으로 가져오기");
+    const direction = side === "workspace" ? args.tr("Save to Central") : args.tr("Bring to Workspace");
     const pick = await vscode.window.showQuickPick(
       [
         {
-          label: args.tr("Review All Visible Skills Before Applying", "현재 보이는 전체 스킬 반영 전 검토"),
+          label: args.tr("Review All Visible Skills Before Applying"),
           description: direction,
-          detail: args.tr("Only when nothing is selected, this opens all visible skills in the review screen.", "선택한 항목이 없을 때만 전체를 검토 화면에 올립니다."),
+          detail: args.tr("Only when nothing is selected, this opens all visible skills in the review screen."),
           value: "all" as const
         },
         {
-          label: args.tr("Cancel", "취소"),
-          description: args.tr("Select a skill or folder in the tree first", "먼저 트리에서 스킬이나 폴더를 선택"),
-          detail: args.tr("To apply specific items, right-click or select them in the tree and run this again.", "특정 항목만 반영하려면 트리에서 우클릭하거나 선택 후 다시 실행하세요."),
+          label: args.tr("Cancel"),
+          description: args.tr("Select a skill or folder in the tree first"),
+          detail: args.tr("To apply specific items, right-click or select them in the tree and run this again."),
           value: "cancel" as const
         }
       ],
       {
-        title: args.tr("Select Apply Scope", "반영 범위를 선택하세요"),
+        title: args.tr("Select Apply Scope"),
         matchOnDescription: true,
         matchOnDetail: true
       }
@@ -203,21 +203,22 @@ export function createInstallTransferTools(args: {
     return pick?.value ?? "cancel";
   };
 
-  const pickNpxTargetAgent = async (side: TreeSide): Promise<ToolType | undefined> => {
+  const pickNpxTargetAgents = async (side: TreeSide): Promise<ToolType[] | undefined> => {
     const picked = await vscode.window.showQuickPick(
       args.state.agents.map((tool) => ({
         label: args.formatAgentFolderLabel(tool),
         description: side === "workspace"
-          ? args.tr("Save installed skills in this workspace agent folder.", "설치한 스킬을 이 작업공간 에이전트 폴더에 저장합니다.")
-          : args.tr("Save installed skills in this Central agent folder.", "설치한 스킬을 이 Central 에이전트 폴더에 저장합니다."),
+          ? args.tr("Save installed skills in this workspace agent folder.")
+          : args.tr("Save installed skills in this Central agent folder."),
         value: tool
       })),
       {
-        title: args.tr("Choose target agent for npx skills", "npx 스킬을 저장할 에이전트 선택"),
-        placeHolder: args.tr("Pick where the installed skill folders should be saved.", "설치된 스킬 폴더를 저장할 위치를 선택하세요.")
+        canPickMany: true,
+        title: args.tr("Choose target agent for npx skills"),
+        placeHolder: args.tr("Pick one or more places where the installed skill folders should be saved.")
       }
     );
-    return picked?.value;
+    return picked && picked.length > 0 ? picked.map((item) => item.value) : undefined;
   };
 
   const formatTransferScopeLabel = (hints: TransferScopeHint[]): string => {
@@ -228,7 +229,7 @@ export function createInstallTransferTools(args: {
     });
     const label = preview.join(", ");
     return hints.length > preview.length
-      ? args.tr(`${label} and ${hints.length - preview.length} more`, `${label} 외 ${hints.length - preview.length}개`)
+      ? args.tr("{0} and {1} more", String(label), String(hints.length - preview.length))
       : label;
   };
 
@@ -240,13 +241,13 @@ export function createInstallTransferTools(args: {
     isWholeTreeScope: boolean;
   }): TransferPlan["scopeContext"] => {
     if (input.selectedGroup) {
-      return { type: "group", label: args.tr(`Group: ${input.selectedGroup.name}`, `그룹: ${input.selectedGroup.name}`), count: input.selectedGroup.targets.length, expandable: false };
+      return { type: "group", label: args.tr("Group: {0}", String(input.selectedGroup.name)), count: input.selectedGroup.targets.length, expandable: false };
     }
     if (input.hints && input.hints.length > 0) {
       return { type: "selection", label: formatTransferScopeLabel(input.hints), count: input.hints.length, expandable: false };
     }
     if (input.isWholeTreeScope || input.nodes.some((node) => node.relativePath === "")) {
-      return { type: "all", label: input.side === "workspace" ? args.tr("All Workspace", "작업공간 전체") : args.tr("All Central", "중앙 전체"), count: 0, expandable: false };
+      return { type: "all", label: input.side === "workspace" ? args.tr("All Workspace") : args.tr("All Central"), count: 0, expandable: false };
     }
     if (input.nodes.length > 0) {
       return { type: "selection", label: input.nodes.map((node) => `${node.tool}/${node.label}`).join(", "), count: input.nodes.length, expandable: false };
@@ -255,19 +256,27 @@ export function createInstallTransferTools(args: {
   };
 
   const runInstallSkills = async (side: TreeSide, node?: SkillTreeNode, preset?: NpxInstallPreset): Promise<boolean> => {
-      const selectedTool = preset?.tool ?? args.resolveSelectedAgentToolForSide(side, node) ?? await pickNpxTargetAgent(side);
-      if (!selectedTool) return false;
+      const selectedFromContext = args.resolveSelectedAgentToolForSide(side, node);
+      const selectedTools = preset?.tools?.length
+        ? preset.tools
+        : preset?.tool
+          ? [preset.tool]
+          : selectedFromContext
+            ? [selectedFromContext]
+            : await pickNpxTargetAgents(side);
+      if (!selectedTools || selectedTools.length === 0) return false;
+      const primaryTool = selectedTools[0] as ToolType;
       const repoInput = preset?.repoUrl ?? await vscode.window.showInputBox({
         title: side === "workspace" ? "Workspace: npx skills add" : "Central: npx skills add",
-        prompt: args.tr("Enter the skill repository URL to install", "설치할 스킬 저장소 URL을 입력하세요"),
+        prompt: args.tr("Enter the skill repository URL to install"),
         value: "https://github.com/vercel-labs/skills",
         ignoreFocusOut: true
       });
       const repo = repoInput?.trim();
       if (!repo) return false;
       const skillsInput = preset ? preset.skills.join(", ") : await vscode.window.showInputBox({
-        title: args.tr("Skill Names to Install", "설치할 스킬 이름"),
-        prompt: args.tr("Enter names separated by commas. Leave empty for all (*).", "콤마(,)로 구분해 입력하세요. 비우면 전체(*)"),
+        title: args.tr("Skill Names to Install"),
+        prompt: args.tr("Enter names separated by commas. Leave empty for all (*)."),
         value: "*",
         ignoreFocusOut: true
       });
@@ -275,35 +284,31 @@ export function createInstallTransferTools(args: {
       const skills = preset ? preset.skills : args.parseSkillInputs(skillsInput);
       const sideBasePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
       const defaultCwd = sideBasePath;
-      const useStaging = selectedTool !== "agents";
-      const cwdInput = preset?.cwd ?? (useStaging ? defaultCwd : await vscode.window.showInputBox({
-        title: args.tr("Working Directory", "작업 디렉터리"),
-        prompt: args.tr("Enter the directory where npx skills add should run", "npx skills add 명령을 실행할 작업 디렉터리를 입력하세요"),
-        value: defaultCwd,
-        ignoreFocusOut: true
-      }));
+      const cwdInput = preset?.cwd ?? defaultCwd;
       if (cwdInput === undefined) return false;
       const cwd = cwdInput.trim() || defaultCwd;
       if (!(await args.exists(cwd))) {
-        vscode.window.showErrorMessage(args.tr(`Working directory not found: ${cwd}`, `작업 디렉터리를 찾을 수 없습니다: ${cwd}`));
+        vscode.window.showErrorMessage(args.tr("Working directory not found: {0}", String(cwd)));
         return false;
       }
       const stat = await fs.stat(cwd).catch(() => null);
       if (!stat?.isDirectory()) {
-        vscode.window.showErrorMessage(args.tr(`Enter a directory path: ${cwd}`, `디렉터리 경로를 입력해주세요: ${cwd}`));
+        vscode.window.showErrorMessage(args.tr("Enter a directory path: {0}", String(cwd)));
         return false;
       }
-      const stagingDir = useStaging ? await fs.mkdtemp(path.join(os.tmpdir(), `skill-bridge-npx-${side}-`)) : null;
-      const commandCwd = stagingDir ?? cwd;
-      const targetSkillRoot = path.join(getWritableSkillRoot(sideBasePath, selectedTool, side), "skills");
-      const commandArgs = ["-y", "skills", "add", repo, ...skills.flatMap((skill) => ["--skill", skill]), "--yes"];
-      const runLabel = args.tr("Run Command", "명령 실행");
+      const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), `skill-bridge-npx-${side}-`));
+      const commandCwd = stagingDir;
+      const targetSkillRoots = selectedTools.map((tool) => ({
+        tool,
+        skillRoot: path.join(getWritableSkillRoot(sideBasePath, tool, side), "skills")
+      }));
+      const commandArgs = buildSkillsAddCommandArgs(repo, skills, selectedTools);
+      const runLabel = args.tr("Run Command");
       if (!preset?.skipCommandConfirm) {
+        const targetAgentLabel = selectedTools.map((tool) => args.formatAgentFolderLabel(tool)).join(", ");
+        const saveLocations = targetSkillRoots.map((item) => `${args.formatAgentFolderLabel(item.tool)}: ${item.skillRoot}`).join("\n");
         const confirm = await vscode.window.showWarningMessage(
-          args.tr(
-            `Run this command?\n\nTarget agent: ${args.formatAgentFolderLabel(selectedTool)}\nSave location: ${targetSkillRoot}\nWorking directory: ${commandCwd}\nCommand: ${args.formatCommandForDisplay("npx", commandArgs)}`,
-            `다음 명령을 실행할까요?\n\n대상 에이전트: ${args.formatAgentFolderLabel(selectedTool)}\n저장 위치: ${targetSkillRoot}\n작업 디렉터리: ${commandCwd}\n명령: ${args.formatCommandForDisplay("npx", commandArgs)}`
-          ),
+          args.tr("Run this command?\n\nTarget agents: {0}\nSave locations:\n{1}\nWorking directory: {2}\nCommand: {3}", String(targetAgentLabel), String(saveLocations), String(commandCwd), String(args.formatCommandForDisplay("npx", commandArgs))),
           { modal: true },
           runLabel
         );
@@ -314,58 +319,64 @@ export function createInstallTransferTools(args: {
       }
 
       const beforeFiles = await args.loadSkillFilesBySide(side, args.state.workspacePath, args.state.centralRepoPath, args.state.agents);
-      const result = await args.runSkillsAdd(commandCwd, repo, skills);
+      const result = await args.runSkillsAdd(commandCwd, repo, skills, selectedTools);
       const text = [result.command, result.stdout, result.stderr].filter(Boolean).join("\n");
-      args.output.appendLine(`[skills:add] side=${side} target=${selectedTool} cwd=${commandCwd}`);
+      args.output.appendLine(`[skills:add] side=${side} targets=${selectedTools.join(",")} cwd=${commandCwd}`);
       args.output.appendLine(text || "(no output)");
       args.output.show(true);
       if (!result.ok) {
         if (stagingDir) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
-        vscode.window.showErrorMessage(args.tr("npx skills add failed. Check the Output panel.", "npx skills add 실행에 실패했습니다. Output 패널을 확인하세요."));
+        vscode.window.showErrorMessage(args.tr("npx skills add failed. Check the Output panel."));
         return false;
       }
 
-      const stagedNames = stagingDir ? await listStagedSkillNames(stagingDir) : [];
+      const stagedNames = await listStagedSkillNames(stagingDir, primaryTool);
       const installedNames = extractInstalledSkillFolderNames(`${result.stdout}\n${result.stderr}`);
       const presetNames = preset?.skills.filter((skill) => skill !== "*") ?? [];
-      const targetNames = installedNames.length > 0 ? installedNames : stagedNames.length > 0 ? stagedNames : presetNames;
-      if (stagingDir) {
-        const copied = await copyStagedSkillsToTarget(stagingDir, targetSkillRoot, targetNames, !preset?.skipCommandConfirm, args.tr);
-        await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
-        if (!copied) return false;
+      const targetNames = stagedNames.length > 0 ? stagedNames : installedNames.length > 0 ? installedNames : presetNames;
+      const copiedTools: ToolType[] = [];
+      for (const target of targetSkillRoots) {
+        const copied = await copyStagedSkillsToTarget(stagingDir, target.skillRoot, targetNames, target.tool, !preset?.skipCommandConfirm, args.tr);
+        if (!copied) {
+          await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+          return false;
+        }
+        copiedTools.push(target.tool);
       }
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
       await args.refresh();
       const afterFiles = await args.loadSkillFilesBySide(side, args.state.workspacePath, args.state.centralRepoPath, args.state.agents);
       const fallbackNames = inferNewSkillFolderNames(beforeFiles, afterFiles);
       const groupNames = targetNames.length > 0 ? targetNames : fallbackNames;
-      const rawTargets = buildGroupTargetsFromNames(afterFiles, groupNames).filter((target) => target.tool === selectedTool);
+      const selectedToolSet = new Set<ToolType>(copiedTools);
+      const rawTargets = buildGroupTargetsFromNames(afterFiles, groupNames).filter((target) => selectedToolSet.has(target.tool));
       const availableTools = getUniqueTargetTools(rawTargets);
 
-      let groupingTool: ToolType | undefined = selectedTool;
+      let groupingTool: ToolType | undefined = copiedTools.length === 1 ? copiedTools[0] : undefined;
       if (!groupingTool && availableTools.length === 1) groupingTool = availableTools[0];
-      if (!groupingTool && availableTools.length > 1) {
+      if (!groupingTool && selectedTools.length === 1 && availableTools.length > 1) {
         const picked = await vscode.window.showQuickPick(
           availableTools.map((tool) => ({
             label: args.formatAgentFolderLabel(tool),
-            description: args.tr("Track this install as a group for this agent only.", "이 에이전트 기준으로만 설치 그룹을 추적합니다."),
+            description: args.tr("Track this install as a group for this agent only."),
             value: tool
           })),
           {
-            title: args.tr("Choose the agent for this installed skill group", "설치 그룹을 묶을 에이전트 선택"),
-            placeHolder: args.tr("A single npx install matched more than one agent. Pick the agent group to update.", "이번 npx 설치가 여러 에이전트와 연결되었습니다. 갱신할 에이전트 그룹을 고르세요.")
+            title: args.tr("Choose the agent for this installed skill group"),
+            placeHolder: args.tr("A single npx install matched more than one agent. Pick the agent group to update.")
           }
         );
         groupingTool = picked?.value;
       }
       const targets = groupingTool ? rawTargets.filter((target) => target.tool === groupingTool) : rawTargets;
       if (targets.length === 0) {
-        vscode.window.showWarningMessage(args.tr("Install completed, but no new skill folders were found to register as a group.", "설치는 완료되었지만 그룹으로 등록할 새 스킬 폴더를 찾지 못했습니다."));
+        vscode.window.showWarningMessage(args.tr("Install completed, but no new skill folders were found to register as a group."));
         return false;
       }
 
       const repoKey = args.normalizeRepoName(repo);
       const now = new Date().toISOString();
-      const generatedDescription = args.tr(`Installed from ${repo}`, `${repo}에서 설치한 스킬 그룹`);
+      const generatedDescription = args.tr("Installed from {0}", String(repo));
       const existing = args.state.groups.find((group) =>
         group.side === side
         && group.meta?.repoKey === repoKey
@@ -392,7 +403,7 @@ export function createInstallTransferTools(args: {
         });
         await args.persistGroups(nextGroups, existing.id);
         sourceGroup = nextGroups.find((group) => group.id === existing.id) ?? existing;
-        vscode.window.showInformationMessage(args.tr(`Install and group update complete: ${repoKey} (${targets.length} skill(s))`, `설치 및 그룹 갱신 완료: ${repoKey} (스킬 ${targets.length}개)`));
+        vscode.window.showInformationMessage(args.tr("Install and group update complete: {0} ({1} skill(s))", String(repoKey), String(targets.length)));
       } else {
         const groupId = `${side}-${Date.now()}`;
         sourceGroup = {
@@ -412,7 +423,7 @@ export function createInstallTransferTools(args: {
           }
         };
         await args.persistGroups([...args.state.groups, sourceGroup], groupId);
-        vscode.window.showInformationMessage(args.tr(`Install and group creation complete: ${sourceGroup.name} (${targets.length} skill(s))`, `설치 및 그룹 생성 완료: ${sourceGroup.name} (스킬 ${targets.length}개)`));
+        vscode.window.showInformationMessage(args.tr("Install and group creation complete: {0} ({1} skill(s))", String(sourceGroup.name), String(targets.length)));
       }
       if (preset?.skipPostInstallSyncPrompt) return true;
 
@@ -422,23 +433,20 @@ export function createInstallTransferTools(args: {
         const shouldAutoSync = syncFolders.length > 0 && syncFolders.every((entry) => autoSyncAgents.has(entry.tool));
         if (shouldAutoSync) {
           const summary = await args.syncWorkspaceAgentFoldersToCentral(syncFolders, "manual");
-          const syncedToolLabel = groupingTool ? args.formatAgentFolderLabel(groupingTool) : args.tr("workspace agent", "작업공간 에이전트");
+          const syncedToolLabel = groupingTool ? args.formatAgentFolderLabel(groupingTool) : args.tr("workspace agent");
           const skippedSuffix = summary.skippedMissingSkillMd > 0
-            ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+            ? args.tr(" · skipped missing SKILL.md {0}", String(summary.skippedMissingSkillMd))
             : "";
-          vscode.window.showInformationMessage(args.tr(
-            `Install, group, and auto save complete: ${syncedToolLabel} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-            `설치, 그룹 생성, 자동 중앙 반영 완료: ${syncedToolLabel} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
-          ));
+          vscode.window.showInformationMessage(args.tr("Install, group, and auto save complete: {0} · folders {1} · copied {2} · deleted {3} · groups {4} · central {5} folder(s), {6} file(s){7}", String(syncedToolLabel), String(summary.syncedFolders), String(summary.copied), String(summary.deleted), String(summary.mirroredGroups), String(summary.centralFolders), String(summary.centralFiles), String(skippedSuffix)));
           return true;
         }
       }
 
-      const copyLabel = side === "workspace" ? args.tr("Save to Central", "중앙에 반영") : args.tr("Bring to Workspace", "작업공간으로 가져오기");
+      const copyLabel = side === "workspace" ? args.tr("Save to Central") : args.tr("Bring to Workspace");
       const shouldSync = await vscode.window.showInformationMessage(
         side === "workspace"
-          ? args.tr("Save installed skills to the central library?", "설치된 스킬을 중앙 라이브러리에 반영할까요?")
-          : args.tr("Copy installed skills to the workspace?", "설치된 스킬을 작업 폴더로 복사할까요?"),
+          ? args.tr("Save installed skills to the central library?")
+          : args.tr("Copy installed skills to the workspace?"),
         copyLabel
       );
       if (shouldSync === copyLabel) {
@@ -451,10 +459,7 @@ export function createInstallTransferTools(args: {
         const mirroredGroup = await args.mirrorGroupToOtherSide(sourceGroup, { requireExistingTargets: true });
         if (transferResult.copied + transferResult.deleted > 0 || mirroredGroup) {
           await args.refresh();
-          vscode.window.showInformationMessage(args.tr(
-            `Installed skills applied: copied ${transferResult.copied}, deleted ${transferResult.deleted}, unchanged ${transferResult.unchanged}${mirroredGroup ? " · group applied" : ""}`,
-            `설치 스킬 반영: 복사 행 ${transferResult.copied}개 / 삭제 행 ${transferResult.deleted}개 / 변경없음 행 ${transferResult.unchanged}개${mirroredGroup ? " · 그룹 반영됨" : ""}`
-          ));
+          vscode.window.showInformationMessage(args.tr("Installed skills applied: copied {0}, deleted {1}, unchanged {2}{3}", String(transferResult.copied), String(transferResult.deleted), String(transferResult.unchanged), String(mirroredGroup ? " · group applied" : "")));
         }
       }
       return true;
@@ -480,6 +485,32 @@ export function createInstallTransferTools(args: {
     }
   };
 
+  const installSkillsCommandForSide = async (side: TreeSide): Promise<void> => {
+    try {
+      if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
+      const command = await vscode.window.showInputBox({
+        title: side === "workspace"
+          ? args.tr("Workspace: Install from npx command")
+          : args.tr("Central: Install from npx command"),
+        prompt: args.tr("Paste a complete npx skills add command. The repository and --skill values will be imported safely."),
+        value: "npx skills add https://github.com/vercel-labs/agent-browser --skill agent-browser",
+        ignoreFocusOut: true
+      });
+      if (command === undefined) return;
+      const parsed = parseNpxSkillsAddCommand(command);
+      if (!parsed) {
+        vscode.window.showErrorMessage(args.tr("Could not read that command. Use: npx skills add <repo> --skill <skill-name>"));
+        return;
+      }
+      await runInstallSkills(side, undefined, {
+        repoUrl: parsed.repoUrl,
+        skills: parsed.skills
+      });
+    } catch (error) {
+      await args.handleError(error);
+    }
+  };
+
   const installNpxRepoForSide = async (side: TreeSide, preset: NpxInstallPreset): Promise<boolean> => {
     try {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
@@ -493,6 +524,7 @@ export function createInstallTransferTools(args: {
   return {
     installSkills,
     installSkillsForSide,
+    installSkillsCommandForSide,
     installNpxRepoForSide,
     resolveInstallSide,
     transferSelections,
@@ -504,44 +536,47 @@ export function createInstallTransferTools(args: {
   };
 }
 
-async function listStagedSkillNames(stagingDir: string): Promise<string[]> {
-  const skillRoot = path.join(stagingDir, ".agents", "skills");
-  const entries = await fs.readdir(skillRoot, { withFileTypes: true }).catch(() => []);
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort((left, right) => left.localeCompare(right));
+type StagedSkillFolder = {
+  name: string;
+  sourcePath: string;
+};
+
+async function listStagedSkillNames(stagingDir: string, preferredTool: ToolType): Promise<string[]> {
+  const folders = await collectStagedSkillFolders(stagingDir, preferredTool);
+  return folders.map((folder) => folder.name);
 }
 
 async function copyStagedSkillsToTarget(
   stagingDir: string,
   targetSkillRoot: string,
   targetNames: string[],
+  preferredTool: ToolType,
   confirmOverwrite: boolean,
   tr: TranslationFn
 ): Promise<boolean> {
-  const sourceSkillRoot = path.join(stagingDir, ".agents", "skills");
-  const names = targetNames.length > 0 ? targetNames : await listStagedSkillNames(stagingDir);
+  const stagedFolders = await collectStagedSkillFolders(stagingDir, preferredTool);
+  const stagedByName = new Map(stagedFolders.map((folder) => [folder.name, folder.sourcePath]));
+  const names = targetNames.length > 0 ? targetNames : stagedFolders.map((folder) => folder.name);
   const existing: string[] = [];
   const copyPairs: Array<{ source: string; target: string }> = [];
   for (const name of names) {
-    const source = path.join(sourceSkillRoot, name);
-    if (!(await existsPath(path.join(source, "SKILL.md")))) continue;
+    const source = stagedByName.get(name);
+    if (!source) continue;
     const target = path.join(targetSkillRoot, name);
     if (await existsPath(target)) existing.push(name);
     copyPairs.push({ source, target });
   }
   if (copyPairs.length === 0) {
-    vscode.window.showWarningMessage(tr("Install completed, but no staged skill folders were found.", "설치는 완료됐지만 임시 설치 폴더에서 스킬을 찾지 못했습니다."));
+    vscode.window.showWarningMessage(tr("Install completed, but no staged skill folders were found."));
     return false;
   }
   if (existing.length > 0 && confirmOverwrite) {
     const ok = await vscode.window.showWarningMessage(
-      tr(
-        `Replace ${existing.length} existing skill folder(s) in the selected agent?\n\n${existing.slice(0, 8).join(", ")}`,
-        `선택한 에이전트의 기존 스킬 폴더 ${existing.length}개를 교체할까요?\n\n${existing.slice(0, 8).join(", ")}`
-      ),
+      tr("Replace {0} existing skill folder(s) in the selected agent?\n\n{1}", String(existing.length), String(existing.slice(0, 8).join(", "))),
       { modal: true },
-      tr("Replace", "교체")
+      tr("Replace")
     );
-    if (ok !== tr("Replace", "교체")) return false;
+    if (ok !== tr("Replace")) return false;
   }
   await fs.mkdir(targetSkillRoot, { recursive: true });
   for (const pair of copyPairs) {
@@ -549,6 +584,46 @@ async function copyStagedSkillsToTarget(
     await copyNode(pair.source, pair.target);
   }
   return true;
+}
+
+async function collectStagedSkillFolders(stagingDir: string, preferredTool: ToolType): Promise<StagedSkillFolder[]> {
+  const folders = new Map<string, StagedSkillFolder>();
+  for (const relativeRoot of getStagedSkillRootCandidates(preferredTool)) {
+    const skillRoot = path.join(stagingDir, ...relativeRoot.split("/"));
+    const entries = await fs.readdir(skillRoot, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (folders.has(entry.name)) continue;
+      const sourcePath = path.join(skillRoot, entry.name);
+      const stat = await fs.stat(sourcePath).catch(() => null);
+      if (!stat?.isDirectory()) continue;
+      if (!(await existsPath(path.join(sourcePath, "SKILL.md")))) continue;
+      folders.set(entry.name, { name: entry.name, sourcePath });
+    }
+  }
+  return [...folders.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getStagedSkillRootCandidates(preferredTool: ToolType): string[] {
+  const tools = [preferredTool, ...ALL_AGENTS.filter((tool) => tool !== preferredTool)];
+  const roots = tools.flatMap((tool) => {
+    const dotted = tool === "agents" ? ".agents" : `.${tool}`;
+    return [`${dotted}/skills`, `${tool}/skills`];
+  });
+  return [...new Set([...roots, "skills"])];
+}
+
+function buildSkillsAddCommandArgs(repo: string, skills: string[], tools: ToolType[]): string[] {
+  const skillArgs = skills.flatMap((skill) => ["--skill", skill]);
+  const cliAgents = [...new Set(tools.map(toSkillsCliAgentName))];
+  const agentArgs = cliAgents.length > 0 ? ["--agent", ...cliAgents] : [];
+  return ["-y", "skills", "add", repo, ...skillArgs, ...agentArgs, "--copy", "--yes"];
+}
+
+function toSkillsCliAgentName(tool: ToolType): string {
+  if (tool === "claude") return "claude-code";
+  if (tool === "gemini") return "gemini-cli";
+  if (tool === "agents") return "*";
+  return tool;
 }
 
 async function existsPath(target: string): Promise<boolean> {

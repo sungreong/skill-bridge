@@ -18,7 +18,7 @@ import type {
   TreeSide
 } from "./libraryManagerTypes";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export type LibraryGroupDeps = {
   state: LibraryManagerStateShape;
@@ -68,15 +68,15 @@ export function createLibraryGroupTools(deps: LibraryGroupDeps) {
     description = ""
   ): Promise<CreateGroupSummary> => {
     const trimmed = name.trim();
-    if (!trimmed) throw new Error(deps.tr("Enter a group name.", "그룹 이름을 입력하세요."));
+    if (!trimmed) throw new Error(deps.tr("Enter a group name."));
     const { valid, invalidCount } = normalizeLibraryGroupTargets(side, targets);
     if (valid.length === 0) {
-      throw new Error(deps.tr("Only valid skills with SKILL.md can be added to a group.", "SKILL.md가 있는 유효 스킬만 그룹에 추가할 수 있습니다."));
+      throw new Error(deps.tr("Only valid skills with SKILL.md can be added to a group."));
     }
     const baseTool = valid[0].tool;
     const sameToolTargets = valid.filter((target) => target.tool === baseTool);
     if (sameToolTargets.length === 0) {
-      throw new Error(deps.tr("A group can only contain skills from the same agent.", "같은 에이전트 스킬만 그룹으로 만들 수 있습니다."));
+      throw new Error(deps.tr("A group can only contain skills from the same agent."));
     }
     ensureUniqueGroupNameForTool({ groups: deps.state.groups, tr: deps.tr, side, tool: baseTool, name: trimmed });
     const group: SelectionGroup = {
@@ -108,13 +108,13 @@ export function createLibraryGroupTools(deps: LibraryGroupDeps) {
       title,
       prompt,
       value: suggestedName,
-      validateInput: (value) => value.trim() ? null : deps.tr("Enter a group name.", "그룹 이름을 입력하세요."),
+      validateInput: (value) => value.trim() ? null : deps.tr("Enter a group name."),
       ignoreFocusOut: true
     });
     if (!inputName?.trim()) return undefined;
     const description = await promptGroupDescription({
-      title: side === "workspace" ? deps.tr("Workspace Group Description", "작업공간 그룹 설명") : deps.tr("Central Group Description", "중앙 그룹 설명"),
-      prompt: deps.tr("Describe what this group is for. This helps agents understand when to use it.", "이 그룹의 용도를 설명하세요. 에이전트가 그룹 목적을 이해하는 데 사용됩니다."),
+      title: side === "workspace" ? deps.tr("Workspace Group Description") : deps.tr("Central Group Description"),
+      prompt: deps.tr("Describe what this group is for. This helps agents understand when to use it."),
       value: ""
     });
     if (description === undefined) return undefined;
@@ -127,13 +127,13 @@ export function createLibraryGroupTools(deps: LibraryGroupDeps) {
     targets: LibraryTarget[]
   ): Promise<GroupMutationSummary> => {
     const group = deps.state.groups.find((item) => item.id === groupId && item.side === side);
-    if (!group) throw new Error(deps.tr("Could not find the group to assign.", "할당할 그룹을 찾지 못했습니다."));
+    if (!group) throw new Error(deps.tr("Could not find the group to assign."));
     const { valid, invalidCount } = normalizeLibraryGroupTargets(side, targets);
-    if (valid.length === 0) throw new Error(deps.tr("Only valid skills with SKILL.md can be assigned to a group.", "SKILL.md가 있는 유효 스킬만 그룹에 할당할 수 있습니다."));
+    if (valid.length === 0) throw new Error(deps.tr("Only valid skills with SKILL.md can be assigned to a group."));
     const groupTool = group.targets[0]?.tool ?? valid[0].tool;
     const sameToolTargets = valid.filter((target) => target.tool === groupTool);
     if (sameToolTargets.length === 0) {
-      throw new Error(deps.tr(`A group can only contain skills from the same agent (${groupTool}).`, `그룹은 같은 에이전트(${groupTool}) 스킬만 담을 수 있습니다.`));
+      throw new Error(deps.tr("A group can only contain skills from the same agent ({0}).", String(groupTool)));
     }
     const beforeCount = group.targets.length;
     const nextTargets = dedupeGroupTargets([...group.targets, ...sameToolTargets]);
@@ -151,18 +151,18 @@ export function createLibraryGroupTools(deps: LibraryGroupDeps) {
     targets: LibraryTarget[]
   ): Promise<GroupMutationSummary> => {
     const group = deps.state.groups.find((item) => item.id === groupId && item.side === side);
-    if (!group) throw new Error(deps.tr("Could not find the group to unassign.", "해제할 그룹을 찾지 못했습니다."));
+    if (!group) throw new Error(deps.tr("Could not find the group to unassign."));
     const normalized = dedupeGroupTargets(
       targets
         .map((target) => toSkillFolderTarget(deps.getSkillFolderRelativePath, target.tool, target.relativePath))
         .filter((target): target is GroupTarget => !!target)
     );
-    if (normalized.length === 0) throw new Error(deps.tr("Select a valid skill folder.", "유효한 스킬 폴더를 선택하세요."));
+    if (normalized.length === 0) throw new Error(deps.tr("Select a valid skill folder."));
     const toRemove = new Set(normalized.map((target) => `${target.tool}:${normalizeRel(target.relativePath)}`));
     const beforeCount = group.targets.length;
     const nextTargets = group.targets.filter((target) => !toRemove.has(`${target.tool}:${normalizeRel(target.relativePath)}`));
     if (nextTargets.length === 0) {
-      throw new Error(deps.tr("This would leave the group empty. Delete the group instead if needed.", "그룹이 비게 됩니다. 필요하면 그룹 삭제를 사용하세요."));
+      throw new Error(deps.tr("This would leave the group empty. Delete the group instead if needed."));
     }
     const removedCount = Math.max(0, beforeCount - nextTargets.length);
     const nextGroups = deps.state.groups.map((item) => item.id === group.id ? { ...item, targets: nextTargets } : item);

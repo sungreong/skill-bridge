@@ -3,7 +3,7 @@ import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SelectionGroup, Sk
 import type { WizardAssetPick } from "./extensionAddMoveWizard";
 
 type TreeSide = "workspace" | "central";
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TransferResult = { copied: number; deleted: number; unchanged: number; failed?: number };
 
 export function createProjectPresetTools(args: {
@@ -55,14 +55,11 @@ export function createProjectPresetTools(args: {
       if (!preset) return;
       const availableTargets = preset.targets.filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
       if (availableTargets.length === 0) {
-        vscode.window.showWarningMessage(args.tr("This project preset has no available Central skills.", "이 프로젝트 프리셋에는 사용 가능한 Central 스킬이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("This project preset has no available Central skills."));
         return;
       }
       if (availableTargets.length < preset.targets.length) {
-        vscode.window.showWarningMessage(args.tr(
-          `Skipping ${preset.targets.length - availableTargets.length} missing preset target(s).`,
-          `프리셋 대상 중 누락된 ${preset.targets.length - availableTargets.length}개는 건너뜁니다.`
-        ));
+        vscode.window.showWarningMessage(args.tr("Skipping {0} missing preset target(s).", String(preset.targets.length - availableTargets.length)));
       }
       const selections = args.targetsToSelections(args.state.centralSkills, availableTargets);
       const result = await args.transferSelections("central", selections, {
@@ -73,10 +70,7 @@ export function createProjectPresetTools(args: {
       await args.upsertPresetWorkspaceGroup(preset.name, preset.id, availableTargets);
       await touchPreset(preset.id, (current) => ({ ...current, lastAppliedAt: new Date().toISOString() }));
       await args.refresh();
-      vscode.window.showInformationMessage(args.tr(
-        `Project preset applied: ${preset.name}`,
-        `프로젝트 프리셋 적용 완료: ${preset.name}`
-      ));
+      vscode.window.showInformationMessage(args.tr("Project preset applied: {0}", String(preset.name)));
     });
   };
 
@@ -85,18 +79,18 @@ export function createProjectPresetTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const centralAssets = args.getWizardAssetPicks("central").filter((asset) => asset.status !== "missingSkillMd");
       if (centralAssets.length === 0) {
-        vscode.window.showWarningMessage(args.tr("There are no Central skills to save as a project preset.", "프로젝트 프리셋으로 저장할 Central 스킬이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("There are no Central skills to save as a project preset."));
         return;
       }
       const selected = await vscode.window.showQuickPick(
         centralAssets.map((asset) => ({
           label: `${asset.tool}/${asset.skillName}`,
           description: args.statusLabelForWizard(asset.status),
-          detail: `${asset.rootRelativePath} · ${args.tr("files", "파일")} ${asset.fileCount} · ${args.tr("warnings", "경고")} ${asset.warnings.length}`,
+          detail: `${asset.rootRelativePath} · ${args.tr("files")} ${asset.fileCount} · ${args.tr("warnings")} ${asset.warnings.length}`,
           value: asset
         })),
         {
-          title: args.tr("Choose Central Skills for the Project Preset", "프로젝트 프리셋에 넣을 Central 스킬 선택"),
+          title: args.tr("Choose Central Skills for the Project Preset"),
           canPickMany: true,
           matchOnDescription: true,
           matchOnDetail: true
@@ -124,7 +118,7 @@ export function createProjectPresetTools(args: {
     await runPresetAction(async () => {
       const group = args.resolveGroup(node);
       if (!group || group.side !== "workspace") {
-        vscode.window.showWarningMessage(args.tr("Choose a Workspace group first.", "먼저 작업공간 그룹을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Choose a Workspace group first."));
         return;
       }
       await exportWorkspaceTargets(group.targets, group.name, group.description ?? "");
@@ -144,11 +138,11 @@ export function createProjectPresetTools(args: {
       const preset = resolveProjectPreset(node) ?? await pickProjectPreset(args.state.centralProjectPresets);
       if (!preset) return;
       const ok = await vscode.window.showWarningMessage(
-        args.tr(`Delete project preset "${preset.name}"? Skill files will not be deleted.`, `프로젝트 프리셋 "${preset.name}"을 삭제할까요? 스킬 파일은 삭제하지 않습니다.`),
+        args.tr("Delete project preset \"{0}\"? Skill files will not be deleted.", String(preset.name)),
         { modal: true },
-        args.tr("Delete preset", "프리셋 삭제")
+        args.tr("Delete preset")
       );
-      if (ok !== args.tr("Delete preset", "프리셋 삭제")) return;
+      if (ok !== args.tr("Delete preset")) return;
       await savePresetFile((file) => ({
         ...file,
         updatedAt: new Date().toISOString(),
@@ -163,16 +157,16 @@ export function createProjectPresetTools(args: {
       const preset = resolveProjectPreset(node) ?? await pickProjectPreset(args.state.centralProjectPresets);
       if (!preset) return;
       const value = await vscode.window.showInputBox({
-        title: field === "name" ? args.tr("Rename Project Preset", "프로젝트 프리셋 이름 변경") : args.tr("Edit Project Preset Description", "프로젝트 프리셋 설명 편집"),
+        title: field === "name" ? args.tr("Rename Project Preset") : args.tr("Edit Project Preset Description"),
         value: field === "name" ? preset.name : preset.description,
-        validateInput: (input) => field === "name" && !input.trim() ? args.tr("Enter a preset name.", "프리셋 이름을 입력하세요.") : null,
+        validateInput: (input) => field === "name" && !input.trim() ? args.tr("Enter a preset name.") : null,
         ignoreFocusOut: true
       });
       if (value === undefined) return;
       const nextName = field === "name" ? value.trim() : preset.name;
       const nextId = field === "name" ? args.slugifyProjectPresetId(nextName) : preset.id;
       if (field === "name" && nextId !== preset.id && args.state.centralProjectPresets.some((item) => item.id === nextId)) {
-        vscode.window.showWarningMessage(args.tr("A project preset with this name already exists.", "이미 같은 이름의 프로젝트 프리셋이 있습니다."));
+        vscode.window.showWarningMessage(args.tr("A project preset with this name already exists."));
         return;
       }
       await touchPreset(preset.id, (current) => ({
@@ -188,20 +182,17 @@ export function createProjectPresetTools(args: {
   const exportWorkspaceTargets = async (targets: GroupTarget[], defaultName?: string, defaultDescription?: string): Promise<void> => {
     const normalizedTargets = normalizeTargets(targets);
     if (normalizedTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 작업공간 스킬 폴더를 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset."));
       return;
     }
     const workspaceStatuses = workspaceStatusByTarget();
     const missingSkillMdTargets = normalizedTargets.filter((target) => workspaceStatuses.get(targetKey(target)) === "missingSkillMd");
     if (missingSkillMdTargets.length > 0) {
-      vscode.window.showWarningMessage(args.tr(
-        `Skipped ${missingSkillMdTargets.length} folder(s) without SKILL.md.`,
-        `SKILL.md가 없는 폴더 ${missingSkillMdTargets.length}개는 프리셋 후보에서 제외했습니다.`
-      ));
+      vscode.window.showWarningMessage(args.tr("Skipped {0} folder(s) without SKILL.md.", String(missingSkillMdTargets.length)));
     }
     const eligibleTargets = normalizedTargets.filter((target) => workspaceStatuses.get(targetKey(target)) !== "missingSkillMd");
     if (eligibleTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset.", "프로젝트 프리셋으로 만들 수 있는 작업공간 스킬 폴더를 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("No valid Workspace skill folders were found for this project preset."));
       return;
     }
     const missingOrChangedTargets = eligibleTargets.filter((target) => {
@@ -212,54 +203,51 @@ export function createProjectPresetTools(args: {
       const selections = args.targetsToSelections(args.state.workspaceSkills, missingOrChangedTargets);
       const result = await args.transferSelections("workspace", selections, {
         scopeHints: missingOrChangedTargets,
-        repoContext: { repo: defaultName ?? args.tr("Workspace project preset", "작업공간 프로젝트 프리셋") }
+        repoContext: { repo: defaultName ?? args.tr("Workspace project preset") }
       });
       if (isEmptyTransfer(result)) return;
       await args.refresh();
     }
     const availableTargets = eligibleTargets.filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
     if (availableTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review.", "반영 검토 후 중앙에서 사용할 수 있는 선택 스킬이 없습니다."));
+      vscode.window.showWarningMessage(args.tr("No selected skills are available in Central after review."));
       return;
     }
     if (availableTargets.length < eligibleTargets.length) {
       const ok = await vscode.window.showWarningMessage(
-        args.tr(
-          `Save only ${availableTargets.length}/${eligibleTargets.length} skills that exist in Central?`,
-          `중앙에 있는 ${availableTargets.length}/${eligibleTargets.length}개 스킬만 저장할까요?`
-        ),
+        args.tr("Save only {0}/{1} skills that exist in Central?", String(availableTargets.length), String(eligibleTargets.length)),
         { modal: true },
-        args.tr("Save available skills", "있는 스킬만 저장")
+        args.tr("Save available skills")
       );
-      if (ok !== args.tr("Save available skills", "있는 스킬만 저장")) return;
+      if (ok !== args.tr("Save available skills")) return;
     }
     await promptAndSavePreset(availableTargets, defaultName, defaultDescription);
   };
 
   const promptAndSavePreset = async (targets: GroupTarget[], defaultName = "", defaultDescription = ""): Promise<ProjectPreset | null> => {
     const name = await vscode.window.showInputBox({
-      title: args.tr("Project Preset Name", "프로젝트 프리셋 이름"),
+      title: args.tr("Project Preset Name"),
       value: defaultName,
-      prompt: args.tr("Example: personal-default, frontend-project, langgraph-project", "예: personal-default, frontend-project, langgraph-project"),
-      validateInput: (value) => value.trim() ? null : args.tr("Enter a preset name.", "프리셋 이름을 입력하세요."),
+      prompt: args.tr("Example: personal-default, frontend-project, langgraph-project"),
+      validateInput: (value) => value.trim() ? null : args.tr("Enter a preset name."),
       ignoreFocusOut: true
     });
     if (!name?.trim()) return null;
     const description = await vscode.window.showInputBox({
-      title: args.tr("Project Preset Description", "프로젝트 프리셋 설명"),
+      title: args.tr("Project Preset Description"),
       value: defaultDescription,
-      prompt: args.tr("Optional. Describe which projects this preset is useful for.", "선택 사항입니다. 어떤 프로젝트에 쓰는 프리셋인지 적어두세요."),
+      prompt: args.tr("Optional. Describe which projects this preset is useful for."),
       ignoreFocusOut: true
     });
     const id = args.slugifyProjectPresetId(name.trim());
     const previous = args.state.centralProjectPresets.find((item) => item.id === id);
     if (previous) {
       const ok = await vscode.window.showWarningMessage(
-        args.tr(`Replace existing project preset "${previous.name}"?`, `기존 프로젝트 프리셋 "${previous.name}"을 바꿀까요?`),
+        args.tr("Replace existing project preset \"{0}\"?", String(previous.name)),
         { modal: true },
-        args.tr("Replace preset", "프리셋 바꾸기")
+        args.tr("Replace preset")
       );
-      if (ok !== args.tr("Replace preset", "프리셋 바꾸기")) return null;
+      if (ok !== args.tr("Replace preset")) return null;
     }
     const now = new Date().toISOString();
     const preset: ProjectPreset = {
@@ -277,7 +265,7 @@ export function createProjectPresetTools(args: {
       presets: [...file.presets.filter((item) => item.id !== id), preset].sort((a, b) => a.name.localeCompare(b.name))
     }));
     await args.refresh();
-    vscode.window.showInformationMessage(args.tr(`Project preset saved: ${preset.name}`, `프로젝트 프리셋 저장 완료: ${preset.name}`));
+    vscode.window.showInformationMessage(args.tr("Project preset saved: {0}", String(preset.name)));
     return preset;
   };
 
@@ -331,11 +319,11 @@ export function createProjectPresetTools(args: {
     const pick = await vscode.window.showQuickPick(
       presets.map((preset) => ({
         label: preset.name,
-        description: args.tr(`${preset.targets.length} skills`, `스킬 ${preset.targets.length}개`),
+        description: args.tr("{0} skills", String(preset.targets.length)),
         detail: preset.description,
         preset
       })),
-      { title: args.tr("Choose Project Preset", "프로젝트 프리셋 선택"), matchOnDescription: true, matchOnDetail: true }
+      { title: args.tr("Choose Project Preset"), matchOnDescription: true, matchOnDetail: true }
     );
     return pick?.preset;
   };

@@ -13,7 +13,6 @@ export const LIBRARY_WEBVIEW_COMMANDS = new Set<string>([
   "skillBridge.downloadCentralSkill",
   "skillBridge.downloadSkillManagerSkill",
   "skillBridge.copyBetweenAgents",
-  "skillBridge.toggleLanguage",
   "skillBridge.createCentralPack",
   "skillBridge.diagnoseEnvironment",
   "skillBridge.configureWorkspaceAutoSync",

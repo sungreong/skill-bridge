@@ -9,7 +9,7 @@ type TreeSide = "workspace" | "central";
 type InstructionTransferTarget = { relativePath: string; profileId?: string; sourcePath?: string };
 
 export function createExtensionInstructionTransferTools(args: {
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   toUserError: (error: unknown) => string;
   handleError: (error: unknown) => Promise<void>;
   output: vscode.OutputChannel;
@@ -210,10 +210,7 @@ export function createExtensionInstructionTransferTools(args: {
         const result = await transferInstructions("workspace", instructionPaths);
         await args.refresh();
         const profileId = args.suggestInstructionProfile(args.state.workspacePath);
-        vscode.window.showInformationMessage(args.tr(
-          `Instructions sent to Central: instructions/${profileId} · copied ${result.copied} · unchanged ${result.unchanged} · skipped ${result.skipped} · failed ${result.failed}`,
-          `instruction Central 반영: instructions/${profileId} · 복사 파일 ${result.copied}개 / 변경없음 파일 ${result.unchanged}개 / 건너뜀 파일 ${result.skipped}개 / 실패 파일 ${result.failed}개`
-        ));
+        vscode.window.showInformationMessage(args.tr("Instructions sent to Central: instructions/{0} · copied {1} · unchanged {2} · skipped {3} · failed {4}", String(profileId), String(result.copied), String(result.unchanged), String(result.skipped), String(result.failed)));
         return;
       }
 
@@ -233,7 +230,7 @@ export function createExtensionInstructionTransferTools(args: {
         isWholeTreeScope = true;
       }
       if (selections.length === 0) {
-        vscode.window.showWarningMessage(args.tr("No recognized skills files were found in Workspace.", "작업공간에서 인식된 스킬 파일이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("No recognized skills files were found in Workspace."));
         return;
       }
 
@@ -256,13 +253,10 @@ export function createExtensionInstructionTransferTools(args: {
       const mirroredGroups = await args.mirrorGroupsForTransferResult("workspace", result, selectedGroup ? [selectedGroup.id] : undefined);
       await args.refresh();
       if (result.copied + result.deleted === 0) {
-        vscode.window.showInformationMessage(args.tr(`No Central file changes to copy${mirroredGroups > 0 ? " · group applied" : ""}`, `중앙 저장소 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`));
+        vscode.window.showInformationMessage(args.tr("No Central file changes to copy{0}", String(mirroredGroups > 0 ? " · group applied" : "")));
         return;
       }
-      vscode.window.showInformationMessage(args.tr(
-        `Central updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group applied" : ""}`,
-        `중앙 저장소 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`
-      ));
+      vscode.window.showInformationMessage(args.tr("Central updated: copied {0} · deleted {1} · unchanged {2}{3}", String(result.copied), String(result.deleted), String(result.unchanged), String(mirroredGroups > 0 ? " · group applied" : "")));
     } catch (error) {
       await args.handleError(error);
     }
@@ -280,10 +274,7 @@ export function createExtensionInstructionTransferTools(args: {
         const result = await transferInstructions("central", instructionPaths);
         await args.refresh();
         const profileLabel = summarizeInstructionProfiles(instructionPaths);
-        vscode.window.showInformationMessage(args.tr(
-          `Instructions sent to Workspace: Central ${profileLabel} to workspace · copied ${result.copied} · unchanged ${result.unchanged} · skipped ${result.skipped} · failed ${result.failed}`,
-          `지침 작업공간 반영: 중앙 ${profileLabel} → 작업공간 · 복사 파일 ${result.copied}개 / 변경없음 파일 ${result.unchanged}개 / 건너뜀 파일 ${result.skipped}개 / 실패 파일 ${result.failed}개`
-        ));
+        vscode.window.showInformationMessage(args.tr("Instructions sent to Workspace: Central {0} to workspace · copied {1} · unchanged {2} · skipped {3} · failed {4}", String(profileLabel), String(result.copied), String(result.unchanged), String(result.skipped), String(result.failed)));
         return;
       }
 
@@ -303,7 +294,7 @@ export function createExtensionInstructionTransferTools(args: {
         isWholeTreeScope = true;
       }
       if (selections.length === 0) {
-        vscode.window.showWarningMessage(args.tr("No recognized skills files were found in Central.", "중앙 저장소에서 인식된 스킬 파일이 없습니다."));
+        vscode.window.showWarningMessage(args.tr("No recognized skills files were found in Central."));
         return;
       }
 
@@ -326,13 +317,10 @@ export function createExtensionInstructionTransferTools(args: {
       const mirroredGroups = await args.mirrorGroupsForTransferResult("central", result, selectedGroup ? [selectedGroup.id] : undefined);
       await args.refresh();
       if (result.copied + result.deleted === 0) {
-        vscode.window.showInformationMessage(args.tr(`No Workspace file changes to copy${mirroredGroups > 0 ? " · group applied" : ""}`, `작업 폴더 파일 변경 없음${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`));
+        vscode.window.showInformationMessage(args.tr("No Workspace file changes to copy{0}", String(mirroredGroups > 0 ? " · group applied" : "")));
         return;
       }
-      vscode.window.showInformationMessage(args.tr(
-        `Workspace updated: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}${mirroredGroups > 0 ? " · group applied" : ""}`,
-        `작업공간 반영: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개${mirroredGroups > 0 ? " · 그룹 반영됨" : ""}`
-      ));
+      vscode.window.showInformationMessage(args.tr("Workspace updated: copied {0} · deleted {1} · unchanged {2}{3}", String(result.copied), String(result.deleted), String(result.unchanged), String(mirroredGroups > 0 ? " · group applied" : "")));
     } catch (error) {
       await args.handleError(error);
     }

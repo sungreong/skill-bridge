@@ -1,11 +1,13 @@
+import { renderWebviewL10nRuntime } from "./webviewCommon";
+
 export function renderLibraryManagerClientScript(initialPayloadJson: string, language: "en" | "ko"): string {
+  void language;
   return `
     (() => {
       let api = null;
       try {
         const vscode = acquireVsCodeApi();
         api = vscode;
-        let currentLanguage = "${language}";
         let state = ${initialPayloadJson};
         const ui = {
           view: "compare",
@@ -20,8 +22,7 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         };
         let lastClientSummarySignature = "";
 
-        function isKo(){ return currentLanguage === "ko"; }
-        function t(en, ko){ return isKo() ? ko : en; }
+        ${renderWebviewL10nRuntime()}
         function esc(value){
           return String(value ?? "")
             .replaceAll("&", "&amp;")
@@ -32,7 +33,7 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         function setStatus(message, tone){
           const el = document.getElementById("statusLine");
           if (!el) return;
-          el.textContent = message || t("Ready", "준비 완료");
+          el.textContent = message || t("Ready");
           el.className = "status sb-status-bar " + (tone || "info");
         }
         function normalizePath(value){ return String(value || "").replaceAll("\\\\", "/"); }
@@ -125,13 +126,13 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         }
         function statusLabel(status){
           if (status === "workspaceOnly") {
-            return ui.mode === "send" ? t("Workspace new", "작업공간 신규") : t("Workspace only", "작업공간만");
+            return ui.mode === "send" ? t("Workspace new") : t("Workspace only");
           }
           if (status === "centralOnly") {
-            return ui.mode === "bring" ? t("Central new", "중앙 신규") : t("Central only", "중앙만");
+            return ui.mode === "bring" ? t("Central new") : t("Central only");
           }
-          if (status === "modified") return t("Modified", "수정됨");
-          return t("Same", "동일");
+          if (status === "modified") return t("Modified");
+          return t("Same");
         }
         function statusClass(status){
           if (status === "workspaceOnly" || status === "centralOnly") return "b-new";
@@ -140,9 +141,9 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           return "b-target";
         }
         function detailStatusLabel(status){
-          if (status === "modified") return t("Modified", "수정됨");
-          if (status === "onlyHere") return t("Only here", "여기에만 있음");
-          return t("Same", "동일");
+          if (status === "modified") return t("Modified");
+          if (status === "onlyHere") return t("Only here");
+          return t("Same");
         }
         function formatDate(value){
           if (!value) return "-";
@@ -153,14 +154,14 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         }
         function modeTitle(){
           return ui.mode === "send"
-            ? t("Save Workspace skills to Central", "작업공간 스킬을 중앙에 반영")
-            : t("Bring Central skills to Workspace", "중앙 스킬을 작업공간으로 가져오기");
+            ? t("Save Workspace skills to Central")
+            : t("Bring Central skills to Workspace");
         }
         function modeSubtitle(rows){
           const actionable = rows.filter(isActionable).length;
           return ui.mode === "send"
-            ? t(actionable + " skill(s) can be saved to Central. Modified skills overwrite Central after review.", actionable + "개 스킬을 중앙에 반영할 수 있습니다.")
-            : t(actionable + " skill(s) can be brought in. Modified skills overwrite Workspace after review.", actionable + "개 스킬을 작업공간으로 가져올 수 있습니다.");
+            ? t("{0} skill(s) can be saved to Central. Modified skills overwrite Central after review.", actionable)
+            : t("{0} skill(s) can be brought in. Modified skills overwrite Workspace after review.", actionable);
         }
         function passes(row){
           const q = ui.query.trim().toLowerCase();
@@ -208,16 +209,16 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           const summary = compareSummary();
           const metrics = ui.mode === "send"
             ? [
-              ["actionable", t("Ready to save", "반영할 수 있음"), summary.workspaceOnly + summary.modified],
-              ["sourceOnly", t("Workspace new", "작업공간 신규"), summary.workspaceOnly],
-              ["modified", t("Modified", "수정됨"), summary.modified],
-              ["same", t("Already same", "이미 동일"), summary.same]
+              ["actionable", t("Ready to save"), summary.workspaceOnly + summary.modified],
+              ["sourceOnly", t("Workspace new"), summary.workspaceOnly],
+              ["modified", t("Modified"), summary.modified],
+              ["same", t("Already same"), summary.same]
             ]
             : [
-              ["actionable", t("Ready to bring", "가져올 수 있음"), summary.centralOnly + summary.modified],
-              ["sourceOnly", t("Central new", "중앙 신규"), summary.centralOnly],
-              ["modified", t("Modified", "수정됨"), summary.modified],
-              ["same", t("Already same", "이미 동일"), summary.same]
+              ["actionable", t("Ready to bring"), summary.centralOnly + summary.modified],
+              ["sourceOnly", t("Central new"), summary.centralOnly],
+              ["modified", t("Modified"), summary.modified],
+              ["same", t("Already same"), summary.same]
             ];
           document.getElementById("summary").innerHTML = metrics.map(([status, label, value]) =>
             '<button class="metric metric-button ' + (ui.status === status ? "active" : "") + '" data-status-filter="' + esc(status) + '" type="button"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></button>'
@@ -230,20 +231,20 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
             ui.status = "actionable";
           }
           const sourceOnlyLabel = ui.mode === "send"
-            ? t("Workspace only (new to Central)", "작업공간만 (중앙에 반영할 신규)")
-            : t("Central only (new to Workspace)", "중앙만 (가져올 신규)");
+            ? t("Workspace only (new to Central)")
+            : t("Central only (new to Workspace)");
           const statusOptions = [
-            ["actionable", t("Ready to apply", "반영 가능")],
-            ["all", t("All in this direction", "현재 방향 전체")],
+            ["actionable", t("Ready to apply")],
+            ["all", t("All in this direction")],
             ["sourceOnly", sourceOnlyLabel],
-            ["modified", t("Modified", "수정됨")],
-            ["same", t("Same", "동일")]
+            ["modified", t("Modified")],
+            ["same", t("Same")]
           ];
           status.innerHTML = statusOptions.map(([value, label]) =>
             '<button class="chip ' + (ui.status === value ? "active" : "") + '" data-status-filter="' + esc(value) + '" type="button">' + esc(label) + '</button>'
           ).join("");
           const tools = Array.isArray(state.tools) ? state.tools : [];
-          agent.innerHTML = [["all", t("All agents", "전체 에이전트")], ...tools.map((tool) => [tool, tool])]
+          agent.innerHTML = [["all", t("All agents")], ...tools.map((tool) => [tool, tool])]
             .map(([value, label]) => '<button class="chip ' + (ui.agent === value ? "active" : "") + '" data-agent-filter="' + esc(value) + '" type="button">' + esc(label) + '</button>').join("");
         }
         function groupsForSide(side){
@@ -286,28 +287,28 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           const sort = document.getElementById(side + "SortFilter");
           if (!agent || !group || !status || !sort) return;
           const tools = Array.from(new Set(sideSkills(side).map((row) => row.tool))).sort();
-          agent.innerHTML = [["all", t("All agents", "전체 에이전트")], ...tools.map((tool) => [tool, tool])]
+          agent.innerHTML = [["all", t("All agents")], ...tools.map((tool) => [tool, tool])]
             .map(([value, label]) => '<option value="' + esc(value) + '" ' + (ui.agent === value ? "selected" : "") + '>' + esc(label) + '</option>').join("");
           const groups = groupsForSide(side);
           const selectedGroup = groups.includes(ui.groups[side]) ? ui.groups[side] : "all";
           ui.groups[side] = selectedGroup;
-          group.innerHTML = [["all", t("All groups", "전체 그룹")], ...groups.map((item) => [item, item])]
+          group.innerHTML = [["all", t("All groups")], ...groups.map((item) => [item, item])]
             .map(([value, label]) => '<option value="' + esc(value) + '" ' + (selectedGroup === value ? "selected" : "") + '>' + esc(label) + '</option>').join("");
           const statusValue = ui.detailStatus[side] || "all";
           status.innerHTML = [
-            ["all", t("All statuses", "전체 상태")],
-            ["onlyHere", t("Only here", "여기에만 있음")],
-            ["modified", t("Modified", "수정됨")],
-            ["same", t("Same", "동일")]
+            ["all", t("All statuses")],
+            ["onlyHere", t("Only here")],
+            ["modified", t("Modified")],
+            ["same", t("Same")]
           ].map(([value, label]) => '<option value="' + esc(value) + '" ' + (statusValue === value ? "selected" : "") + '>' + esc(label) + '</option>').join("");
           const sortValue = ui.detailSort[side] || "name";
           sort.innerHTML = [
-            ["name", t("Sort: Skill", "정렬: 스킬")],
-            ["agent", t("Sort: Agent", "정렬: 에이전트")],
-            ["files", t("Sort: Files", "정렬: 파일")],
-            ["updated", t("Sort: Updated", "정렬: 수정일")],
-            ["created", t("Sort: Created", "정렬: 생성일")],
-            ["group", t("Sort: Group", "정렬: 그룹")]
+            ["name", t("Sort: Skill")],
+            ["agent", t("Sort: Agent")],
+            ["files", t("Sort: Files")],
+            ["updated", t("Sort: Updated")],
+            ["created", t("Sort: Created")],
+            ["group", t("Sort: Group")]
           ].map(([value, label]) => '<option value="' + esc(value) + '" ' + (sortValue === value ? "selected" : "") + '>' + esc(label) + '</option>').join("");
         }
         function selectedVisibleRows(){
@@ -322,46 +323,46 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           allBox.checked = actionableRows.length > 0 && selectedCount === actionableRows.length;
           allBox.indeterminate = selectedCount > 0 && selectedCount < actionableRows.length;
           allBox.title = actionableRows.length === 0
-            ? t("No rows can be applied in this view", "이 보기에는 반영할 수 있는 항목이 없습니다")
-            : t("Select all rows that can be applied in this view", "현재 보기의 반영 가능한 항목 전체 선택");
+            ? t("No rows can be applied in this view")
+            : t("Select all rows that can be applied in this view");
         }
         function renderCompareTable(){
           const rows = visibleRows();
           const actionableCount = actionableVisibleRows().length;
           const selectedCount = selectedVisibleRows().length;
           document.getElementById("panelTitle").textContent = modeTitle();
-          document.getElementById("panelSubtitle").textContent = modeSubtitle(compareRows()) + " · " + t("Showing ", "표시 ") + rows.length + t(" item(s)", "개") + " · " + t("Ready ", "반영 가능 ") + actionableCount + " · " + t("Selected ", "선택 ") + selectedCount;
+          document.getElementById("panelSubtitle").textContent = modeSubtitle(compareRows()) + " · " + t("Showing ") + rows.length + t(" item(s)") + " · " + t("Ready ") + actionableCount + " · " + t("Selected ") + selectedCount;
           document.getElementById("runSelectedBtn").textContent = ui.mode === "send"
-            ? t("Save selected to Central", "선택 항목 중앙에 반영")
-            : t("Bring selected to Workspace", "선택 항목 작업공간으로 가져오기");
+            ? t("Save selected to Central")
+            : t("Bring selected to Workspace");
           document.getElementById("runSelectedBtn").disabled = selectedCount === 0;
           if (rows.length === 0) {
-            document.getElementById("compareTable").innerHTML = '<div class="empty">' + esc(t("No skills match the current filter.", "현재 필터와 맞는 스킬이 없습니다.")) + '</div>';
+            document.getElementById("compareTable").innerHTML = '<div class="empty">' + esc(t("No skills match the current filter.")) + '</div>';
             return;
           }
           document.getElementById("compareTable").innerHTML =
             '<table><thead><tr>' +
-            '<th class="check-col"><input id="selectAllRows" type="checkbox" data-action="toggle-all" /></th><th>' + esc(t("Skill", "스킬")) + '</th><th class="agent-col">' + esc(t("Agent", "에이전트")) + '</th>' +
-            '<th class="status-col">' + esc(t("Status", "상태")) + '</th><th class="count-col">' + esc(t("Workspace", "작업공간")) + '</th>' +
-            '<th class="count-col">' + esc(t("Central", "중앙")) + '</th><th>' + esc(t("Groups", "그룹")) + '</th><th class="action-col">' + esc(t("Action", "작업")) + '</th>' +
+            '<th class="check-col"><input id="selectAllRows" type="checkbox" data-action="toggle-all" /></th><th>' + esc(t("Skill")) + '</th><th class="agent-col">' + esc(t("Agent")) + '</th>' +
+            '<th class="status-col">' + esc(t("Status")) + '</th><th class="count-col">' + esc(t("Workspace")) + '</th>' +
+            '<th class="count-col">' + esc(t("Central")) + '</th><th>' + esc(t("Groups")) + '</th><th class="action-col">' + esc(t("Action")) + '</th>' +
             '</tr></thead><tbody>' +
             rows.map((row) => {
               const actionable = isActionable(row);
               const checked = ui.selected[row.key] && actionable ? "checked" : "";
               const groups = ui.mode === "send" ? row.workspaceGroups : row.centralGroups;
               const button = actionable
-                ? '<button class="primary" data-action="run-one" data-key="' + esc(row.key) + '">' + esc(ui.mode === "send" ? t("Save", "반영") : t("Bring", "가져오기")) + '</button>'
-                : '<button disabled>' + esc(t("No action", "작업 없음")) + '</button>';
+                ? '<button class="primary" data-action="run-one" data-key="' + esc(row.key) + '">' + esc(ui.mode === "send" ? t("Save") : t("Bring")) + '</button>'
+                : '<button disabled>' + esc(t("No action")) + '</button>';
               const diff = row.status === "modified"
-                ? '<button class="ghost" data-action="diff" data-key="' + esc(row.key) + '">' + esc(t("Diff", "비교")) + '</button>'
+                ? '<button class="ghost" data-action="diff" data-key="' + esc(row.key) + '">' + esc(t("Diff")) + '</button>'
                 : "";
               return '<tr>' +
                 '<td><input type="checkbox" data-action="toggle-row" data-key="' + esc(row.key) + '" ' + checked + ' ' + (!actionable ? "disabled" : "") + ' /></td>' +
                 '<td><div class="path"><strong>' + esc(row.name) + '</strong><span class="muted">' + esc(row.relativePath) + '</span></div></td>' +
                 '<td>' + esc(row.tool) + '</td>' +
                 '<td><span class="badge ' + statusClass(row.status) + '">' + esc(statusLabel(row.status)) + '</span></td>' +
-                '<td>' + esc(row.workspaceFiles) + ' ' + esc(t("files", "파일")) + '</td>' +
-                '<td>' + esc(row.centralFiles) + ' ' + esc(t("files", "파일")) + '</td>' +
+                '<td>' + esc(row.workspaceFiles) + ' ' + esc(t("files")) + '</td>' +
+                '<td>' + esc(row.centralFiles) + ' ' + esc(t("files")) + '</td>' +
                 '<td><div class="truncate muted" title="' + esc(groups.join(", ")) + '">' + esc(groups.length ? groups.join(", ") : "-") + '</div></td>' +
                 '<td><div class="row-actions">' + diff + button + '</div></td>' +
               '</tr>';
@@ -380,12 +381,12 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           const groupNames = allGroups.slice(0, 3).join(", ");
           if (summaryTarget) {
             const metrics = [
-              [t("Skills", "스킬"), allRows.length],
-              [t("Showing", "표시 중"), rows.length],
-              [t("Agents", "에이전트"), agents.length],
-              [t("Files shown", "표시 파일"), files],
-              [t("Groups", "그룹"), allGroups.length],
-              [t("Group names", "주요 그룹"), groupNames || "-"]
+              [t("Skills"), allRows.length],
+              [t("Showing"), rows.length],
+              [t("Agents"), agents.length],
+              [t("Files shown"), files],
+              [t("Groups"), allGroups.length],
+              [t("Group names"), groupNames || "-"]
             ];
             summaryTarget.innerHTML = metrics.map(([label, value]) =>
               '<div class="metric"><span>' + esc(label) + '</span><strong title="' + esc(value) + '">' + esc(value) + '</strong></div>'
@@ -393,10 +394,10 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           }
           renderDetailFilters(side);
           if (rows.length === 0) {
-            target.innerHTML = '<div class="empty">' + esc(t("No skills match the current filter.", "현재 필터와 맞는 스킬이 없습니다.")) + '</div>';
+            target.innerHTML = '<div class="empty">' + esc(t("No skills match the current filter.")) + '</div>';
             return;
           }
-          target.innerHTML = '<table class="detail-table"><thead><tr><th>' + esc(t("Skill", "스킬")) + '</th><th class="agent-col">' + esc(t("Agent", "에이전트")) + '</th><th class="status-col">' + esc(t("Status", "상태")) + '</th><th class="count-col">' + esc(t("Files", "파일")) + '</th><th class="date-col">' + esc(t("Created", "생성일")) + '</th><th class="date-col">' + esc(t("Updated", "수정일")) + '</th><th>' + esc(t("Groups", "그룹")) + '</th></tr></thead><tbody>' +
+          target.innerHTML = '<table class="detail-table"><thead><tr><th>' + esc(t("Skill")) + '</th><th class="agent-col">' + esc(t("Agent")) + '</th><th class="status-col">' + esc(t("Status")) + '</th><th class="count-col">' + esc(t("Files")) + '</th><th class="date-col">' + esc(t("Created")) + '</th><th class="date-col">' + esc(t("Updated")) + '</th><th>' + esc(t("Groups")) + '</th></tr></thead><tbody>' +
             rows.map((row) => '<tr><td><div class="path"><strong>' + esc(row.name) + '</strong><span class="muted">' + esc(row.relativePath) + '</span></div></td><td>' + esc(row.tool) + '</td><td><span class="badge ' + statusClass(row.rawStatus === "onlyHere" ? "workspaceOnly" : row.rawStatus) + '">' + esc(detailStatusLabel(row.rawStatus)) + '</span></td><td>' + esc(row.fileCount) + '</td><td class="date-cell">' + esc(formatDate(row.createdAt)) + '</td><td class="date-cell">' + esc(formatDate(row.updatedAt)) + '</td><td><span class="muted truncate" title="' + esc(row.groups.join(", ")) + '">' + esc(row.groups.length ? row.groups.join(", ") : "-") + '</span></td></tr>').join("") +
             '</tbody></table>';
         }
@@ -420,12 +421,12 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
         function runRows(rows){
           const targets = rows.filter(isActionable).map(targetFromRow);
           if (targets.length === 0) {
-            setStatus(t("Select at least one skill that can be applied.", "반영할 수 있는 스킬을 하나 이상 선택하세요."), "warn");
+            setStatus(t("Select at least one skill that can be applied."), "warn");
             return;
           }
           const sourceSide = ui.mode === "send" ? "workspace" : "central";
           vscode.postMessage({ type: "moveSelected", payload: { sourceSide, targets } });
-          setStatus((ui.mode === "send" ? t("Save requested: ", "중앙 반영 요청: ") : t("Bring requested: ", "가져오기 요청: ")) + targets.length, "info");
+          setStatus((ui.mode === "send" ? t("Save requested: ") : t("Bring requested: ")) + targets.length, "info");
         }
         function chooseStatus(value){
           ui.status = value || "actionable";
@@ -443,14 +444,10 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           render();
         });
         document.getElementById("refreshBtn").addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
-        document.getElementById("languageBtn").addEventListener("click", () => {
-          currentLanguage = isKo() ? "en" : "ko";
-          vscode.postMessage({ type: "setLanguage", payload: { language: currentLanguage } });
-        });
         document.querySelectorAll("[data-install-side]").forEach((button) => button.addEventListener("click", () => {
           const side = button.getAttribute("data-install-side") === "central" ? "central" : "workspace";
-          const sideLabel = side === "central" ? t("Central", "중앙") : t("Workspace", "작업공간");
-          setStatus(t("Opening add flow for ", "스킬 추가 흐름을 여는 중: ") + sideLabel, "info");
+          const sideLabel = side === "central" ? t("Central") : t("Workspace");
+          setStatus(t("Opening add flow for ") + sideLabel, "info");
           vscode.postMessage({ type: "installNpx", payload: { side } });
         }));
         document.querySelectorAll("[data-view]").forEach((btn) => btn.addEventListener("click", () => {
@@ -561,15 +558,15 @@ export function renderLibraryManagerClientScript(initialPayloadJson: string, lan
           }
           if (message.type === "ui") {
             const payload = message.payload || {};
-            setStatus(payload.message || t("Ready", "준비 완료"), payload.tone || "");
+            setStatus(payload.message || t("Ready"), payload.tone || "");
           }
         });
         window.addEventListener("error", (event) => {
-          setStatus(t("Screen error: ", "화면 오류: ") + (event.message || t("Unknown error", "알 수 없는 오류")), "error");
+          setStatus(t("Screen error: ") + (event.message || t("Unknown error")), "error");
         });
         window.addEventListener("unhandledrejection", (event) => {
-          const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || t("Unknown error", "알 수 없는 오류"));
-          setStatus(t("Screen error: ", "화면 오류: ") + reason, "error");
+          const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || t("Unknown error"));
+          setStatus(t("Screen error: ") + reason, "error");
         });
         render();
         vscode.postMessage({ type: "clientReady" });

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ensureUniqueGroupNameForTool, getGroupTool } from "./extensionGroupTools";
 import type { GroupTarget, GroupTreeNode, SelectionGroup, SkillTreeNode, ToolType } from "./types";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TreeSide = "workspace" | "central";
 type GroupMutationMode = "append" | "replace" | "remove";
 
@@ -51,20 +51,20 @@ export function createGroupActionTools(args: {
       if (!args.state.workspacePath) await args.refresh();
       const group = args.resolveGroup(node);
       if (!group) {
-        vscode.window.showWarningMessage(args.tr("Select a group to rename.", "이름을 바꿀 그룹을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a group to rename."));
         return;
       }
       const nextName = await vscode.window.showInputBox({
-        title: args.tr("Rename Group", "그룹 이름 변경"),
-        prompt: args.tr("Enter the new group name", "새 그룹 이름을 입력하세요"),
+        title: args.tr("Rename Group"),
+        prompt: args.tr("Enter the new group name"),
         value: group.name
       });
       if (!nextName?.trim() || nextName.trim() === group.name) return;
       const groupTool = getGroupTool(group);
-      if (!groupTool) throw new Error(args.tr("Could not find the group agent information.", "그룹 에이전트 정보를 찾을 수 없습니다."));
+      if (!groupTool) throw new Error(args.tr("Could not find the group agent information."));
       ensureUniqueGroupNameForTool({ groups: args.state.groups, tr: args.tr, side: group.side, tool: groupTool, name: nextName.trim(), excludeId: group.id });
       await args.persistGroups(args.state.groups.map((item) => item.id === group.id ? { ...item, name: nextName.trim() } : item), group.id);
-      vscode.window.showInformationMessage(args.tr(`Group renamed: ${nextName.trim()}`, `그룹 이름 변경 완료: ${nextName.trim()}`));
+      vscode.window.showInformationMessage(args.tr("Group renamed: {0}", String(nextName.trim())));
     } catch (error) {
       await args.handleError(error);
     }
@@ -75,17 +75,17 @@ export function createGroupActionTools(args: {
       if (!args.state.workspacePath) await args.refresh();
       const group = args.resolveGroup(node);
       if (!group) {
-        vscode.window.showWarningMessage(args.tr("Select a group to edit.", "수정할 그룹을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a group to edit."));
         return;
       }
       const nextDescription = await args.promptGroupDescription({
-        title: args.tr("Edit Group Description", "그룹 설명 수정"),
-        prompt: args.tr("Update what this group is for. Agents use this text as grouping intent.", "이 그룹의 용도를 수정하세요. 에이전트는 이 설명을 그룹 의도로 사용합니다."),
+        title: args.tr("Edit Group Description"),
+        prompt: args.tr("Update what this group is for. Agents use this text as grouping intent."),
         value: group.description ?? ""
       });
       if (nextDescription === undefined || nextDescription === (group.description ?? "")) return;
       await args.persistGroups(args.state.groups.map((item) => item.id === group.id ? { ...item, description: nextDescription } : item), group.id);
-      vscode.window.showInformationMessage(args.tr(`Group description updated: ${group.name}`, `그룹 설명 수정 완료: ${group.name}`));
+      vscode.window.showInformationMessage(args.tr("Group description updated: {0}", String(group.name)));
     } catch (error) {
       await args.handleError(error);
     }
@@ -102,62 +102,50 @@ export function createGroupActionTools(args: {
   const mutateGroupTargets = async (group: SelectionGroup, mode: GroupMutationMode): Promise<void> => {
     const nodes = args.getSelectedNodes(group.side);
     if (nodes.length === 0) {
-      vscode.window.showWarningMessage(args.tr("Select items in the same side tree first.", "먼저 같은 사이드 트리에서 항목을 선택하세요."));
+      vscode.window.showWarningMessage(args.tr("Select items in the same side tree first."));
       return;
     }
     const selectedTargets = args.buildGroupTargetsFromNodes(nodes);
     if (selectedTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("Only valid skills with SKILL.md can be applied to a group.", "SKILL.md가 있는 유효 스킬만 그룹에 반영할 수 있습니다."));
+      vscode.window.showWarningMessage(args.tr("Only valid skills with SKILL.md can be applied to a group."));
       return;
     }
     const groupTool = group.targets[0]?.tool;
     const sameToolTargets = groupTool ? selectedTargets.filter((target) => target.tool === groupTool) : selectedTargets;
     if (sameToolTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr(`A group can only apply skills from the same agent (${groupTool}).`, `그룹은 같은 에이전트(${groupTool}) 스킬만 반영할 수 있습니다.`));
+      vscode.window.showWarningMessage(args.tr("A group can only apply skills from the same agent ({0}).", String(groupTool)));
       return;
     }
     if (sameToolTargets.length !== selectedTargets.length) {
-      vscode.window.showInformationMessage(args.tr(
-        `Skipped ${selectedTargets.length - sameToolTargets.length} target(s) from other agents and applied only ${groupTool} skills.`,
-        `다른 에이전트 대상 ${selectedTargets.length - sameToolTargets.length}개는 제외하고 ${groupTool} 스킬만 반영합니다.`
-      ));
+      vscode.window.showInformationMessage(args.tr("Skipped {0} target(s) from other agents and applied only {1} skills.", String(selectedTargets.length - sameToolTargets.length), String(groupTool)));
     }
     let nextTargets: GroupTarget[] = group.targets;
     if (mode === "append") {
       nextTargets = args.dedupeGroupTargets([...group.targets, ...sameToolTargets]);
       if (sameTargetSet(nextTargets, group.targets)) {
-        vscode.window.showInformationMessage(args.tr(
-          `All selected targets are already in group "${group.name}".`,
-          `선택한 대상이 이미 모두 그룹 "${group.name}"에 있습니다.`
-        ));
+        vscode.window.showInformationMessage(args.tr("All selected targets are already in group \"{0}\".", String(group.name)));
         return;
       }
     } else if (mode === "replace") {
       nextTargets = args.dedupeGroupTargets(sameToolTargets);
       if (sameTargetSet(nextTargets, group.targets)) {
-        vscode.window.showInformationMessage(args.tr(
-          `Group "${group.name}" already matches the current selection.`,
-          `그룹 "${group.name}"은 이미 현재 선택 항목과 같습니다.`
-        ));
+        vscode.window.showInformationMessage(args.tr("Group \"{0}\" already matches the current selection.", String(group.name)));
         return;
       }
     } else {
       const removeKeys = new Set(sameToolTargets.map((target) => `${target.tool}:${args.normalizeRel(target.relativePath)}`));
       nextTargets = group.targets.filter((target) => !removeKeys.has(`${target.tool}:${args.normalizeRel(target.relativePath)}`));
       if (nextTargets.length === group.targets.length) {
-        vscode.window.showWarningMessage(args.tr(
-          `None of the selected targets are in group "${group.name}".`,
-          `선택한 대상이 그룹 "${group.name}"에 없습니다.`
-        ));
+        vscode.window.showWarningMessage(args.tr("None of the selected targets are in group \"{0}\".", String(group.name)));
         return;
       }
     }
     if (nextTargets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("This would leave the group empty. Delete the group instead if needed.", "그룹이 비게 됩니다. 필요하면 그룹 삭제를 사용하세요."));
+      vscode.window.showWarningMessage(args.tr("This would leave the group empty. Delete the group instead if needed."));
       return;
     }
     await args.persistGroups(args.state.groups.map((item) => item.id === group.id ? { ...item, targets: nextTargets } : item), group.id);
-    vscode.window.showInformationMessage(args.tr(`Group updated: ${group.name} (${nextTargets.length} target(s))`, `그룹 변경 완료: ${group.name} (대상 ${nextTargets.length}개)`));
+    vscode.window.showInformationMessage(args.tr("Group updated: {0} ({1} target(s))", String(group.name), String(nextTargets.length)));
   };
 
   const showGroupActions = async (node?: GroupTreeNode): Promise<void> => {
@@ -165,7 +153,7 @@ export function createGroupActionTools(args: {
       if (!args.state.workspacePath || !args.state.centralRepoPath) await args.refresh();
       const group = args.resolveGroup(node);
       if (!group) {
-        vscode.window.showWarningMessage(args.tr("Select a group first.", "그룹을 먼저 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a group first."));
         return;
       }
       args.state.selectedGroupId = group.id;
@@ -178,26 +166,26 @@ export function createGroupActionTools(args: {
         ? selectedTargets.filter((target) => target.tool === groupTool).length
         : selectedTargets.length;
       const selectionDetail = sameToolSelectedCount > 0
-        ? args.tr(`current valid selection ${sameToolSelectedCount}`, `현재 유효 선택 ${sameToolSelectedCount}개`)
-        : args.tr("no current valid selection", "현재 유효 선택 없음");
+        ? args.tr("current valid selection {0}", String(sameToolSelectedCount))
+        : args.tr("no current valid selection");
       const action = await vscode.window.showQuickPick(
         [
-          { label: group.side === "workspace" ? args.tr("Save Group and Skills to Central", "그룹+스킬을 중앙에 반영") : args.tr("Bring Group and Skills to Workspace", "그룹+스킬을 작업공간으로 가져오기"), value: "run" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
-          { label: args.tr("Copy Group and Skills to Another Agent", "그룹+스킬을 다른 에이전트로 복사"), value: "copyAgent" as const, description: args.tr(`group targets ${group.targets.length}`, `그룹 대상 ${group.targets.length}개`) },
-          { label: args.tr("Rename Group", "그룹 이름 변경"), value: "rename" as const },
-          { label: args.tr("Edit Group Description", "그룹 설명 수정"), value: "description" as const },
-          { label: args.tr("Add Current Selection to Group", "현재 선택 스킬을 그룹에 추가"), value: "append" as const, description: selectionDetail },
-          { label: args.tr("Replace Group with Current Selection", "그룹 구성을 현재 선택 스킬로 교체"), value: "replace" as const, description: selectionDetail },
-          { label: args.tr("Remove Current Selection from Group", "현재 선택 스킬을 그룹에서 제외"), value: "remove" as const, description: selectionDetail },
-          { label: args.tr("View Group Info", "그룹 정보 보기"), value: "info" as const },
-          { label: args.tr("Delete Group", "그룹 삭제"), value: "delete" as const }
+          { label: group.side === "workspace" ? args.tr("Save Group and Skills to Central") : args.tr("Bring Group and Skills to Workspace"), value: "run" as const, description: args.tr("group targets {0}", String(group.targets.length)) },
+          { label: args.tr("Copy Group and Skills to Another Agent"), value: "copyAgent" as const, description: args.tr("group targets {0}", String(group.targets.length)) },
+          { label: args.tr("Rename Group"), value: "rename" as const },
+          { label: args.tr("Edit Group Description"), value: "description" as const },
+          { label: args.tr("Add Current Selection to Group"), value: "append" as const, description: selectionDetail },
+          { label: args.tr("Replace Group with Current Selection"), value: "replace" as const, description: selectionDetail },
+          { label: args.tr("Remove Current Selection from Group"), value: "remove" as const, description: selectionDetail },
+          { label: args.tr("View Group Info"), value: "info" as const },
+          { label: args.tr("Delete Group"), value: "delete" as const }
         ],
         {
-          title: args.tr(`Group Actions: ${group.name}`, `그룹 작업: ${group.name}`),
+          title: args.tr("Group Actions: {0}", String(group.name)),
           matchOnDescription: true,
           placeHolder: group.description?.trim()
             ? group.description.trim()
-            : args.tr("Choose an action for this group.", "이 그룹에 적용할 작업을 선택하세요.")
+            : args.tr("Choose an action for this group.")
         }
       );
       if (!action) return;

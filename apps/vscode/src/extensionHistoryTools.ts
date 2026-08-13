@@ -8,7 +8,7 @@ import { legacySkillHistoryStorePath, skillHistoryStorePath } from "./storagePat
 import type { SelectionGroup, SkillFile, SkillSelection, SkillTreeNode, ToolType, TransferPlanItem } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TreeSide = "workspace" | "central";
 type SkillHistoryLog = {
   at: string;
@@ -47,7 +47,7 @@ export function createHistoryTools(args: {
   workspaceProviderGetSelected: () => SkillTreeNode | null | undefined;
   centralProviderGetSelected: () => SkillTreeNode | null | undefined;
   buildSkillMdTemplate: (name: string) => string;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   targetsToSelections: (files: SkillFile[], targets: SelectionGroup["targets"]) => SkillSelection[];
   exists: (targetPath: string) => Promise<boolean>;
 }): {
@@ -121,11 +121,11 @@ export function createHistoryTools(args: {
         ?? args.state.centralSelection[0]
         ?? args.state.workspaceSelection[0];
       if (!target) {
-        vscode.window.showWarningMessage(args.tr("Select a skill item to view history.", "히스토리를 볼 스킬 항목을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a skill item to view history."));
         return;
       }
       if (!target.relativePath || !isManagedSkillPath(target.relativePath)) {
-        vscode.window.showWarningMessage(args.tr("History is only available for items under the skills folder.", "skills 폴더 하위 항목만 히스토리를 볼 수 있습니다."));
+        vscode.window.showWarningMessage(args.tr("History is only available for items under the skills folder."));
         return;
       }
 
@@ -136,19 +136,19 @@ export function createHistoryTools(args: {
         .map(([, record]) => record)
         .sort((left, right) => right.lastUpdatedAt.localeCompare(left.lastUpdatedAt));
       if (matched.length === 0) {
-        vscode.window.showInformationMessage(args.tr("No history is recorded.", "기록된 히스토리가 없습니다."));
+        vscode.window.showInformationMessage(args.tr("No history is recorded."));
         return;
       }
 
       const picked = await vscode.window.showQuickPick(
         matched.map((record) => ({
           label: `${record.tool}/${record.relativePath}`,
-          description: args.tr(`Last source: ${record.lastSourceProjectPath}`, `마지막 소스: ${record.lastSourceProjectPath}`),
-          detail: args.tr(`${record.lastUpdatedAt} · ${record.history.length} log(s)`, `${record.lastUpdatedAt} · 로그 ${record.history.length}개`),
+          description: args.tr("Last source: {0}", String(record.lastSourceProjectPath)),
+          detail: args.tr("{0} · {1} log(s)", String(record.lastUpdatedAt), String(record.history.length)),
           value: record
         })),
         {
-          title: args.tr(`Skill History (${matched.length} skill(s))`, `Skill History (스킬 ${matched.length}개)`),
+          title: args.tr("Skill History ({0} skill(s))", String(matched.length)),
           matchOnDescription: true,
           matchOnDetail: true
         }
@@ -156,12 +156,12 @@ export function createHistoryTools(args: {
       if (!picked) return;
 
       const lines = [
-        args.tr(`Path: ${picked.value.tool}/${picked.value.relativePath}`, `경로: ${picked.value.tool}/${picked.value.relativePath}`),
-        args.tr(`Last updated: ${picked.value.lastUpdatedAt}`, `마지막 업데이트: ${picked.value.lastUpdatedAt}`),
-        args.tr(`Last source project: ${picked.value.lastSourceProjectPath}`, `마지막 소스 프로젝트: ${picked.value.lastSourceProjectPath}`),
-        args.tr(`Last source absolute path: ${picked.value.lastSourceAbsolutePath}`, `마지막 소스 절대경로: ${picked.value.lastSourceAbsolutePath}`),
+        args.tr("Path: {0}/{1}", String(picked.value.tool), String(picked.value.relativePath)),
+        args.tr("Last updated: {0}", String(picked.value.lastUpdatedAt)),
+        args.tr("Last source project: {0}", String(picked.value.lastSourceProjectPath)),
+        args.tr("Last source absolute path: {0}", String(picked.value.lastSourceAbsolutePath)),
         "",
-        args.tr("Recent logs:", "최근 로그:")
+        args.tr("Recent logs:")
       ];
       for (const log of picked.value.history.slice(0, 15)) {
         lines.push(`- ${log.at} · ${log.sourceProjectPath}`);
@@ -186,7 +186,7 @@ export function createHistoryTools(args: {
         { label: ".antigravity", value: "antigravity" as ToolType },
         { label: ".agents", value: "agents" as ToolType }
       ],
-      { title: args.tr("Select Create Target", "생성할 대상 선택") }
+      { title: args.tr("Select Create Target") }
     );
     return pick?.value;
   };
@@ -200,26 +200,26 @@ export function createHistoryTools(args: {
       if (!tool) return;
       const toolRoot = getWritableSkillRoot(basePath, tool, side);
       const name = await vscode.window.showInputBox({
-        title: args.tr("New Skill Folder", "새 스킬 폴더"),
-        prompt: args.tr("Enter a folder name", "폴더 이름을 입력하세요"),
+        title: args.tr("New Skill Folder"),
+        prompt: args.tr("Enter a folder name"),
         value: ""
       });
       if (!name?.trim()) return;
       const folderRel = normalizeRel(path.join("skills", name.trim()));
       if (!isManagedSkillPath(folderRel) || folderRel.includes("..")) {
-        vscode.window.showWarningMessage(args.tr("Items can only be created under the skills folder.", "skills 폴더 하위만 생성할 수 있습니다."));
+        vscode.window.showWarningMessage(args.tr("Items can only be created under the skills folder."));
         return;
       }
       const folderPath = path.join(toolRoot, folderRel);
       if (await args.exists(folderPath)) {
-        vscode.window.showWarningMessage(args.tr("An item with the same name already exists.", "이미 같은 이름이 있습니다."));
+        vscode.window.showWarningMessage(args.tr("An item with the same name already exists."));
         return;
       }
       await fs.mkdir(toolRoot, { recursive: true });
       await fs.mkdir(folderPath, { recursive: true });
       await fs.writeFile(path.join(folderPath, "SKILL.md"), args.buildSkillMdTemplate(name.trim()), "utf8");
       await args.refresh();
-      vscode.window.showInformationMessage(args.tr("Skill created with SKILL.md.", "스킬 생성 완료 (SKILL.md 포함)"));
+      vscode.window.showInformationMessage(args.tr("Skill created with SKILL.md."));
     } catch (error) {
       await args.handleError(error);
     }
@@ -227,14 +227,14 @@ export function createHistoryTools(args: {
 
   const showGroupInfo = async (group: SelectionGroup): Promise<void> => {
     if (group.targets.length === 0) {
-      vscode.window.showWarningMessage(args.tr("The group has no items.", "그룹에 항목이 없습니다."));
+      vscode.window.showWarningMessage(args.tr("The group has no items."));
       return;
     }
     const db = await loadCentralSkillHistory();
     const sourceFiles = group.side === "workspace" ? args.state.workspaceSkills : args.state.centralSkills;
     const fileSelections = args.targetsToSelections(sourceFiles, group.targets);
     if (fileSelections.length === 0) {
-      vscode.window.showWarningMessage(args.tr("Could not find files to show inside the group.", "그룹 내부에서 표시할 파일을 찾지 못했습니다."));
+      vscode.window.showWarningMessage(args.tr("Could not find files to show inside the group."));
       return;
     }
 
@@ -254,23 +254,23 @@ export function createHistoryTools(args: {
       const stat = await fs.stat(absolutePath).catch(() => null);
       rows.push({
         targetPath: `${file.tool}/${file.relativePath}`,
-        kind: /\/SKILL\.md$/i.test(file.relativePath) ? "SKILL.md" : args.tr("File", "파일"),
+        kind: /\/SKILL\.md$/i.test(file.relativePath) ? "SKILL.md" : args.tr("File"),
         fileMtime: stat ? stat.mtime.toISOString() : "-",
         fileSize: stat ? `${stat.size} B` : "-",
         latestAt: history?.lastUpdatedAt ?? "-",
-        latestProject: history?.lastSourceProjectPath ?? args.tr("No history", "기록 없음"),
+        latestProject: history?.lastSourceProjectPath ?? args.tr("No history"),
         latestSource: history?.lastSourceAbsolutePath ?? "-"
       });
     }
 
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeGroupInfo",
-      args.tr(`Group Info: ${group.name}`, `그룹 정보: ${group.name}`),
+      args.tr("Group Info: {0}", String(group.name)),
       vscode.ViewColumn.Active,
       { enableScripts: false }
     );
     const render = (): void => {
-      panel.title = args.tr(`Group Info: ${group.name}`, `그룹 정보: ${group.name}`);
+      panel.title = args.tr("Group Info: {0}", String(group.name));
       panel.webview.html = renderGroupInfoHtmlMarkup(panel.webview, {
         name: group.name,
         description: group.description ?? "",
@@ -285,7 +285,7 @@ export function createHistoryTools(args: {
       }, args.getUiLanguage(), { scriptsEnabled: false });
     };
     render();
-    args.registerLanguageRefresh(panel, render);
+    args.applyPanelBranding(panel, render);
   };
 
   const suggestDuplicateName = (name: string): string => {

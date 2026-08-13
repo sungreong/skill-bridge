@@ -35,6 +35,8 @@ export type GroupOverviewGroup = {
   brokenTargetCount: number;
   targets: GroupOverviewTarget[];
   targetCount: number;
+  availableTargetCount: number;
+  npxUpdateAvailable: boolean;
   latestUpdatedAt: string;
   latestHistoryAt: string;
 };

@@ -1,4 +1,4 @@
-import type { UiLanguage } from "./uiLanguage";
+import { getWebviewL10nBundle, type UiLanguage } from "./uiLanguage";
 
 export type WebviewTone = "info" | "warn" | "error";
 
@@ -21,6 +21,17 @@ export type RenderWebviewDocumentOptions = {
 
 export function createWebviewNonce(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function renderWebviewL10nRuntime(): string {
+  const bundle = JSON.stringify(getWebviewL10nBundle()).replace(/</g, "\\u003c");
+  return `
+    const __skillBridgeL10n = ${bundle};
+    function t(message, ...args) {
+      const template = __skillBridgeL10n[message] || message;
+      return template.replace(/\\{(\\d+)\\}/g, (_match, index) => String(args[Number(index)] ?? ""));
+    }
+  `;
 }
 
 export function renderWebviewDocument(options: RenderWebviewDocumentOptions): string {

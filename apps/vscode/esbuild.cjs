@@ -24,6 +24,7 @@ async function build() {
   if (!production) {
     await esbuild.build({
       entryPoints: [
+        "src/installGrouping.ts",
         "src/skillPaths.ts",
         "src/skillScanner.ts",
         "src/writeTextFileIfChanged.ts"

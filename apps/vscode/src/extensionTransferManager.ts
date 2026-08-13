@@ -4,22 +4,27 @@ import * as vscode from "vscode";
 import { buildAgentReviewPrompt } from "./reviewPrompt";
 import { buildFolderDiffSummaryRows, renderFolderDiffSummaryHtml } from "./transferDiffViews";
 import { renderTransferManagerHtml } from "./transferManagerView";
-import { collectScopeEntries, getSkillRoot, getWritableSkillRoot } from "./skillPaths";
+import { collectScopeEntries, getSkillRootCandidates, getWritableSkillRoot } from "./skillPaths";
 import { isManagedSkillPath, mapWithConcurrency, normalizeRel } from "./extensionSupport";
 import type { SelectionGroup, SkillSelection, ToolType, TransferPlan, TransferPlanItem, TransferPlanSummary, TransferStatus } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TreeSide = "workspace" | "central";
 export type TransferScopeHint = { tool: ToolType; relativePath: string; kind: "file" | "folder" };
 export type TransferPlanOptions = Pick<TransferPlan, "groupContext" | "repoContext" | "scopeContext"> & { scopeHints?: TransferScopeHint[] };
+
+export function hasSelectedTransferChanges(plan: TransferPlan): boolean {
+  return plan.items.some((item) => item.selected && item.status !== "same");
+}
 
 type CreateTransferManagerArgs = {
   tr: TranslationFn;
   toUserError: (error: unknown) => string;
   handleError: (error: unknown) => Promise<void>;
+  output: vscode.OutputChannel;
   getUiLanguage: () => UiLanguage;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   getWorkspacePath: () => string;
   getCentralRepoPath: () => string;
   getGroups: () => SelectionGroup[];
@@ -61,6 +66,21 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
     if (status === "modified") return "Child file changed";
     if (status === "typeChanged") return "Child type mismatch";
     return "Child items are the same";
+  };
+
+  const collectSourceScopeEntries = async (
+    sourceToolRoots: string[],
+    scope: string,
+    scopeKind: "file" | "folder"
+  ): Promise<Map<string, { relativePath: string; absolutePath: string; kind: "file" | "folder"; mtime: string | null; size: number | null }>> => {
+    const merged = new Map<string, { relativePath: string; absolutePath: string; kind: "file" | "folder"; mtime: string | null; size: number | null }>();
+    for (const root of sourceToolRoots) {
+      const entries = await collectScopeEntries(root, scope, scopeKind);
+      for (const [relativePath, entry] of entries) {
+        if (!merged.has(relativePath)) merged.set(relativePath, entry);
+      }
+    }
+    return merged;
   };
 
   const collapseTransferItems = (items: TransferPlanItem[]): TransferPlanItem[] => {
@@ -125,11 +145,11 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
 
     const itemsMap = new Map<string, TransferPlanItem>();
     for (const [tool, scopes] of scopeByTool.entries()) {
-      const sourceToolRoot = getSkillRoot(sourceBasePath, tool, sourceMode);
+      const sourceToolRoots = getSkillRootCandidates(sourceBasePath, tool, sourceMode);
       const targetToolRoot = getWritableSkillRoot(targetBasePath, tool, targetMode);
       for (const [scope, scopeKind] of scopes.entries()) {
         const [sourceEntries, targetEntries] = await Promise.all([
-          collectScopeEntries(sourceToolRoot, scope, scopeKind),
+          collectSourceScopeEntries(sourceToolRoots, scope, scopeKind),
           collectScopeEntries(targetToolRoot, scope, scopeKind)
         ]);
         const allPaths = new Set<string>([...sourceEntries.keys(), ...targetEntries.keys()]);
@@ -169,7 +189,8 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
             entryKind = "file";
           }
 
-          const srcPath = sourceEntry?.absolutePath ?? path.join(sourceToolRoot, relativePath);
+          const sourceFallbackRoot = sourceToolRoots[0] ?? sourceBasePath;
+          const srcPath = sourceEntry?.absolutePath ?? path.join(sourceFallbackRoot, relativePath);
           const dstPath = targetEntry?.absolutePath ?? path.join(targetToolRoot, relativePath);
           const key = `${tool}:${relativePath}`;
           return {
@@ -240,10 +261,11 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
     rebuildPlan: () => Promise<TransferPlan>,
     expandPlan?: () => Promise<TransferPlan>
   ): Promise<TransferPlan | null> => {
+    if (!hasSelectedTransferChanges(plan)) return null;
     let currentPlan = plan;
     const titleForPlan = (): string => currentPlan.mode === "workspaceToCentral"
-      ? args.tr("Save to Central - Review Before Applying", "중앙 반영 - 적용 전 검토")
-      : args.tr("Bring to Workspace - Review Before Applying", "작업공간으로 가져오기 - 적용 전 검토");
+      ? args.tr("Save to Central - Review Before Applying")
+      : args.tr("Bring to Workspace - Review Before Applying");
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferManager",
       titleForPlan(),
@@ -255,10 +277,11 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
       panel.webview.html = renderTransferManagerHtml(panel.webview, currentPlan, args.getUiLanguage());
     };
     render();
-    args.registerLanguageRefresh(panel, render);
+    args.applyPanelBranding(panel, render);
 
     return new Promise<TransferPlan | null>((resolve) => {
       let settled = false;
+      let lastClientError = "";
       const done = (value: TransferPlan | null): void => {
         if (settled) return;
         settled = true;
@@ -269,6 +292,19 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
       panel.webview.onDidReceiveMessage(async (messageValue: unknown) => {
         if (!messageValue || typeof messageValue !== "object") return;
         const message = messageValue as { type?: string; payload?: unknown };
+        if (message.type === "clientError") {
+          const payload = (message.payload as { message?: string; line?: number; column?: number } | undefined) ?? {};
+          const detail = String(payload.message ?? args.tr("Unknown error"));
+          const line = Number(payload.line ?? 0);
+          const column = Number(payload.column ?? 0);
+          const location = line > 0 ? ` (line ${line}${column > 0 ? `, column ${column}` : ""})` : "";
+          const report = args.tr("Change review screen error: {0}", `${detail}${location}`);
+          if (report === lastClientError) return;
+          lastClientError = report;
+          args.output.appendLine(`[TransferManager:webview] ${report}`);
+          await args.handleError(new Error(report));
+          return;
+        }
         if (message.type === "cancel") {
           done(null);
           panel.dispose();
@@ -289,12 +325,12 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
           if (targets.length === 0) return;
           const summaryPanel = vscode.window.createWebviewPanel(
             "skillBridgeFolderDiffSummary",
-            args.tr(`Folder Diff Summary: ${tool}/${relativePath}`, `폴더 Diff 요약: ${tool}/${relativePath}`),
+            args.tr("Folder Diff Summary: {0}/{1}", String(tool), String(relativePath)),
             vscode.ViewColumn.Active,
             { enableScripts: true, retainContextWhenHidden: false }
           );
           const renderSummary = (): void => {
-            summaryPanel.title = args.tr(`Folder Diff Summary: ${tool}/${relativePath}`, `폴더 Diff 요약: ${tool}/${relativePath}`);
+            summaryPanel.title = args.tr("Folder Diff Summary: {0}/{1}", String(tool), String(relativePath));
             summaryPanel.webview.html = renderFolderDiffSummaryHtml(summaryPanel.webview, {
               mode: currentPlan.mode,
               tool,
@@ -303,7 +339,7 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
             }, args.getUiLanguage());
           };
           renderSummary();
-          args.registerLanguageRefresh(summaryPanel, renderSummary);
+          args.applyPanelBranding(summaryPanel, renderSummary);
           summaryPanel.webview.onDidReceiveMessage(async (innerValue: unknown) => {
             if (!innerValue || typeof innerValue !== "object") return;
             const inner = innerValue as { type?: string; payload?: unknown };
@@ -352,25 +388,25 @@ export function createTransferManager(args: CreateTransferManagerArgs): {
               : []
           );
           if (selectedKeys.size === 0) {
-            const errorMessage = args.tr("No items are selected.", "선택된 항목이 없습니다.");
-            vscode.window.showWarningMessage(args.tr("There are no items to include in the AI review prompt. Select items first.", "AI 검토 프롬프트에 담을 대상이 없습니다. 먼저 항목을 선택하세요."));
+            const errorMessage = args.tr("No items are selected.");
+            vscode.window.showWarningMessage(args.tr("There are no items to include in the AI review prompt. Select items first."));
             void panel.webview.postMessage({ type: "promptCopyFailed", payload: { message: errorMessage } });
             return;
           }
           const validSelectedKeys = new Set(currentPlan.items.filter((item) => selectedKeys.has(item.key)).map((item) => item.key));
           if (validSelectedKeys.size === 0) {
-            const errorMessage = args.tr("Could not find selected items in the current plan.", "현재 계획에서 선택 항목을 찾지 못했습니다.");
-            vscode.window.showWarningMessage(args.tr("Could not find selected items in the current apply plan. Refresh and select again.", "현재 반영 계획에서 선택 항목을 찾지 못했습니다. 새로고침 후 다시 선택하세요."));
+            const errorMessage = args.tr("Could not find selected items in the current plan.");
+            vscode.window.showWarningMessage(args.tr("Could not find selected items in the current apply plan. Refresh and select again."));
             void panel.webview.postMessage({ type: "promptCopyFailed", payload: { message: errorMessage } });
             return;
           }
           try {
             const prompt = buildAgentReviewPrompt(currentPlan, validSelectedKeys, args.getUiLanguage());
             await vscode.env.clipboard.writeText(prompt);
-            vscode.window.showInformationMessage(args.tr(`AI review prompt copied: ${validSelectedKeys.size} selected row(s)`, `AI 검토 프롬프트 복사 완료: 선택 행 ${validSelectedKeys.size}개`));
+            vscode.window.showInformationMessage(args.tr("AI review prompt copied: {0} selected row(s)", String(validSelectedKeys.size)));
             void panel.webview.postMessage({ type: "promptCopied", payload: { selectedCount: validSelectedKeys.size } });
           } catch (error) {
-            const messageText = args.tr(`Prompt copy failed: ${args.toUserError(error)}`, `프롬프트 복사 실패: ${args.toUserError(error)}`);
+            const messageText = args.tr("Prompt copy failed: {0}", String(args.toUserError(error)));
             vscode.window.showWarningMessage(messageText);
             void panel.webview.postMessage({ type: "promptCopyFailed", payload: { message: messageText } });
           }

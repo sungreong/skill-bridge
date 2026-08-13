@@ -34,7 +34,6 @@ import { createExtensionRefreshRuntime, type ExtensionRefreshResult } from "./ex
 import { createExtensionProjectActions } from "./extensionProjectActions";
 import { createProjectPresetCommandTools } from "./extensionProjectPresetBootstrap";
 import { registerExtensionCommands } from "./extensionCommandRegistrar";
-import { registerMenuCommandAliases, setMenuLanguageContext } from "./extensionMenuCommandAliases";
 import {
   collectFiles,
   collectFolderEntryRows,
@@ -121,7 +120,7 @@ import { DEFAULT_CENTRAL_REPO_PATH_SETTING } from "./centralPath";
 import { createTransferExplorerTools } from "./extensionTransferExplorer";
 import { asRecord, clearCentralRepoPathOverrides, compactPathForDisplay, ensureSkillBridgeState, getActiveWorkspacePath, getDefaultCentralRepoPath, loadProjectPresets, loadSelectionGroups, loadSkillFilesBySide, parseSkillInputs, resolveContext, runSkillsAdd, saveProjectPresets, saveSelectionGroups, scanCentralInstructions, scanSkills, scanWorkspaceInstructions, slugifyPackId, slugifyProjectPresetId } from "./extensionStorage";
 import { createLibraryManagerTools } from "./extensionLibraryManager";
-import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLanguage";
+import { getUiLanguage } from "./uiLanguage";
 import { SkillTreeProvider } from "./views/skillTreeProvider";
 import { createCentralPathRepairTools } from "./extensionCentralPathRepair";
 
@@ -130,13 +129,6 @@ const DEFAULT_CENTRAL_REPO_PATH = DEFAULT_CENTRAL_REPO_PATH_SETTING;
 const BUNDLED_SKILL_MANAGER_RELATIVE_PATH = "skills/skill-manager";
 const CONFIGURABLE_TOOLS: ToolType[] = ["claude", "codex", "gemini", "cursor", "antigravity"];
 const execFileAsync = promisify(execFile);
-function getUiLanguage(): UiLanguage {
-  const raw = vscode.workspace.getConfiguration(SETTINGS_SECTION).get<string>("language", DEFAULT_UI_LANGUAGE);
-  return coerceUiLanguage(raw);
-}
-function labelForLanguage(language: UiLanguage, english: string, korean: string): string {
-  return language === "ko" ? korean : english;
-}
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const activationStartedAt = Date.now();
   type TreeSide = "workspace" | "central";
@@ -193,10 +185,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   qualityStatusBar.tooltip = "Skill Bridge workspace quality issues. Click to open Problems.";
   const output = vscode.window.createOutputChannel("Skill Bridge");
   const skillDiagnostics = vscode.languages.createDiagnosticCollection("skillBridge");
-  let uiLanguage = getUiLanguage();
-  const languageRefreshers = new Set<() => Promise<void> | void>();
-  const tr = (english: string, korean: string): string => labelForLanguage(uiLanguage, english, korean);
-  qualityStatusBar.tooltip = tr("Skill Bridge workspace quality issues. Click to open Problems.", "Skill Bridge 작업공간 품질 이슈입니다. 클릭하면 문제 목록을 엽니다.");
+  const uiLanguage = getUiLanguage();
+  const tr = vscode.l10n.t;
+  qualityStatusBar.tooltip = tr("Skill Bridge workspace quality issues. Click to open Problems.");
   workspaceProvider.setLanguage(uiLanguage);
   centralProvider.setLanguage(uiLanguage);
   const {
@@ -209,11 +200,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     syncWorkspaceAgentToCentralNow,
     updateStatusChrome,
     applyLanguageChrome,
-    registerLanguageRefresh,
+    applyPanelBranding,
     getWorkspaceChangedSkillFolder,
     syncWorkspaceAgentFoldersToCentral
   } = createExtensionShellTools({
-    settingsSection: SETTINGS_SECTION,
+    extensionUri: context.extensionUri, settingsSection: SETTINGS_SECTION,
     tr,
     state,
     workspaceView,
@@ -225,15 +216,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     updateStatusChromeCore: () => {
       const groupCounts = countGroups(filterGroupsByTab(state.groups, state.activeTab));
       const centralName = path.basename(state.centralRepoPath) || state.centralRepoPath;
-      statusBar.text = `$(repo) Skill Bridge: ${centralName} [${tabLabel(state.activeTab)}] (${tr("Groups", "그룹")} W:${groupCounts.workspace} C:${groupCounts.central})`;
+      statusBar.text = `$(repo) Skill Bridge: ${centralName} [${tabLabel(state.activeTab)}] (${tr("Groups")} W:${groupCounts.workspace} C:${groupCounts.central})`;
       statusBar.tooltip = [
-        `${tr("Central Skill Home", "중앙 스킬 홈")}: ${state.centralRepoPath || tr("Unset", "미설정")}`,
-        `${tr("Workspace", "작업공간")}: ${state.workspacePath || tr("Unset", "미설정")}`,
-        `${tr("Agent tab", "에이전트 탭")}: ${tabLabel(state.activeTab)}`,
-        `${tr("Groups", "그룹")}: ${tr("Workspace", "작업공간")} ${groupCounts.workspace}, ${tr("Central", "중앙")} ${groupCounts.central}`
+        `${tr("Central Skill Home")}: ${state.centralRepoPath || tr("Unset")}`,
+        `${tr("Workspace")}: ${state.workspacePath || tr("Unset")}`,
+        `${tr("Agent tab")}: ${tabLabel(state.activeTab)}`,
+        `${tr("Groups")}: ${tr("Workspace")} ${groupCounts.workspace}, ${tr("Central")} ${groupCounts.central}`
       ].join("\n");
     },
-    languageRefreshers,
     refresh: async () => void (await refresh()),
     getSkillRoot,
     isWithinPath,
@@ -292,15 +282,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workspaceProvider,
     centralProvider,
     getUiLanguage: () => uiLanguage,
-    setUiLanguage: async (language) => {
-      await vscode.workspace
-        .getConfiguration(SETTINGS_SECTION)
-        .update("language", language, vscode.ConfigurationTarget.Global);
-      uiLanguage = language;
-      applyLanguageChrome();
-    },
     refresh: async () => void (await refresh()),
-    registerLanguageRefresh,
+    applyPanelBranding,
     scanSkills,
     getSideSkillFiles: (side) => requireToolset(groupStateTools, "groupStateTools").getSideSkillFiles(side),
     getSkillFolderRelativePath,
@@ -324,15 +307,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tr,
     handleError,
     getUiLanguage: () => uiLanguage,
-    setUiLanguage: async (language) => {
-      await vscode.workspace
-        .getConfiguration(SETTINGS_SECTION)
-        .update("language", language, vscode.ConfigurationTarget.Global);
-      uiLanguage = language;
-      applyLanguageChrome();
-    },
     refresh: async () => void (await refresh()),
-    registerLanguageRefresh,
+    applyPanelBranding,
     getSkillFolderRelativePath,
     transferPathFromExplorer: (sourceSide, tool, relativePath, kind, preferredGroupIds) =>
       requireToolset(libraryTransferTools, "libraryTransferTools").transferPathFromExplorer(sourceSide, tool, relativePath, kind, preferredGroupIds),
@@ -413,39 +389,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
 
-  registerMenuCommandAliases(register);
-
-  const setLanguageAndRefreshViews = async (language: UiLanguage): Promise<void> => {
-    await vscode.workspace
-      .getConfiguration(SETTINGS_SECTION)
-      .update("language", language, vscode.ConfigurationTarget.Global);
-    uiLanguage = language;
-    await setMenuLanguageContext(language);
-    applyLanguageChrome();
-    for (const refreshLanguage of [...languageRefreshers]) {
-      await Promise.resolve(refreshLanguage()).catch((error) => {
-        output.appendLine(`[LanguageRefresh] ${toUserError(error)}`);
-      });
-    }
-  };
-
   context.subscriptions.push(workspaceView, centralView, statusBar, qualityStatusBar, output, skillDiagnostics);
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
-    if (event.affectsConfiguration(`${SETTINGS_SECTION}.language`)) {
-      void setMenuLanguageContext(getUiLanguage());
-      applyLanguageChrome();
-      for (const refresh of [...languageRefreshers]) {
-        void Promise.resolve(refresh()).catch((error) => {
-          output.appendLine(`[LanguageRefresh] ${toUserError(error)}`);
-        });
-      }
-    }
     if (event.affectsConfiguration(`${SETTINGS_SECTION}.autoSyncWorkspaceAgents`)) {
       const agents = getAutoSyncWorkspaceAgents();
       vscode.window.setStatusBarMessage(
         agents.length > 0
-          ? tr(`Skill Bridge auto save agents: ${agents.join(", ")}`, `Skill Bridge 자동 중앙 반영 에이전트: ${agents.join(", ")}`)
-          : tr("Skill Bridge auto save to Central disabled.", "Skill Bridge 자동 중앙 반영이 꺼져 있습니다."),
+          ? tr("Skill Bridge auto save agents: {0}", String(agents.join(", ")))
+          : tr("Skill Bridge auto save to Central disabled."),
         3000
       );
     }
@@ -454,7 +405,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       applyTabFilter(state, workspaceProvider, centralProvider); updateStatusChrome();
     }
   }));
-  void setMenuLanguageContext(getUiLanguage());
   applyLanguageChrome();
 
   workspaceView.onDidChangeSelection((event) => {
@@ -481,13 +431,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tr,
     settingsSection: SETTINGS_SECTION,
     getPayload: () => buildAddMoveWizardPayload() as any,
-    registerLanguageRefresh,
-    setLanguage: async (next) => {
-      await vscode.workspace
-        .getConfiguration(SETTINGS_SECTION)
-        .update("language", next, vscode.ConfigurationTarget.Global);
-      applyLanguageChrome();
-    },
+    applyPanelBranding,
     refresh: async () => void (await refresh()),
     runNewSkillWizard: () => runNewSkillWizard(),
     runAssetTransferWizard: (side) => runAssetTransferWizard(side),
@@ -578,10 +522,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tr,
     toUserError,
     workspaceProvider,
-    centralProvider,
+    centralProvider, state,
     getWorkspaceSelection: () => state.workspaceSelection,
     getCentralSelection: () => state.centralSelection,
-    registerLanguageRefresh,
+    applyPanelBranding,
     getUiLanguage: () => uiLanguage,
     exists,
     collectFolderEntryRows
@@ -605,21 +549,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workspaceProviderGetSelected: () => workspaceProvider.getSelected(),
     centralProviderGetSelected: () => centralProvider.getSelected(),
     buildSkillMdTemplate,
-    registerLanguageRefresh,
+    applyPanelBranding,
     targetsToSelections,
     exists
   });
   const { openGroupOverview } = createGroupOverviewTools({
-    tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), registerLanguageRefresh, state, loadCentralSkillHistory, targetsToSelections, getGroupTool,
+    tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), applyPanelBranding, state, loadCentralSkillHistory, targetsToSelections, getGroupTool,
     persistGroups: (next, selectedGroupId, options) => persistGroups(next, selectedGroupId, options),
     exportGroup: (side, selectedGroup, options) => exportGroup(side, selectedGroup, options),
     mirrorGroupToOtherSide: (group, options) => mirrorGroupToOtherSide(group, options),
-    installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side),
+    installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side), installNpxRepoForSide: (side, preset) => requireToolset(installTransferTools, "installTransferTools").installNpxRepoForSide(side, preset),
     assignTargetsToGroupMany: (side, groupId, targets) => assignTargetsToGroupMany(side, groupId, targets),
     unassignTargetsFromGroupMany: (side, groupId, targets) => unassignTargetsFromGroupMany(side, groupId, targets),
     ensureUniqueGroupNameForTool, toUserError
   });
-  const { openNpxSkillLibrary } = createNpxSkillLibraryTools({ tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), registerLanguageRefresh, state, getGroupTool, installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side), installNpxRepoForSide: (side, preset) => requireToolset(installTransferTools, "installTransferTools").installNpxRepoForSide(side, preset), openGroupOverview, persistGroups: (next, selectedGroupId, options) => persistGroups(next, selectedGroupId, options), toUserError, handleError });
+  const { openNpxSkillLibrary } = createNpxSkillLibraryTools({ tr, getUiLanguage: () => uiLanguage, refresh: async () => void (await refresh()), applyPanelBranding, state, getGroupTool, installSkillsForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsForSide(side), installSkillsCommandForSide: (side) => requireToolset(installTransferTools, "installTransferTools").installSkillsCommandForSide(side), installNpxRepoForSide: (side, preset) => requireToolset(installTransferTools, "installTransferTools").installNpxRepoForSide(side, preset), openGroupOverview, persistGroups: (next, selectedGroupId, options) => persistGroups(next, selectedGroupId, options), toUserError, handleError });
   const {
     renameGroup,
     editGroupDescription,
@@ -693,8 +637,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tr,
     toUserError,
     handleError,
+    output,
     getUiLanguage: () => uiLanguage,
-    registerLanguageRefresh,
+    applyPanelBranding,
     getWorkspacePath: () => state.workspacePath,
     getCentralRepoPath: () => state.centralRepoPath,
     getGroups: () => state.groups,
@@ -922,7 +867,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectPresetTools = createProjectPresetCommandTools({
     tr, toUserError, handleError, state,
     refresh: async () => void (await refresh()),
-    getUiLanguage: () => uiLanguage, registerLanguageRefresh,
+    getUiLanguage: () => uiLanguage, applyPanelBranding,
     loadProjectPresets, saveProjectPresets, saveSelectionGroups, getWizardAssetPicks,
     statusLabelForWizard, targetExistsInFiles, targetsToSelections,
     transferSelections: (side, selections, options) => transferSelections(side, selections, options),
@@ -957,8 +902,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     runEnvironmentDiagnosis, getAutoSyncWorkspaceAgents,
     resolveWorkspaceAutoSyncToolFromNode, formatAgentFolderLabel,
     toggleWorkspaceAgentAutoSync, syncWorkspaceAgentToCentralNow,
-    setLanguage: setLanguageAndRefreshViews,
-    applyLanguageChrome,
     updateStatusChrome,
     applyTabFilter: () => applyTabFilter(state, workspaceProvider, centralProvider),
     setPersonalSkillHome,

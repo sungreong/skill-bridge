@@ -7,7 +7,7 @@ import { findMirroredGroupIndexes } from "./groupMirrorMatching";
 type TreeSide = "workspace" | "central";
 
 export function createExtensionLibraryTransferTools(args: {
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -110,14 +110,14 @@ export function createExtensionLibraryTransferTools(args: {
   ): Promise<void> => {
     const skillFolderRel = args.getSkillFolderRelativePath(relativePath);
     if (!skillFolderRel) {
-      vscode.window.showWarningMessage(args.tr(`Not a skill folder path: ${tool}/${relativePath}`, `스킬 폴더 경로가 아닙니다: ${tool}/${relativePath}`));
+      vscode.window.showWarningMessage(args.tr("Not a skill folder path: {0}/{1}", String(tool), String(relativePath)));
       return;
     }
     const basePath = sourceSide === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
     const skillMdRel = `${skillFolderRel}/SKILL.md`;
     const skillMdAbs = args.resolveSkillPath(basePath, tool, skillMdRel, sourceSide);
     if (!(await args.exists(skillMdAbs))) {
-      vscode.window.showWarningMessage(args.tr(`Skills without SKILL.md cannot be applied: ${tool}/${skillFolderRel}`, `SKILL.md가 없는 스킬은 반영할 수 없습니다: ${tool}/${skillFolderRel}`));
+      vscode.window.showWarningMessage(args.tr("Skills without SKILL.md cannot be applied: {0}/{1}", String(tool), String(skillFolderRel)));
       return;
     }
 
@@ -132,7 +132,7 @@ export function createExtensionLibraryTransferTools(args: {
         .map((file) => ({ tool: file.tool, relativePath: file.relativePath }))
     );
     if (selections.length === 0) {
-      vscode.window.showWarningMessage(args.tr(`No valid skill was found to apply: ${tool}/${skillFolderRel}`, `반영할 유효 스킬을 찾지 못했습니다: ${tool}/${skillFolderRel}`));
+      vscode.window.showWarningMessage(args.tr("No valid skill was found to apply: {0}/{1}", String(tool), String(skillFolderRel)));
       return;
     }
     const scopeHints: TransferScopeHint[] = [{ kind, tool, relativePath }];
@@ -143,17 +143,14 @@ export function createExtensionLibraryTransferTools(args: {
       args.selectPreferredGroupIds(sourceSide, result.affectedGroupIds, preferredGroupIds)
     );
     const label = sourceSide === "workspace"
-      ? args.tr("Workspace → Central", "작업공간 → 중앙")
-      : args.tr("Central → Workspace", "중앙 → 작업공간");
-    const groupSuffix = mirroredGroups > 0 ? args.tr(` · applied groups ${mirroredGroups}`, ` · 그룹 반영 ${mirroredGroups}개`) : "";
+      ? args.tr("Workspace → Central")
+      : args.tr("Central → Workspace");
+    const groupSuffix = mirroredGroups > 0 ? args.tr(" · applied groups {0}", String(mirroredGroups)) : "";
     if (result.copied + result.deleted === 0) {
-      vscode.window.showInformationMessage(args.tr(`${label}: ${tool}/${relativePath} no changes${groupSuffix}`, `${label}: ${tool}/${relativePath} 변경 없음${groupSuffix}`));
+      vscode.window.showInformationMessage(args.tr("{0}: {1}/{2} no changes{3}", String(label), String(tool), String(relativePath), String(groupSuffix)));
       return;
     }
-    vscode.window.showInformationMessage(args.tr(
-      `${label}: ${tool}/${relativePath} applied (copied ${result.copied}, deleted ${result.deleted})${groupSuffix}`,
-      `${label}: ${tool}/${relativePath} 반영 완료 (복사 행 ${result.copied}개, 삭제 행 ${result.deleted}개)${groupSuffix}`
-    ));
+    vscode.window.showInformationMessage(args.tr("{0}: {1}/{2} applied (copied {3}, deleted {4}){5}", String(label), String(tool), String(relativePath), String(result.copied), String(result.deleted), String(groupSuffix)));
   };
 
   const transferSelectedPathsFromLibrary = async (
@@ -173,7 +170,7 @@ export function createExtensionLibraryTransferTools(args: {
       ).values()
     ];
     if (dedupTargets.length === 0) {
-      throw new Error(args.tr("Select targets before bulk moving.", "일괄 이동할 대상을 먼저 선택하세요."));
+      throw new Error(args.tr("Select targets before bulk moving."));
     }
 
     const basePath = sourceSide === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
@@ -201,7 +198,7 @@ export function createExtensionLibraryTransferTools(args: {
 
     const selections = args.uniqueSelections(selectedFiles);
     if (selections.length === 0 || scopeHints.length === 0) {
-      throw new Error(args.tr("No valid skills that can be applied were found in the selected items.", "선택 항목 중 반영 가능한 유효 스킬을 찾지 못했습니다."));
+      throw new Error(args.tr("No valid skills that can be applied were found in the selected items."));
     }
 
     const result = await args.transferSelections(sourceSide, selections, { scopeHints });
@@ -233,11 +230,11 @@ export function createExtensionLibraryTransferTools(args: {
         .filter((target) => !!args.getSkillFolderRelativePath(target.relativePath))
     );
     if (scopeHints.length === 0) {
-      throw new Error(args.tr("No applicable skill folders were found.", "반영 가능한 스킬 폴더를 찾지 못했습니다."));
+      throw new Error(args.tr("No applicable skill folders were found."));
     }
     const selectedStatusSet = new Set(selectedStatuses);
     if (selectedStatusSet.size === 0) {
-      throw new Error(args.tr("The same area has no changes to apply.", "동일 영역은 반영할 변경사항이 없습니다."));
+      throw new Error(args.tr("The same area has no changes to apply."));
     }
 
     const buildPreselectedPlan = async (): Promise<TransferPlan> => {
@@ -247,7 +244,7 @@ export function createExtensionLibraryTransferTools(args: {
 
     const plan = await buildPreselectedPlan();
     if (plan.items.filter((item) => item.selected).length === 0) {
-      throw new Error(args.tr("The selected area has no changes to apply.", "선택한 영역에 반영할 변경사항이 없습니다."));
+      throw new Error(args.tr("The selected area has no changes to apply."));
     }
 
     const resolved = await args.openTransferManagerTab(plan, buildPreselectedPlan);
@@ -350,15 +347,15 @@ export function createExtensionLibraryTransferTools(args: {
       return { changed: 0, skipped: groupIds.length };
     }
 
-    const sideLabel = targetSide === "workspace" ? args.tr("Workspace", "작업공간") : args.tr("Central", "중앙");
+    const sideLabel = targetSide === "workspace" ? args.tr("Workspace") : args.tr("Central");
     const preview = targetGroups.slice(0, 5).map((group) => `${args.getGroupTool(group) ?? "-"} / ${group.name}`).join("\n");
-    const more = targetGroups.length > 5 ? args.tr(`\nand ${targetGroups.length - 5} more`, `\n외 ${targetGroups.length - 5}개`) : "";
+    const more = targetGroups.length > 5 ? args.tr("\nand {0} more", String(targetGroups.length - 5)) : "";
     const ok = await vscode.window.showWarningMessage(
-      args.tr(`Delete ${targetGroups.length} groups that exist only in ${sideLabel}?\n\n${preview}${more}`, `${sideLabel}에만 있는 그룹 ${targetGroups.length}개를 삭제할까요?\n\n${preview}${more}`),
+      args.tr("Delete {0} groups that exist only in {1}?\n\n{2}{3}", String(targetGroups.length), String(sideLabel), String(preview), String(more)),
       { modal: true },
-      args.tr("Delete", "삭제")
+      args.tr("Delete")
     );
-    if (ok !== args.tr("Delete", "삭제")) {
+    if (ok !== args.tr("Delete")) {
       return { changed: 0, skipped: groupIds.length };
     }
 
@@ -375,14 +372,14 @@ export function createExtensionLibraryTransferTools(args: {
     if (collapsed.length === 0) return { requested: 0, deleted: 0, skipped: 0 };
 
     const preview = collapsed.slice(0, 6).map((target) => `${target.tool}/${target.relativePath}`).join("\n");
-    const more = collapsed.length > 6 ? args.tr(`\n...and ${collapsed.length - 6} more`, `\n...외 ${collapsed.length - 6}개`) : "";
+    const more = collapsed.length > 6 ? args.tr("\n...and {0} more", String(collapsed.length - 6)) : "";
     const sideLabel = side === "workspace" ? "Workspace" : "Central";
     const ok = await vscode.window.showWarningMessage(
-      args.tr(`Delete ${collapsed.length} selected skill items from ${sideLabel}?\n\n${preview}${more}`, `${sideLabel}에서 선택한 스킬 항목 ${collapsed.length}개를 삭제할까요?\n\n${preview}${more}`),
+      args.tr("Delete {0} selected skill items from {1}?\n\n{2}{3}", String(collapsed.length), String(sideLabel), String(preview), String(more)),
       { modal: true },
-      args.tr("Delete", "삭제")
+      args.tr("Delete")
     );
-    if (ok !== args.tr("Delete", "삭제")) return { requested: collapsed.length, deleted: 0, skipped: collapsed.length };
+    if (ok !== args.tr("Delete")) return { requested: collapsed.length, deleted: 0, skipped: collapsed.length };
 
     const basePath = side === "workspace" ? args.state.workspacePath : args.state.centralRepoPath;
     let deleted = 0;

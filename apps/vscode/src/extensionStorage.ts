@@ -16,7 +16,7 @@ import type {
   WorkspaceGroupFile
 } from "./types";
 import { renderSkillGroupMarkdown, sanitizeGroupMeta } from "./groupMetadata";
-import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, type UiLanguage } from "./uiLanguage";
+import { getUiLanguage as resolveUiLanguage, type UiLanguage } from "./uiLanguage";
 import { writeTextFileIfChanged } from "./writeTextFileIfChanged";
 import {
   compactPathForDisplay as compactCentralPathForDisplay,
@@ -333,8 +333,7 @@ async function loadLegacyPackFile(filePath: string): Promise<{ updatedAt: string
 }
 
 function getUiLanguage(): UiLanguage {
-  const raw = vscode.workspace.getConfiguration(SETTINGS_SECTION).get<string>("language", DEFAULT_UI_LANGUAGE);
-  return coerceUiLanguage(raw);
+  return resolveUiLanguage();
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
@@ -487,10 +486,10 @@ export async function loadSkillFilesBySide(
 export async function runSkillsAdd(
   cwd: string,
   repo: string,
-  skills: string[]
+  skills: string[],
+  tools: ToolType[] = []
 ): Promise<{ ok: boolean; command: string; stdout: string; stderr: string }> {
-  const skillArgs = skills.flatMap((skill) => ["--skill", skill]);
-  const args = ["-y", "skills", "add", repo, ...skillArgs, "--yes"];
+  const args = buildSkillsAddArgs(repo, skills, tools);
   const command = formatCommandForDisplay("npx", args);
   const maxBuffer = 12 * 1024 * 1024;
   const firstRun = await runSkillsAddOnce(args, cwd, maxBuffer);
@@ -508,6 +507,20 @@ export async function runSkillsAdd(
     stdout: joinMessages(firstRun.stdout, retry.stdout),
     stderr: joinMessages(firstRun.stderr, retryNote, retry.stderr)
   };
+}
+
+function buildSkillsAddArgs(repo: string, skills: string[], tools: ToolType[]): string[] {
+  const skillArgs = skills.flatMap((skill) => ["--skill", skill]);
+  const cliAgents = [...new Set(tools.map(toSkillsCliAgentName))];
+  const agentArgs = cliAgents.length > 0 ? ["--agent", ...cliAgents] : [];
+  return ["-y", "skills", "add", repo, ...skillArgs, ...agentArgs, "--copy", "--yes"];
+}
+
+function toSkillsCliAgentName(tool: ToolType): string {
+  if (tool === "claude") return "claude-code";
+  if (tool === "gemini") return "gemini-cli";
+  if (tool === "agents") return "*";
+  return tool;
 }
 
 async function runSkillsAddOnce(

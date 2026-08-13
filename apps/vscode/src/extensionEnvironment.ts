@@ -11,6 +11,7 @@ import {
 } from "./centralPath";
 import type { ToolType } from "./types";
 import { skillBridgeStateDir } from "./storagePaths";
+import { localize } from "./uiLanguage";
 
 export type EnvironmentCheckStatus = "ok" | "warn" | "fail";
 
@@ -31,7 +32,7 @@ export type EnvironmentDiagnosis = {
   checks: EnvironmentCheck[];
 };
 
-type TranslatePair = (english: string, korean: string) => string;
+type TranslatePair = (message: string, ...args: Array<string | number | boolean>) => string;
 
 type RefreshResult = {
   centralRepoPath: string;
@@ -76,14 +77,11 @@ export async function diagnoseEnvironment(args: {
     const warned = diagnosis.checks.filter((check) => check.status === "warn");
     if (failed.length > 0) {
       const picked = await vscode.window.showWarningMessage(
-        args.tr(
-          `Skill Bridge setup check: ${failed.length} failed, ${warned.length} warning. You can repair it with a user-home Central library.`,
-          `Skill Bridge 환경 진단: 실패 ${failed.length}개, 주의 ${warned.length}개. 사용자 홈 Central로 복구할 수 있습니다.`
-        ),
-        args.tr("Repair User-Home Central", "사용자 홈 Central로 복구"),
-        args.tr("Show Results", "결과 보기")
+        args.tr("Skill Bridge setup check: {0} failed, {1} warning. You can repair it with a user-home Central library.", String(failed.length), String(warned.length)),
+        args.tr("Repair User-Home Central"),
+        args.tr("Show Results")
       );
-      if (picked === args.tr("Repair User-Home Central", "사용자 홈 Central로 복구")) {
+      if (picked === args.tr("Repair User-Home Central")) {
         await repairUserCentralHome({
           ...args.repairUserCentralHomeArgs,
           diagnosis,
@@ -94,22 +92,16 @@ export async function diagnoseEnvironment(args: {
     }
 
     const message = warned.length > 0
-      ? args.tr(
-        `Skill Bridge setup check completed: ${warned.length} warning. Results were written to the Output panel.`,
-        `Skill Bridge 환경 진단 완료: 주의 ${warned.length}개. 결과를 Output 패널에 기록했습니다.`
-      )
-      : args.tr(
-        "Skill Bridge setup check completed: the current Central environment is usable.",
-        "Skill Bridge 환경 진단 완료: 현재 Central 환경을 사용할 수 있습니다."
-      );
+      ? args.tr("Skill Bridge setup check completed: {0} warning. Results were written to the Output panel.", String(warned.length))
+      : args.tr("Skill Bridge setup check completed: the current Central environment is usable.");
     const picked = shouldOfferUserHomeRepair(diagnosis)
       ? await vscode.window.showInformationMessage(
         message,
-        args.tr("Repair User-Home Central", "사용자 홈 Central 재정비"),
-        args.tr("Show Results", "결과 보기")
+        args.tr("Repair User-Home Central"),
+        args.tr("Show Results")
       )
-      : await vscode.window.showInformationMessage(message, args.tr("Show Results", "결과 보기"));
-    if (picked === args.tr("Repair User-Home Central", "사용자 홈 Central 재정비")) {
+      : await vscode.window.showInformationMessage(message, args.tr("Show Results"));
+    if (picked === args.tr("Repair User-Home Central")) {
       await repairUserCentralHome({
         ...args.repairUserCentralHomeArgs,
         diagnosis,
@@ -142,23 +134,23 @@ export async function collectEnvironmentDiagnosis(args: {
     : null;
 
   checks.push({
-    label: args.tr("OS / user home", "OS / 사용자 홈"),
+    label: args.tr("OS / user home"),
     status: os.homedir() ? "ok" : "fail",
-    detail: os.homedir() ? `${osLabel} · home=${os.homedir()}` : `${osLabel} · ${args.tr("user home is unavailable.", "사용자 홈을 확인할 수 없습니다.")}`
+    detail: os.homedir() ? `${osLabel} · home=${os.homedir()}` : `${osLabel} · ${args.tr("user home is unavailable.")}`
   });
   checks.push(await checkPathAccess(args.tr, args.exists, "Workspace", args.workspacePath, { mustExist: true, writable: false }));
   if (args.configuredCentralResolution && !args.configuredCentralResolution.ok) {
     checks.push({
-      label: args.tr("Central setting", "Central 설정"),
+      label: args.tr("Central setting"),
       status: "fail",
-      detail: `${formatCentralPathIssue(args.configuredCentralResolution)} ${args.tr("Central must be reachable from the same host as the current VS Code session.", "Central은 현재 VS Code 세션과 같은 호스트에서 접근 가능한 경로여야 합니다.")} · scope=${getCentralConfigScope(args.settingsSection)}`
+      detail: `${formatCentralPathIssue(args.configuredCentralResolution)} ${args.tr("Central must be reachable from the same host as the current VS Code session.")} · scope=${getCentralConfigScope(args.settingsSection)}`
     });
-    checks.push(await checkPathAccess(args.tr, args.exists, args.tr("Fallback Central", "대체 Central"), effectiveCentralPath, { mustExist: false, writable: true }));
+    checks.push(await checkPathAccess(args.tr, args.exists, args.tr("Fallback Central"), effectiveCentralPath, { mustExist: false, writable: true }));
   } else {
     checks.push({
-      label: args.tr("Central setting", "Central 설정"),
+      label: args.tr("Central setting"),
       status: isPathUnderHome(effectiveCentralPath) ? "ok" : "warn",
-      detail: `${effectiveCentralPath} · scope=${getCentralConfigScope(args.settingsSection)}${isPathUnderHome(effectiveCentralPath) ? "" : ` · ${args.tr("outside user home; OS permissions or removable drive state may affect access.", "사용자 홈 밖 경로라 OS 권한/이동식 드라이브 영향이 있을 수 있습니다.")}`}`
+      detail: `${effectiveCentralPath} · scope=${getCentralConfigScope(args.settingsSection)}${isPathUnderHome(effectiveCentralPath) ? "" : ` · ${args.tr("outside user home; OS permissions or removable drive state may affect access.")}`}`
     });
     checks.push(await checkPathAccess(args.tr, args.exists, "Central", effectiveCentralPath, { mustExist: false, writable: true }));
   }
@@ -213,24 +205,15 @@ export async function resetPersonalSkillHome(args: {
     const afterResolved = resolveHostPath(result.centralRepoPath);
     const moved = !beforeResolved.ok || !afterResolved.ok || !isSamePath(beforeResolved.absolutePath, afterResolved.absolutePath);
     const normalization = result.groupNormalization.changed
-      ? args.tr(` · groups normalized: removed ${result.groupNormalization.removedGroupCount}, removed targets ${result.groupNormalization.removedTargetCount}`, ` · 그룹 정리: 제거 ${result.groupNormalization.removedGroupCount}개, 대상 제거 ${result.groupNormalization.removedTargetCount}개`)
-      : args.tr(" · no group changes", " · 그룹 변경 없음");
+      ? args.tr(" · groups normalized: removed {0}, removed targets {1}", String(result.groupNormalization.removedGroupCount), String(result.groupNormalization.removedTargetCount))
+      : args.tr(" · no group changes");
     const message = moved
-      ? args.tr(
-        `Central library folder reset: ${args.compactPathForDisplay(beforePath)} → ${args.compactPathForDisplay(result.centralRepoPath)}`,
-        `중앙 라이브러리 폴더를 기본 위치로 재설정했습니다: ${args.compactPathForDisplay(beforePath)} → ${args.compactPathForDisplay(result.centralRepoPath)}`
-      )
-      : args.tr(
-        `Central library folder is already using the default location: ${args.compactPathForDisplay(result.centralRepoPath)}`,
-        `중앙 라이브러리 폴더가 이미 기본 위치를 사용 중입니다: ${args.compactPathForDisplay(result.centralRepoPath)}`
-      );
+      ? args.tr("Central library folder reset: {0} → {1}", String(args.compactPathForDisplay(beforePath)), String(args.compactPathForDisplay(result.centralRepoPath)))
+      : args.tr("Central library folder is already using the default location: {0}", String(args.compactPathForDisplay(result.centralRepoPath)));
     args.output.appendLine(`[PersonalHomeReset] before=${beforePath}`);
     args.output.appendLine(`[PersonalHomeReset] after=${result.centralRepoPath}`);
     args.output.appendLine(`[PersonalHomeReset] centralFiles=${result.centralFileCount}, centralGroups=${result.centralGroupCount}, workspaceGroups=${result.workspaceGroupCount}, normalized=${JSON.stringify(result.groupNormalization)}`);
-    vscode.window.showInformationMessage(args.tr(
-      `${message} · Central files ${result.centralFileCount} · Central groups ${result.centralGroupCount}${normalization}`,
-      `${message} · 중앙 파일 ${result.centralFileCount}개 · 중앙 그룹 ${result.centralGroupCount}개${normalization}`
-    ));
+    vscode.window.showInformationMessage(args.tr("{0} · Central files {1} · Central groups {2}{3}", String(message), String(result.centralFileCount), String(result.centralGroupCount), String(normalization)));
   } catch (error) {
     vscode.window.showErrorMessage(args.toUserError(error));
   }
@@ -251,25 +234,16 @@ async function repairUserCentralHome(args: {
   const defaultCentralExists = await pathExists(args.diagnosis.defaultCentralPath);
   const alreadyUsingDefault = isSamePath(args.diagnosis.centralRepoPath, args.diagnosis.defaultCentralPath);
   const confirmMessage = alreadyUsingDefault
-    ? args.tr(
-      `Ensure the current user-home Central library folders and set this path globally?\n\n${args.diagnosis.defaultCentralPath}`,
-      `현재 사용자 홈 Central 폴더 구조를 확인하고 이 경로를 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
-    )
+    ? args.tr("Ensure the current user-home Central library folders and set this path globally?\n\n{0}", String(args.diagnosis.defaultCentralPath))
     : defaultCentralExists
-      ? args.tr(
-        `Use the existing user-home Central library and set it globally?\n\n${args.diagnosis.defaultCentralPath}`,
-        `이미 있는 사용자 홈 Central을 사용하고 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
-      )
-      : args.tr(
-        `Create a user-home Central library and set it globally?\n\n${args.diagnosis.defaultCentralPath}`,
-        `사용자 홈 Central을 만들고 전역 설정으로 지정할까요?\n\n${args.diagnosis.defaultCentralPath}`
-      );
+      ? args.tr("Use the existing user-home Central library and set it globally?\n\n{0}", String(args.diagnosis.defaultCentralPath))
+      : args.tr("Create a user-home Central library and set it globally?\n\n{0}", String(args.diagnosis.defaultCentralPath));
   const ok = await vscode.window.showWarningMessage(
     confirmMessage,
     { modal: true },
-    args.tr("Repair", "복구")
+    args.tr("Repair")
   );
-  if (ok !== args.tr("Repair", "복구")) return;
+  if (ok !== args.tr("Repair")) return;
   await ensurePersonalSkillHome({
     basePath: args.diagnosis.defaultCentralPath,
     allAgents: args.allAgents,
@@ -281,10 +255,7 @@ async function repairUserCentralHome(args: {
   await args.clearCentralRepoPathOverrides();
   const result = await args.refresh();
   args.output.appendLine(`[EnvironmentRepair] central=${result.centralRepoPath}`);
-  vscode.window.showInformationMessage(args.tr(
-    `User-home Central repaired: ${args.compactPathForDisplay(result.centralRepoPath)}`,
-    `사용자 홈 Central 복구 완료: ${args.compactPathForDisplay(result.centralRepoPath)}`
-  ));
+  vscode.window.showInformationMessage(args.tr("User-home Central repaired: {0}", String(args.compactPathForDisplay(result.centralRepoPath))));
 }
 
 function shouldOfferUserHomeRepair(diagnosis: EnvironmentDiagnosis): boolean {
@@ -292,7 +263,7 @@ function shouldOfferUserHomeRepair(diagnosis: EnvironmentDiagnosis): boolean {
   if (!isSamePath(diagnosis.centralRepoPath, diagnosis.defaultCentralPath)) return true;
   return diagnosis.checks.some((check) =>
     check.status === "fail"
-    || (check.status === "warn" && (check.label === "Central" || check.label.includes("Central layout") || check.label.includes("Central 레이아웃")))
+    || (check.status === "warn" && (check.label === "Central" || check.label.includes("Central layout") || check.label.includes(localize("Central layout"))))
   );
 }
 
@@ -322,7 +293,7 @@ function writeEnvironmentDiagnosis(output: vscode.OutputChannel, diagnosis: Envi
   for (const check of diagnosis.checks) {
     output.appendLine(`- [${check.status.toUpperCase()}] ${check.label}: ${check.detail}`);
   }
-  output.appendLine(tr("OS action guide:", "OS별 조치 가이드:"));
+  output.appendLine(tr("OS action guide:"));
   for (const line of platformAdvice(tr)) {
     output.appendLine(`- ${line}`);
   }
@@ -343,8 +314,8 @@ async function checkPathAccess(
       label,
       status: options.mustExist || !parentWritable ? "fail" : "warn",
       detail: parent
-        ? `${targetPath} ${tr("missing", "없음")} · parent=${parent} · parentWritable=${parentWritable ? "yes" : "no"}`
-        : `${targetPath} ${tr("missing; no accessible parent folder was found.", "없음 · 접근 가능한 상위 폴더를 찾지 못했습니다.")}`
+        ? `${targetPath} ${tr("missing")} · parent=${parent} · parentWritable=${parentWritable ? "yes" : "no"}`
+        : `${targetPath} ${tr("missing; no accessible parent folder was found.")}`
     };
   }
 
@@ -365,7 +336,7 @@ async function checkCentralLayout(
   getWritableSkillRoot: (basePath: string, tool: ToolType, mode: "central") => string
 ): Promise<EnvironmentCheck> {
   if (!(await exists(centralRepoPath))) {
-    return { label: tr("Central layout", "Central 레이아웃"), status: "warn", detail: tr("After creating Central, Skill Bridge can create per-agent skills folders.", "Central 폴더 생성 후 에이전트별 skills 폴더를 만들 수 있습니다.") };
+    return { label: tr("Central layout"), status: "warn", detail: tr("After creating Central, Skill Bridge can create per-agent skills folders.") };
   }
   const missing: string[] = [];
   for (const tool of allAgents) {
@@ -373,9 +344,9 @@ async function checkCentralLayout(
     if (!(await exists(root))) missing.push(`${tool}/skills`);
   }
   return {
-    label: tr("Central layout", "Central 레이아웃"),
+    label: tr("Central layout"),
     status: missing.length === 0 ? "ok" : "warn",
-    detail: missing.length === 0 ? tr("Per-agent skills folders are ready.", "에이전트별 skills 폴더가 준비되어 있습니다.") : `${tr("Missing", "누락")}: ${missing.join(", ")}`
+    detail: missing.length === 0 ? tr("Per-agent skills folders are ready.") : `${tr("Missing")}: ${missing.join(", ")}`
   };
 }
 
@@ -385,18 +356,18 @@ async function checkGitCommand(tr: TranslatePair, toUserError: (error: unknown) 
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
     const { stdout } = await execFileAsync("git", ["--version"], { windowsHide: process.platform === "win32" });
-    return { label: "Git", status: "ok", detail: String(stdout).trim() || tr("git is available", "git 사용 가능") };
+    return { label: "Git", status: "ok", detail: String(stdout).trim() || tr("git is available") };
   } catch (error) {
-    return { label: "Git", status: "warn", detail: `${tr("git command is unavailable. Check Git installation/PATH before saving skills to Central.", "git 명령을 실행할 수 없습니다. 중앙 반영 기능 전에 설치/PATH 확인이 필요합니다.")} ${toUserError(error)}` };
+    return { label: "Git", status: "warn", detail: `${tr("git command is unavailable. Check Git installation/PATH before saving skills to Central.")} ${toUserError(error)}` };
   }
 }
 
 async function checkNpxCommand(tr: TranslatePair, toUserError: (error: unknown) => string): Promise<EnvironmentCheck> {
   try {
     const version = await runNpxVersionForDiagnostic();
-    return { label: "npx", status: "ok", detail: version ? `npx ${version}` : tr("npx is available", "npx 사용 가능") };
+    return { label: "npx", status: "ok", detail: version ? `npx ${version}` : tr("npx is available") };
   } catch (error) {
-    return { label: "npx", status: "warn", detail: `${tr("npx command is unavailable. Check Node.js/npm PATH before using install features.", "npx 명령을 실행할 수 없습니다. 스킬 설치 기능 전에 Node.js/npm PATH 확인이 필요합니다.")} ${toUserError(error)}` };
+    return { label: "npx", status: "warn", detail: `${tr("npx command is unavailable. Check Node.js/npm PATH before using install features.")} ${toUserError(error)}` };
   }
 }
 
@@ -495,27 +466,27 @@ function isSamePath(left: string, right: string): boolean {
 function platformAdvice(tr: TranslatePair): string[] {
   if (process.platform === "win32") {
     return [
-      tr("Windows: Prefer Central under %USERPROFILE% instead of Program Files, Windows, or another user's folder.", "Windows: Program Files, Windows, 다른 사용자 폴더보다 %USERPROFILE% 아래 Central을 권장합니다."),
-      tr("Windows: Avoid mixing administrator and normal VS Code sessions because file ownership/permissions can become inconsistent.", "Windows: VS Code를 관리자 권한으로 섞어 실행하면 파일 소유/권한이 꼬일 수 있으니 일반 권한으로 통일하세요."),
-      tr("Windows: If Git or npx fails, confirm PATH in a new terminal and restart VS Code.", "Windows: Git 또는 npx 실패 시 새 터미널에서 PATH가 잡히는지 확인하고 VS Code를 재시작하세요.")
+      tr("Windows: Prefer Central under %USERPROFILE% instead of Program Files, Windows, or another user's folder."),
+      tr("Windows: Avoid mixing administrator and normal VS Code sessions because file ownership/permissions can become inconsistent."),
+      tr("Windows: If Git or npx fails, confirm PATH in a new terminal and restart VS Code.")
     ];
   }
   if (process.platform === "darwin") {
     return [
-      tr("macOS: Prefer a user-home path such as ~/skill-bridge-repo.", "macOS: ~/skill-bridge-repo 같은 사용자 홈 경로를 권장합니다."),
-      tr("macOS: Desktop/Documents/Downloads may require Files and Folders permission for VS Code.", "macOS: Desktop/Documents/Downloads 아래를 쓰면 VS Code에 Files and Folders 권한이 필요할 수 있습니다."),
-      tr("macOS: Avoid Central under /System, /Applications, or another user's home.", "macOS: /System, /Applications, 다른 사용자 홈 아래 Central은 피하세요.")
+      tr("macOS: Prefer a user-home path such as ~/skill-bridge-repo."),
+      tr("macOS: Desktop/Documents/Downloads may require Files and Folders permission for VS Code."),
+      tr("macOS: Avoid Central under /System, /Applications, or another user's home.")
     ];
   }
   if (process.platform === "linux") {
     return [
-      tr("Linux: Prefer a user-home path such as ~/skill-bridge-repo.", "Linux: ~/skill-bridge-repo 같은 사용자 홈 경로를 권장합니다."),
-      tr("Linux: Folders created by root can fail writes in normal VS Code; make the current user the owner.", "Linux: root로 만든 폴더는 일반 VS Code에서 쓰기 실패할 수 있으니 소유자를 현재 사용자로 맞추세요."),
-      tr("Linux: In containers or remote environments, confirm the Central path is visible to the current VS Code server process.", "Linux: 컨테이너/원격 환경에서는 Central 경로가 현재 VS Code 서버 프로세스에서 보이는지 확인하세요.")
+      tr("Linux: Prefer a user-home path such as ~/skill-bridge-repo."),
+      tr("Linux: Folders created by root can fail writes in normal VS Code; make the current user the owner."),
+      tr("Linux: In containers or remote environments, confirm the Central path is visible to the current VS Code server process.")
     ];
   }
   return [
-    tr("Prefer a Central path under the user home.", "사용자 홈 아래 Central 경로를 권장합니다."),
-    tr("Git/npx must be available on PATH for the VS Code process.", "Git/npx는 VS Code 프로세스의 PATH에서 실행 가능해야 합니다.")
+    tr("Prefer a Central path under the user home."),
+    tr("Git/npx must be available on PATH for the VS Code process.")
   ];
 }
