@@ -1,7 +1,7 @@
 import type * as vscode from "vscode";
 import type { SkillAssetTreeMeta, SkillTreeFilterMode, ToolType } from "./types";
-import type { UiLanguage } from "./uiLanguage";
-import { createWebviewNonce } from "./webviewCommon";
+import { localize, type UiLanguage } from "./uiLanguage";
+import { createWebviewNonce, renderWebviewL10nRuntime } from "./webviewCommon";
 import { renderWebviewClientCommonScript } from "./webviewClientCommon";
 import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
@@ -41,7 +41,7 @@ export function renderAddMoveWizardHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${payload.language === "ko" ? "스킬 추가/이동 도우미" : "Add or Move Helper"}</title>
+  <title>${localize("Add or Move Helper")}</title>
   <style>
     ${renderWebviewCommonStyles()}
     body { margin: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
@@ -91,7 +91,6 @@ export function renderAddMoveWizardHtml(
         <div id="subtitle" class="muted"></div>
       </div>
       <div class="head-actions">
-        <button id="languageToggle" class="ghost" type="button"></button>
         <button id="refresh" class="ghost" type="button"></button>
       </div>
     </div>
@@ -126,16 +125,13 @@ export function renderAddMoveWizardHtml(
       central: document.getElementById("centralPanel"),
       feedback: document.getElementById("feedback"),
       filterLabel: document.getElementById("filterLabel"),
-      refresh: document.getElementById("refresh"),
-      languageToggle: document.getElementById("languageToggle")
+      refresh: document.getElementById("refresh")
     };
     const uiState = { busy:false, action:"" };
     const copy = {
-      en: {
         title: "Add or Move Helper",
         subtitle: "Create, bring, save, and move skills after checking risk signals first.",
         refresh: "Refresh",
-        languageToggle: "한국어",
         initialFeedback: "Choose an action. VS Code prompts and the pre-transfer review will open next.",
         busyFeedback: "A task is already opening. Check the VS Code prompt.",
         refreshing: "Refreshing skill assets...",
@@ -176,81 +172,33 @@ export function renderAddMoveWizardHtml(
           createPack: ["Create Preset from Central Skills", "Save selected Central skills as a reusable preset for a project type."],
           copyAgent: ["Copy to Another Agent", "Copy a skill between Claude, Codex, .agents, or another agent within Workspace or Central."],
           installNpx: ["Install from npx", "Open the existing install flow, then continue to review and apply changes."]
-        }
-      },
-      ko: {
-        title: "스킬 추가/이동 도우미",
-        subtitle: "스킬을 만들고, 작업공간으로 가져오고, 중앙에 반영하고, 다른 에이전트로 복사하기 전에 위험 신호를 먼저 확인합니다.",
-        refresh: "새로고침",
-        languageToggle: "English",
-        initialFeedback: "작업을 선택하면 VS Code 입력창과 반영 전 검토 화면이 이어서 열립니다.",
-        busyFeedback: "이미 작업을 여는 중입니다. VS Code 입력창을 확인하세요.",
-        refreshing: "스킬 자산 목록을 새로고침하는 중입니다...",
-        openingPrompt: "입력창을 여는 중입니다",
-        nextStep: "다음 단계",
-        filterPrefix: "현재 트리 필터:",
-        skillCount: "스킬",
-        fileCount: "파일",
-        warningCount: "경고",
-        emptySkills: "표시할 스킬이 없습니다.",
-        metricChanged: "변경",
-        metricNew: "새 스킬",
-        metricRisk: "주의",
-        metricMissing: "SKILL.md 없음",
-        metricRecent: "최근",
-        metricShown: "표시",
-        workspacePanel: "작업공간",
-        centralPanel: "중앙",
-        statusNew: "새 스킬",
-        statusChanged: "변경",
-        statusRisk: "주의",
-        statusMissing: "SKILL.md 없음",
-        statusRecent: "최근",
-        statusSame: "동일",
-        filterAll: "전체",
-        filterChanged: "변경",
-        filterNew: "새 항목",
-        filterRisk: "주의",
-        filterMissing: "SKILL.md 없음",
-        filterRecent: "최근",
-        actions: {
-          newSkill: ["새 스킬 만들기", "대상 에이전트를 고르고 skills/<name>/SKILL.md를 생성합니다."],
-          promoteAsset: ["중앙에 반영", "작업공간의 스킬 하나를 반영 전 검토 화면에서 확인한 뒤 중앙에 반영합니다."],
-          importAsset: ["작업공간으로 가져오기", "중앙 저장소의 스킬 하나를 반영 전 검토 화면에서 확인한 뒤 가져옵니다."],
-          hydrateProject: ["프리셋을 작업공간에 적용", "프로젝트 프리셋이나 선택한 중앙 스킬을 현재 프로젝트에 가져옵니다."],
-          downloadCentralSkill: ["중앙 스킬을 작업공간으로 가져오기", "중앙 라이브러리에서 검색해 작업공간 에이전트 폴더에 적용합니다."],
-          downloadSkillManagerSkill: ["Skill Manager 도우미 설치", "확장에 번들된 skill-manager 스킬을 현재 작업공간에 적용합니다."],
-          createPack: ["중앙 스킬로 프리셋 만들기", "선택한 중앙 스킬을 프로젝트 유형별 재사용 프리셋으로 저장합니다."],
-          copyAgent: ["다른 에이전트로 복사", "작업공간 또는 중앙 안에서 Claude, Codex, .agents 등 다른 에이전트로 복사합니다."],
-          installNpx: ["npx에서 설치", "기존 설치 흐름을 열고 설치 후 그룹/반영 검토로 이어갑니다."]
-        }
       }
     };
-    function lang(){ return state.language === "ko" ? "ko" : "en"; }
-    function t(key){ return copy[lang()][key] ?? copy.en[key] ?? key; }
+    ${renderWebviewL10nRuntime()}
+    function copyText(key){ return t(copy[key] ?? key); }
     function actionLabel(action){
-      const pair = copy[lang()].actions[action] ?? copy.en.actions[action];
-      return pair ? pair[0] : action;
+      const pair = copy.actions[action];
+      return pair ? t(pair[0]) : action;
     }
     function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;"); }
     function labelStatus(status){
-      if (status === "new") return t("statusNew");
-      if (status === "changed") return t("statusChanged");
-      if (status === "risk") return t("statusRisk");
-      if (status === "missingSkillMd") return t("statusMissing");
-      if (status === "recent") return t("statusRecent");
-      return t("statusSame");
+      if (status === "new") return copyText("statusNew");
+      if (status === "changed") return copyText("statusChanged");
+      if (status === "risk") return copyText("statusRisk");
+      if (status === "missingSkillMd") return copyText("statusMissing");
+      if (status === "recent") return copyText("statusRecent");
+      return copyText("statusSame");
     }
     function labelFilterMode(mode){
-      if (mode === "changed") return t("filterChanged");
-      if (mode === "new") return t("filterNew");
-      if (mode === "risk") return t("filterRisk");
-      if (mode === "missingSkillMd") return t("filterMissing");
-      if (mode === "recent") return t("filterRecent");
-      return t("filterAll");
+      if (mode === "changed") return copyText("filterChanged");
+      if (mode === "new") return copyText("filterNew");
+      if (mode === "risk") return copyText("filterRisk");
+      if (mode === "missingSkillMd") return copyText("filterMissing");
+      if (mode === "recent") return copyText("filterRecent");
+      return copyText("filterAll");
     }
     function setFeedback(message, tone){
-      ui.feedback.textContent = message || t("initialFeedback");
+      ui.feedback.textContent = message || copyText("initialFeedback");
       ui.feedback.className = "feedback " + (tone || "info");
     }
     function setBusy(busy, action){
@@ -262,60 +210,52 @@ export function renderAddMoveWizardHtml(
       });
     }
     function renderSide(title, data){
-      const rows = data.preview.map(item => '<div class="row"><div class="row-name" title="' + esc(item.tool + "/" + item.skillName) + '">' + esc(item.tool) + ' / ' + esc(item.skillName) + '</div><span class="chip status-' + esc(item.status) + '">' + esc(labelStatus(item.status)) + ' · ' + esc(t("fileCount")) + ' ' + item.fileCount + (item.warnings ? ' · ' + esc(t("warningCount")) + ' ' + item.warnings : '') + '</span></div>').join("");
-      return '<div class="panel-head"><b>' + esc(title) + '</b><span class="chip">' + data.total + ' ' + esc(t("skillCount")) + '</span></div>'
+      const rows = data.preview.map(item => '<div class="row"><div class="row-name" title="' + esc(item.tool + "/" + item.skillName) + '">' + esc(item.tool) + ' / ' + esc(item.skillName) + '</div><span class="chip status-' + esc(item.status) + '">' + esc(labelStatus(item.status)) + ' · ' + esc(copyText("fileCount")) + ' ' + item.fileCount + (item.warnings ? ' · ' + esc(copyText("warningCount")) + ' ' + item.warnings : '') + '</span></div>').join("");
+      return '<div class="panel-head"><b>' + esc(title) + '</b><span class="chip">' + data.total + ' ' + esc(copyText("skillCount")) + '</span></div>'
         + '<div class="metrics">'
-        + '<div class="metric"><div class="k">' + esc(t("metricChanged")) + '</div><div class="v">' + data.changed + '</div></div>'
-        + '<div class="metric"><div class="k">' + esc(t("metricNew")) + '</div><div class="v">' + data.fresh + '</div></div>'
-        + '<div class="metric"><div class="k">' + esc(t("metricRisk")) + '</div><div class="v">' + data.risk + '</div></div>'
-        + '<div class="metric"><div class="k">' + esc(t("metricMissing")) + '</div><div class="v">' + data.missing + '</div></div>'
-        + '<div class="metric"><div class="k">' + esc(t("metricRecent")) + '</div><div class="v">' + data.recent + '</div></div>'
-        + '<div class="metric"><div class="k">' + esc(t("metricShown")) + '</div><div class="v">' + data.preview.length + '</div></div>'
-        + '</div><div class="preview">' + (rows || '<div class="muted">' + esc(t("emptySkills")) + '</div>') + '</div>';
+        + '<div class="metric"><div class="k">' + esc(copyText("metricChanged")) + '</div><div class="v">' + data.changed + '</div></div>'
+        + '<div class="metric"><div class="k">' + esc(copyText("metricNew")) + '</div><div class="v">' + data.fresh + '</div></div>'
+        + '<div class="metric"><div class="k">' + esc(copyText("metricRisk")) + '</div><div class="v">' + data.risk + '</div></div>'
+        + '<div class="metric"><div class="k">' + esc(copyText("metricMissing")) + '</div><div class="v">' + data.missing + '</div></div>'
+        + '<div class="metric"><div class="k">' + esc(copyText("metricRecent")) + '</div><div class="v">' + data.recent + '</div></div>'
+        + '<div class="metric"><div class="k">' + esc(copyText("metricShown")) + '</div><div class="v">' + data.preview.length + '</div></div>'
+        + '</div><div class="preview">' + (rows || '<div class="muted">' + esc(copyText("emptySkills")) + '</div>') + '</div>';
     }
     function render(){
-      document.documentElement.lang = lang();
-      ui.title.textContent = t("title");
-      ui.subtitle.textContent = t("subtitle");
-      ui.refresh.textContent = t("refresh");
-      ui.languageToggle.textContent = t("languageToggle");
+      ui.title.textContent = copyText("title");
+      ui.subtitle.textContent = copyText("subtitle");
+      ui.refresh.textContent = copyText("refresh");
       document.querySelectorAll(".action").forEach((button) => {
         const action = button.dataset.action || "";
-        const pair = copy[lang()].actions[action] ?? copy.en.actions[action];
+        const pair = copy.actions[action];
         const title = button.querySelector("b");
         const body = button.querySelector("span");
-        if (title && pair) title.textContent = pair[0];
-        if (body && pair) body.textContent = pair[1];
+        if (title && pair) title.textContent = t(pair[0]);
+        if (body && pair) body.textContent = t(pair[1]);
       });
-      ui.workspace.innerHTML = renderSide(t("workspacePanel"), state.workspace);
-      ui.central.innerHTML = renderSide(t("centralPanel"), state.central);
-      ui.filterLabel.textContent = t("filterPrefix") + " " + labelFilterMode(state.activeFilter);
+      ui.workspace.innerHTML = renderSide(copyText("workspacePanel"), state.workspace);
+      ui.central.innerHTML = renderSide(copyText("centralPanel"), state.central);
+      ui.filterLabel.textContent = copyText("filterPrefix") + " " + labelFilterMode(state.activeFilter);
       if (!ui.feedback.textContent) setFeedback("");
     }
     document.body.addEventListener("click", (event) => {
       const source = event.target;
       const el = source instanceof Element ? source.closest("button") : null;
       if (!(el instanceof HTMLButtonElement)) return;
-      if (el.id === "languageToggle") {
-        state = { ...state, language: lang() === "ko" ? "en" : "ko" };
-        vscode.postMessage({ type: "setLanguage", payload: { language: state.language } });
-        render();
-        return;
-      }
       if (uiState.busy) {
-        setFeedback(t("busyFeedback"), "warn");
+        setFeedback(copyText("busyFeedback"), "warn");
         return;
       }
       if (el.id === "refresh") {
         setBusy(true, "refresh");
-        setFeedback(t("refreshing"));
+        setFeedback(copyText("refreshing"));
         vscode.postMessage({ type: "refresh" });
         return;
       }
       const action = el.dataset.action;
       if (!action) return;
       setBusy(true, action);
-      setFeedback((actionLabel(action) || t("nextStep")) + " - " + t("openingPrompt") + "...");
+      setFeedback((actionLabel(action) || copyText("nextStep")) + " - " + copyText("openingPrompt") + "...");
       vscode.postMessage({ type: action });
     });
     window.addEventListener("message", (event) => {
@@ -332,7 +272,7 @@ export function renderAddMoveWizardHtml(
         setFeedback(payload.message || "", payload.tone || "info");
       }
     });
-    setFeedback(t("initialFeedback"), "info");
+    setFeedback(copyText("initialFeedback"), "info");
     render();
   </script>
 </body>

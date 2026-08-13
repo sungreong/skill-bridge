@@ -7,15 +7,18 @@ import { sourceDetail } from "./groupOverviewLabels";
 import { renderGroupOverviewHtml, skillFolderRelativePath, skillNameFromRelativePath } from "./groupOverviewRender";
 import type { GroupOverviewData, GroupOverviewGroup, GroupOverviewTarget, TreeSide } from "./groupOverviewTypes";
 import { ALL_AGENTS, type GroupTreeNode, type GroupTarget, type SelectionGroup, type SkillFile, type SkillSelection, type ToolType } from "./types";
-import type { UiLanguage } from "./uiLanguage";
+import { localize, type UiLanguage } from "./uiLanguage";
 import type { GroupMutationSummary, LibraryTarget } from "./libraryManagerTypes";
-type TranslationFn = (english: string, korean: string) => string;
+import { collectNpxSkillLibraryDiagnosis } from "./npxSkillLibraryDiagnostics";
+import { canUpdateNpxGroup, updateNpxGroupFromMetadata } from "./npxGroupUpdate";
+import type { NpxInstallPreset } from "./extensionInstallTransfer";
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export function createGroupOverviewTools(args: {
   tr: TranslationFn;
   getUiLanguage: () => UiLanguage;
   refresh: () => Promise<void>;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -30,6 +33,7 @@ export function createGroupOverviewTools(args: {
   exportGroup: (side: TreeSide, selectedGroup?: SelectionGroup, options?: { skipConfirm?: boolean; skipNotify?: boolean; skipRefresh?: boolean }) => Promise<{ copied: number; deleted: number; unchanged: number } | null>;
   mirrorGroupToOtherSide: (group: SelectionGroup, options?: { requireExistingTargets?: boolean }) => Promise<boolean>;
   installSkillsForSide: (side: TreeSide) => Promise<void>;
+  installNpxRepoForSide: (side: TreeSide, preset: NpxInstallPreset) => Promise<boolean>;
   assignTargetsToGroupMany: (side: TreeSide, groupId: string, targets: LibraryTarget[]) => Promise<GroupMutationSummary>;
   unassignTargetsFromGroupMany: (side: TreeSide, groupId: string, targets: LibraryTarget[]) => Promise<GroupMutationSummary>;
   ensureUniqueGroupNameForTool: (input: {
@@ -53,29 +57,26 @@ export function createGroupOverviewTools(args: {
       const groupFilterId = contextNode?.kind === "group" ? contextNode.id : null;
       const panel = vscode.window.createWebviewPanel(
         "skillBridgeGroupOverview",
-        args.tr("Group Overview", "그룹 개요"),
+        args.tr("Group Overview"),
         vscode.ViewColumn.Active,
         { enableScripts: true }
       );
 
       const render = async (): Promise<void> => {
         const data = await buildGroupOverviewData(args, side, agentFilter, groupFilterId);
-        panel.title = args.tr(
-          `Group Overview: ${side}${agentFilter ? `/${agentFilter}` : ""}`,
-          `그룹 개요: ${side}${agentFilter ? `/${agentFilter}` : ""}`
-        );
+        panel.title = args.tr("Group Overview: {0}{1}", String(side), String(agentFilter ? `/${agentFilter}` : ""));
         panel.webview.html = renderGroupOverviewHtml(panel.webview, data, args.getUiLanguage());
       };
 
       panel.webview.onDidReceiveMessage(async (message: unknown) => {
         try {
           if (isEditGroupMessage(message)) {
-            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to edit.", "편집할 그룹을 찾지 못했습니다."));
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to edit."));
             const name = message.name.trim();
-            if (!name) throw new Error(args.tr("Group name is required.", "그룹 이름은 필수입니다."));
+            if (!name) throw new Error(args.tr("Group name is required."));
             const groupTool = args.getGroupTool(group);
             if (!groupTool || groupTool === "mixed") {
-              throw new Error(args.tr("Mixed-agent groups cannot be renamed in this view.", "여러 에이전트가 섞인 그룹은 이 화면에서 이름을 바꿀 수 없습니다."));
+              throw new Error(args.tr("Mixed-agent groups cannot be renamed in this view."));
             }
             args.ensureUniqueGroupNameForTool({
               groups: args.state.groups,
@@ -91,27 +92,24 @@ export function createGroupOverviewTools(args: {
                 : item
             );
             await args.persistGroups(nextGroups, group.id);
-            vscode.window.setStatusBarMessage(args.tr(`Group updated: ${name}`, `그룹 수정 완료: ${name}`), 2000);
+            vscode.window.setStatusBarMessage(args.tr("Group updated: {0}", String(name)), 2000);
           } else if (isTransferGroupMessage(message)) {
-            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to apply.", "반영할 그룹을 찾지 못했습니다."));
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to apply."));
             if (message.mode === "groupOnly") {
               const ok = await vscode.window.showWarningMessage(
-                args.tr(
-                  `Create/update only the group "${group.name}" on the opposite side? Skill files will not be copied.`,
-                  `반대편에 그룹 "${group.name}" 정보만 만들거나 갱신할까요? 스킬 파일은 복사하지 않습니다.`
-                ),
+                args.tr("Create/update only the group \"{0}\" on the opposite side? Skill files will not be copied.", String(group.name)),
                 { modal: true },
-                args.tr("Continue", "진행")
+                args.tr("Continue")
               );
-              if (ok !== args.tr("Continue", "진행")) {
+              if (ok !== args.tr("Continue")) {
                 await render();
                 return;
               }
               const mirrored = await args.mirrorGroupToOtherSide(group, { requireExistingTargets: false });
               vscode.window.setStatusBarMessage(
                 mirrored
-                  ? args.tr(`Group metadata mirrored: ${group.name}`, `그룹 정보 복제 완료: ${group.name}`)
-                  : args.tr(`No group targets to mirror: ${group.name}`, `복제할 그룹 대상 없음: ${group.name}`),
+                  ? args.tr("Group metadata mirrored: {0}", String(group.name))
+                  : args.tr("No group targets to mirror: {0}", String(group.name)),
                 2500
               );
             } else {
@@ -121,18 +119,28 @@ export function createGroupOverviewTools(args: {
           } else if (isInstallNpxMessage(message)) {
             await args.installSkillsForSide(message.side);
             await args.refresh();
+          } else if (isUpdateNpxGroupMessage(message)) {
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the npx group to update."));
+            if (group.meta?.source !== "npx") {
+              throw new Error(args.tr("Only npx groups can be updated from this action."));
+            }
+            const diagnosis = await collectNpxSkillLibraryDiagnosis({ tr: args.tr, toUserError: args.toUserError });
+            if (diagnosis.status !== "ready") {
+              const missing = diagnosis.requirements.filter((item) => item.status === "missing").map((item) => item.label).join(", ");
+              throw new Error(args.tr("NPX update requirements are missing: {0}. Open NPX Skill Library for details.", String(missing || diagnosis.summary)));
+            }
+            const updated = await updateNpxGroupFromMetadata(args, group, false);
+            if (updated) await args.refresh();
           } else if (isAddSkillsToGroupsMessage(message)) {
             await addSkillsToGroups(args, message.groupIds);
           } else if (isTransferGroupsMessage(message)) {
             await transferGroups(args, message.groupIds, message.mode);
           } else if (isAddSkillsMessage(message)) {
-            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to update.", "수정할 그룹을 찾지 못했습니다."));
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to update."));
             await addSkillsToGroup(args, group);
           } else if (isRemoveSkillsMessage(message)) {
-            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to update.", "수정할 그룹을 찾지 못했습니다."));
+            const group = findGroupOrThrow(args, message.groupId, args.tr("Could not find the group to update."));
             await removeSkillsFromGroup(args, group, message.targets);
-          } else if (!!message && typeof message === "object" && (message as Record<string, unknown>).type === "toggleLanguage") {
-            await vscode.commands.executeCommand("skillBridge.toggleLanguage");
           } else {
             return;
           }
@@ -144,7 +152,7 @@ export function createGroupOverviewTools(args: {
       });
 
       await render();
-      args.registerLanguageRefresh(panel, render);
+      args.applyPanelBranding(panel, render);
     } catch (error) {
       vscode.window.showErrorMessage(localizeGroupOverviewError(args, error));
     }
@@ -187,6 +195,8 @@ async function buildGroupOverviewData(
       brokenTargetCount,
       targets: targets.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.path.localeCompare(right.path)),
       targetCount: group.targets.length,
+      availableTargetCount: targets.length,
+      npxUpdateAvailable: canUpdateNpxGroup(group),
       latestUpdatedAt,
       latestHistoryAt
     };
@@ -222,11 +232,11 @@ async function buildTargetRow(
   if (!isManagedSkillPath(relativePath)) {
     return {
       path: `${selection.tool}/${relativePath || "-"}`,
-      kind: tr("Unavailable", "확인 불가"),
-      description: tr("This group target is not under skills/ and was skipped safely.", "이 그룹 대상은 skills/ 하위 경로가 아니라 안전하게 건너뛰었습니다."),
+      kind: tr("Unavailable"),
+      description: tr("This group target is not under skills/ and was skipped safely."),
       updatedAt: "-",
       historyAt: record?.lastUpdatedAt ?? "-",
-      historyProject: record?.lastSourceProjectPath ?? tr("No history", "기록 없음")
+      historyProject: record?.lastSourceProjectPath ?? tr("No history")
     };
   }
   const absolutePath = (() => {
@@ -239,11 +249,11 @@ async function buildTargetRow(
   if (!absolutePath) {
     return {
       path: `${selection.tool}/${relativePath}`,
-      kind: tr("Unavailable", "확인 불가"),
-      description: tr("This group target path could not be resolved safely.", "이 그룹 대상 경로를 안전하게 해석할 수 없습니다."),
+      kind: tr("Unavailable"),
+      description: tr("This group target path could not be resolved safely."),
       updatedAt: "-",
       historyAt: record?.lastUpdatedAt ?? "-",
-      historyProject: record?.lastSourceProjectPath ?? tr("No history", "기록 없음")
+      historyProject: record?.lastSourceProjectPath ?? tr("No history")
     };
   }
   const stat = await fs.stat(absolutePath).catch(() => null);
@@ -252,11 +262,11 @@ async function buildTargetRow(
     : "";
   return {
     path: `${selection.tool}/${relativePath}`,
-    kind: /\/SKILL\.md$/i.test(relativePath) ? "SKILL.md" : tr("File", "파일"),
+    kind: /\/SKILL\.md$/i.test(relativePath) ? "SKILL.md" : tr("File"),
     description,
     updatedAt: stat ? stat.mtime.toISOString() : "-",
     historyAt: record?.lastUpdatedAt ?? "-",
-    historyProject: record?.lastSourceProjectPath ?? tr("No history", "기록 없음")
+    historyProject: record?.lastSourceProjectPath ?? tr("No history")
   };
 }
 
@@ -291,6 +301,11 @@ function isInstallNpxMessage(message: unknown): message is { type: "installNpx";
   const record = message as Record<string, unknown>;
   return record.type === "installNpx"
     && (record.side === "workspace" || record.side === "central");
+}
+function isUpdateNpxGroupMessage(message: unknown): message is { type: "updateNpxGroup"; groupId: string } {
+  if (!message || typeof message !== "object") return false;
+  const record = message as Record<string, unknown>;
+  return record.type === "updateNpxGroup" && typeof record.groupId === "string";
 }
 function isAddSkillsToGroupsMessage(message: unknown): message is { type: "addSkillsToGroups"; groupIds: string[] } {
   if (!message || typeof message !== "object") return false;
@@ -343,11 +358,11 @@ async function addSkillsToGroup(
 ): Promise<void> {
   const groupTool = args.getGroupTool(group);
   if (!groupTool || groupTool === "mixed") {
-    throw new Error(args.tr("Choose a single-agent group before adding skills.", "스킬을 추가하려면 단일 에이전트 그룹을 선택하세요."));
+    throw new Error(args.tr("Choose a single-agent group before adding skills."));
   }
   const candidates = getAvailableSkillFolderTargets(args, group, groupTool);
   if (candidates.length === 0) {
-    vscode.window.showInformationMessage(args.tr("No ungrouped skills are available for this group.", "이 그룹에 추가할 수 있는 미등록 스킬이 없습니다."));
+    vscode.window.showInformationMessage(args.tr("No ungrouped skills are available for this group."));
     return;
   }
   const picks = await vscode.window.showQuickPick(
@@ -358,31 +373,28 @@ async function addSkillsToGroup(
     })),
     {
       canPickMany: true,
-      title: args.tr(`Add skills to "${group.name}"`, `"${group.name}"에 스킬 추가`),
-      placeHolder: args.tr("Choose one or more skill folders.", "추가할 스킬 폴더를 하나 이상 선택하세요.")
+      title: args.tr("Add skills to \"{0}\"", String(group.name)),
+      placeHolder: args.tr("Choose one or more skill folders.")
     }
   );
   if (!picks || picks.length === 0) return;
   const result = await args.assignTargetsToGroupMany(group.side, group.id, picks.map((pick) => pick.value));
   await markGroupMixedIfNeeded(args, group);
-  const skipped = result.skippedCount > 0 ? args.tr(` · skipped ${result.skippedCount}`, ` · 제외 ${result.skippedCount}개`) : "";
-  vscode.window.showInformationMessage(args.tr(
-    `Added ${result.affectedCount} skill(s) to ${group.name}${skipped}`,
-    `${group.name}에 스킬 ${result.affectedCount}개 추가 완료${skipped}`
-  ));
+  const skipped = result.skippedCount > 0 ? args.tr(" · skipped {0}", String(result.skippedCount)) : "";
+  vscode.window.showInformationMessage(args.tr("Added {0} skill(s) to {1}{2}", String(result.affectedCount), String(group.name), String(skipped)));
 }
 
 async function addSkillsToGroups(args: Parameters<typeof createGroupOverviewTools>[0], groupIds: string[]): Promise<void> {
   const groups = groupIds.map((id) => args.state.groups.find((group) => group.id === id)).filter((group): group is SelectionGroup => !!group);
-  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first.", "먼저 그룹을 하나 이상 선택하세요."));
+  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first."));
   const tools = [...new Set(groups.map((group) => args.getGroupTool(group)))];
-  if (tools.length !== 1 || !tools[0] || tools[0] === "mixed") throw new Error(args.tr("Select groups from one agent before adding skills.", "스킬을 추가하려면 같은 에이전트의 그룹만 선택하세요."));
+  if (tools.length !== 1 || !tools[0] || tools[0] === "mixed") throw new Error(args.tr("Select groups from one agent before adding skills."));
   const candidates = getAvailableSkillFolderTargetsForGroups(args, groups, tools[0]);
   if (candidates.length === 0) {
-    vscode.window.showInformationMessage(args.tr("No available skills can be added to the selected groups.", "선택한 그룹에 추가할 수 있는 스킬이 없습니다."));
+    vscode.window.showInformationMessage(args.tr("No available skills can be added to the selected groups."));
     return;
   }
-  const picks = await vscode.window.showQuickPick(candidates.map((target) => ({ label: skillNameFromRelativePath(target.relativePath), description: `${target.tool}/${target.relativePath}`, value: target })), { canPickMany: true, title: args.tr(`Add skills to ${groups.length} group(s)`, `그룹 ${groups.length}개에 스킬 추가`), placeHolder: args.tr("Choose one or more skill folders to add to every selected group.", "선택한 모든 그룹에 추가할 스킬 폴더를 고르세요.") });
+  const picks = await vscode.window.showQuickPick(candidates.map((target) => ({ label: skillNameFromRelativePath(target.relativePath), description: `${target.tool}/${target.relativePath}`, value: target })), { canPickMany: true, title: args.tr("Add skills to {0} group(s)", String(groups.length)), placeHolder: args.tr("Choose one or more skill folders to add to every selected group.") });
   if (!picks || picks.length === 0) return;
   let affected = 0;
   let skipped = 0;
@@ -392,12 +404,12 @@ async function addSkillsToGroups(args: Parameters<typeof createGroupOverviewTool
     affected += result.affectedCount;
     skipped += result.skippedCount;
   }
-  vscode.window.showInformationMessage(args.tr(`Added skills to ${groups.length} group(s): added ${affected}, skipped ${skipped}`, `그룹 ${groups.length}개에 스킬 추가 완료: 추가 ${affected}개, 제외 ${skipped}개`));
+  vscode.window.showInformationMessage(args.tr("Added skills to {0} group(s): added {1}, skipped {2}", String(groups.length), String(affected), String(skipped)));
 }
 
 async function transferGroups(args: Parameters<typeof createGroupOverviewTools>[0], groupIds: string[], mode: "withSkills" | "groupOnly"): Promise<void> {
   const groups = groupIds.map((id) => args.state.groups.find((group) => group.id === id)).filter((group): group is SelectionGroup => !!group);
-  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first.", "먼저 그룹을 하나 이상 선택하세요."));
+  if (groups.length === 0) throw new Error(args.tr("Select one or more groups first."));
   let changed = 0;
   for (const group of groups) {
     if (mode === "groupOnly" && await args.mirrorGroupToOtherSide(group, { requireExistingTargets: false })) changed += 1;
@@ -407,7 +419,7 @@ async function transferGroups(args: Parameters<typeof createGroupOverviewTools>[
     }
   }
   await args.refresh();
-  vscode.window.showInformationMessage(args.tr(`Selected group action complete: ${changed}/${groups.length} changed`, `선택 그룹 작업 완료: ${groups.length}개 중 ${changed}개 변경`));
+  vscode.window.showInformationMessage(args.tr("Selected group action complete: {0}/{1} changed", String(changed), String(groups.length)));
 }
 
 async function removeSkillsFromGroup(
@@ -416,39 +428,32 @@ async function removeSkillsFromGroup(
   targets: LibraryTarget[]
 ): Promise<void> {
   if (targets.length === 0) {
-    vscode.window.showWarningMessage(args.tr("Select skills in the group detail first.", "먼저 그룹 상세에서 제거할 스킬을 선택하세요."));
+    vscode.window.showWarningMessage(args.tr("Select skills in the group detail first."));
     return;
   }
   const currentSkillFolders = new Set(group.targets.map((target) => `${target.tool}:${normalizeRel(skillFolderRelativePath(target.relativePath))}`).filter((key) => !key.endsWith(":")));
   const selectedSkillFolders = new Set(targets.map((target) => `${target.tool}:${normalizeRel(skillFolderRelativePath(target.relativePath))}`).filter((key) => !key.endsWith(":")));
   if (currentSkillFolders.size > 0 && selectedSkillFolders.size >= currentSkillFolders.size) {
-    vscode.window.showWarningMessage(args.tr(
-      "This would leave the group empty. Delete the group instead if needed.",
-      "그룹이 비게 됩니다. 필요하면 그룹 삭제를 사용하세요."
-    ));
+    vscode.window.showWarningMessage(args.tr("This would leave the group empty. Delete the group instead if needed."));
     return;
   }
   const ok = await vscode.window.showWarningMessage(
-    args.tr(
-      `Remove ${targets.length} skill folder(s) from group "${group.name}"? Skill files are not deleted.`,
-      `그룹 "${group.name}"에서 스킬 폴더 ${targets.length}개를 제거할까요? 스킬 파일은 삭제되지 않습니다.`
-    ),
+    args.tr("Remove {0} skill folder(s) from group \"{1}\"? Skill files are not deleted.", String(targets.length), String(group.name)),
     { modal: true },
-    args.tr("Remove", "제거")
+    args.tr("Remove")
   );
-  if (ok !== args.tr("Remove", "제거")) return;
+  if (ok !== args.tr("Remove")) return;
   const result = await args.unassignTargetsFromGroupMany(group.side, group.id, targets);
   await markGroupMixedIfNeeded(args, group);
-  const skipped = result.skippedCount > 0 ? args.tr(` · skipped ${result.skippedCount}`, ` · 제외 ${result.skippedCount}개`) : "";
-  vscode.window.showInformationMessage(args.tr(
-    `Removed ${result.affectedCount} skill(s) from ${group.name}${skipped}`,
-    `${group.name}에서 스킬 ${result.affectedCount}개 제거 완료${skipped}`
-  ));
+  const skipped = result.skippedCount > 0 ? args.tr(" · skipped {0}", String(result.skippedCount)) : "";
+  vscode.window.showInformationMessage(args.tr("Removed {0} skill(s) from {1}{2}", String(result.affectedCount), String(group.name), String(skipped)));
 }
 
 function localizeGroupOverviewError(args: Parameters<typeof createGroupOverviewTools>[0], error: unknown): string {
   const message = args.toUserError(error);
-  return message === "This would leave the group empty. Delete the group instead if needed." ? args.tr(message, "그룹이 비게 됩니다. 필요하면 그룹 삭제를 사용하세요.") : message;
+  return message === "This would leave the group empty. Delete the group instead if needed."
+    ? args.tr("This would leave the group empty. Delete the group instead if needed.")
+    : message;
 }
 
 function getAvailableSkillFolderTargets(
@@ -533,7 +538,7 @@ function maxIso(values: string[]): string {
 }
 
 function estimateBrokenTargetCount(group: SelectionGroup, targets: GroupOverviewTarget[]): number {
-  const unavailable = targets.filter((target) => target.kind === "Unavailable" || target.kind === "확인 불가").length;
+  const unavailable = targets.filter((target) => target.kind === "Unavailable" || target.kind === localize("Unavailable")).length;
   if (unavailable > 0) return unavailable;
   return group.targets.length > 0 && targets.length === 0 ? group.targets.length : 0;
 }

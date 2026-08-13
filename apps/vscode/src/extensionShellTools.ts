@@ -4,12 +4,14 @@ import * as vscode from "vscode";
 import type { GroupTarget, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
 import type { UiLanguage } from "./uiLanguage";
 import { tabLabel, type SourceTab } from "./extensionSupport";
+import { applySkillBridgePanelBranding } from "./webviewPanelBranding";
 
 type TreeSide = "workspace" | "central";
 
 export function createExtensionShellTools(args: {
+  extensionUri: vscode.Uri;
   settingsSection: string;
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   state: {
     workspacePath: string;
     centralRepoPath: string;
@@ -33,7 +35,6 @@ export function createExtensionShellTools(args: {
   compactPathForDisplay: (value: string) => string;
   getUiLanguage: () => UiLanguage;
   updateStatusChromeCore: () => void;
-  languageRefreshers: Set<() => Promise<void> | void>;
   refresh: () => Promise<unknown>;
   getSkillRoot: (basePath: string, tool: ToolType, mode: TreeSide) => string;
   isWithinPath: (basePath: string, targetPath: string) => boolean;
@@ -61,7 +62,7 @@ export function createExtensionShellTools(args: {
   syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; mirroredGroups: number; copied: number; deleted: number; unchanged: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }>;
   updateStatusChrome: () => void;
   applyLanguageChrome: () => void;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, refresh: () => Promise<void> | void) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, refresh: () => Promise<void> | void) => void;
   getWorkspaceChangedSkillFolder: (absolutePath: string) => { tool: ToolType; skillFolderRel: string } | null;
   syncWorkspaceAgentFoldersToCentral: (
     folders: Array<{ tool: ToolType; skillFolderRel: string }>,
@@ -206,10 +207,10 @@ export function createExtensionShellTools(args: {
       if (group.side === "central") acc.central += 1;
       return acc;
     }, { workspace: 0, central: 0 });
-    const tab = args.state.activeTab === "all" ? args.tr("All", "전체") : tabLabel(args.state.activeTab);
+    const tab = args.state.activeTab === "all" ? args.tr("All") : tabLabel(args.state.activeTab);
     const selectedAgents = getAutoSyncWorkspaceAgents().map(formatAgentFolderLabel).join(", ");
-    const autoSyncLabel = selectedAgents.length > 0 ? selectedAgents : args.tr("off", "꺼짐");
-    const groupLabel = args.tr(`groups W ${groupCounts.workspace} / C ${groupCounts.central}`, `그룹 W ${groupCounts.workspace} / C ${groupCounts.central}`);
+    const autoSyncLabel = selectedAgents.length > 0 ? selectedAgents : args.tr("off");
+    const groupLabel = args.tr("groups W {0} / C {1}", String(groupCounts.workspace), String(groupCounts.central));
     args.updateStatusChromeCore();
     vscode.window.setStatusBarMessage(
       `Skill Bridge · ${tab} · W ${args.state.workspaceSkills.length} / C ${args.state.centralSkills.length} · ${groupLabel} · auto save ${autoSyncLabel}`,
@@ -222,20 +223,17 @@ export function createExtensionShellTools(args: {
     args.workspaceProvider.setLanguage(uiLanguage);
     args.centralProvider.setLanguage(uiLanguage);
     updateStatusChrome();
-    args.workspaceView.title = args.tr("Workspace Skills", "작업공간 스킬");
-    args.centralView.title = args.tr("Central Skills", "중앙 스킬");
+    args.workspaceView.title = args.tr("Workspace Skills");
+    args.centralView.title = args.tr("Central Skills");
     args.workspaceView.description = args.state.workspacePath ? args.compactPathForDisplay(args.state.workspacePath) : undefined;
     args.centralView.description = args.state.centralRepoPath ? args.compactPathForDisplay(args.state.centralRepoPath) : undefined;
   };
 
-  const registerLanguageRefresh = (
+  const applyPanelBranding = (
     panel: vscode.WebviewPanel,
-    refresh: () => Promise<void> | void
+    _render?: () => Promise<void> | void
   ): void => {
-    args.languageRefreshers.add(refresh);
-    panel.onDidDispose(() => {
-      args.languageRefreshers.delete(refresh);
-    });
+    applySkillBridgePanelBranding(panel, args.extensionUri);
   };
 
   const getWorkspaceChangedSkillFolder = (absolutePath: string): { tool: ToolType; skillFolderRel: string } | null => {
@@ -261,7 +259,7 @@ export function createExtensionShellTools(args: {
     syncWorkspaceAgentToCentralNow,
     updateStatusChrome,
     applyLanguageChrome,
-    registerLanguageRefresh,
+    applyPanelBranding,
     getWorkspaceChangedSkillFolder,
     syncWorkspaceAgentFoldersToCentral
   };

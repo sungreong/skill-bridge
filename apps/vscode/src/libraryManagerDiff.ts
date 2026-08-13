@@ -7,12 +7,12 @@ import {
 import type { TreeSide } from "./libraryManagerTypes";
 import type { UiLanguage } from "./uiLanguage";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export type LibraryDiffDeps = {
   tr: TranslationFn;
   getUiLanguage: () => UiLanguage;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   buildTransferPlan: (
     sourceSide: TreeSide,
     selections: Array<{ tool: ToolType; relativePath: string }>,
@@ -33,7 +33,7 @@ export function createLibraryDiffOpener(deps: LibraryDiffDeps) {
     if (kind === "file") {
       const item = plan.items.find((entry) => entry.tool === tool && entry.relativePath === relativePath);
       if (!item) {
-        vscode.window.showWarningMessage(deps.tr("Could not find a diff target.", "Diff 대상을 찾지 못했습니다."));
+        vscode.window.showWarningMessage(deps.tr("Could not find a diff target."));
         return;
       }
       await deps.openTransferDiff(item);
@@ -44,18 +44,18 @@ export function createLibraryDiffOpener(deps: LibraryDiffDeps) {
       entry.tool === tool && (entry.relativePath === relativePath || entry.relativePath.startsWith(`${relativePath}/`))
     );
     if (targets.length === 0) {
-      vscode.window.showWarningMessage(deps.tr("Could not find a folder diff summary target.", "폴더 요약 Diff 대상을 찾지 못했습니다."));
+      vscode.window.showWarningMessage(deps.tr("Could not find a folder diff summary target."));
       return;
     }
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeFolderDiffSummaryFromLibrary",
-      deps.tr(`Folder Diff Summary: ${tool}/${relativePath}`, `폴더 Diff 요약: ${tool}/${relativePath}`),
+      deps.tr("Folder Diff Summary: {0}/{1}", String(tool), String(relativePath)),
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: false }
     );
     const render = (): void => {
       const language = deps.getUiLanguage();
-      panel.title = deps.tr(`Folder Diff Summary: ${tool}/${relativePath}`, `폴더 Diff 요약: ${tool}/${relativePath}`);
+      panel.title = deps.tr("Folder Diff Summary: {0}/{1}", String(tool), String(relativePath));
       panel.webview.html = renderFolderDiffSummaryHtml(panel.webview, {
         mode: sourceSide === "workspace" ? "workspaceToCentral" : "centralToWorkspace",
         tool,
@@ -63,7 +63,7 @@ export function createLibraryDiffOpener(deps: LibraryDiffDeps) {
         rows: buildFolderDiffSummaryRows(targets, sourceSide === "workspace" ? "workspaceToCentral" : "centralToWorkspace")
       }, language);
     };
-    deps.registerLanguageRefresh(panel, render);
+    deps.applyPanelBranding(panel, render);
     render();
     panel.webview.onDidReceiveMessage(async (subMsg: unknown) => {
       if (!subMsg || typeof subMsg !== "object") return;

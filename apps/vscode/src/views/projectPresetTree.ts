@@ -27,7 +27,7 @@ export function buildPresetRoot(presets: ProjectPreset[], language: UiLanguage):
     kind: "presetRoot",
     tool: "agents",
     relativePath: "__project_presets__",
-    label: localize(language, "Project Presets", "프로젝트 프리셋"),
+    label: localize("Project Presets"),
     side: "central",
     count: presets.length,
     children

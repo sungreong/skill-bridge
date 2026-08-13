@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
 import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SelectionGroup, SkillFile, SkillTreeNode, ToolType } from "./types";
-import type { UiLanguage } from "./uiLanguage";
+import { localize, type UiLanguage } from "./uiLanguage";
 import { createWebviewNonce } from "./webviewCommon";
 import { renderWebviewClientCommonScript } from "./webviewClientCommon";
 import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 type PresetOverviewRow = ProjectPreset & {
   missingCount: number;
@@ -23,7 +23,7 @@ export function createProjectPresetOverviewTools(args: {
   tr: TranslationFn;
   getUiLanguage: () => UiLanguage;
   refresh: () => Promise<void>;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   state: {
     centralRepoPath: string;
     centralSkills: SkillFile[];
@@ -49,12 +49,12 @@ export function createProjectPresetOverviewTools(args: {
       let activePresetId = extractPresetId(node) ?? args.state.centralProjectPresets[0]?.id ?? "";
       const panel = vscode.window.createWebviewPanel(
         "skillBridgeProjectPresetOverview",
-        args.tr("Project Presets", "프로젝트 프리셋"),
+        args.tr("Project Presets"),
         vscode.ViewColumn.Active,
         { enableScripts: true }
       );
       const render = async (): Promise<void> => {
-        panel.title = args.tr("Project Presets", "프로젝트 프리셋");
+        panel.title = args.tr("Project Presets");
         panel.webview.html = renderProjectPresetOverviewHtml(
           buildRows(args),
           args.state.centralSkills,
@@ -82,8 +82,6 @@ export function createProjectPresetOverviewTools(args: {
             activePresetId = args.state.centralProjectPresets.find((preset) => preset.id === activePresetId)?.id
               ?? args.state.centralProjectPresets[0]?.id
               ?? "";
-          } else if (isToggleLanguageMessage(message)) {
-            await vscode.commands.executeCommand("skillBridge.toggleLanguage");
           }
           await args.refresh();
           await render();
@@ -93,7 +91,7 @@ export function createProjectPresetOverviewTools(args: {
         }
       });
       await render();
-      args.registerLanguageRefresh(panel, render);
+      args.applyPanelBranding(panel, render);
     } catch (error) {
       await args.handleError(error);
     }
@@ -116,18 +114,18 @@ async function savePresetFromOverview(
   message: SaveMessage
 ): Promise<string> {
   const name = message.name.trim();
-  if (!name) throw new Error(args.tr("Enter a preset name.", "프리셋 이름을 입력하세요."));
+  if (!name) throw new Error(args.tr("Enter a preset name."));
   const parsedTargets = message.targets
     .map(parseTargetKey)
     .filter((target): target is GroupTarget => target !== null)
     .filter((target) => args.targetExistsInFiles(target, args.state.centralSkills));
   const targets = [...new Map(parsedTargets.map((target) => [targetKey(target), target])).values()];
-  if (targets.length === 0) throw new Error(args.tr("Choose at least one Central skill.", "Central 스킬을 하나 이상 선택하세요."));
+  if (targets.length === 0) throw new Error(args.tr("Choose at least one Central skill."));
   const loaded = await args.loadProjectPresets(args.state.centralRepoPath);
   const previous = loaded.file.presets.find((preset) => preset.id === message.id);
   const id = previous && previous.name === name ? previous.id : args.slugifyProjectPresetId(name);
   const duplicate = loaded.file.presets.find((preset) => preset.id === id && preset.id !== message.id);
-  if (duplicate) throw new Error(args.tr("A project preset with this name already exists.", "이미 같은 이름의 프로젝트 프리셋이 있습니다."));
+  if (duplicate) throw new Error(args.tr("A project preset with this name already exists."));
   const now = new Date().toISOString();
   const preset: ProjectPreset = {
     id,
@@ -154,8 +152,7 @@ function renderProjectPresetOverviewHtml(
   activePresetId: string,
   language: UiLanguage
 ): string {
-  const isKo = language === "ko";
-  const t = (en: string, ko: string): string => isKo ? ko : en;
+  const t = localize;
   const nonce = createWebviewNonce();
   const active = rows.find((row) => row.id === activePresetId) ?? rows[0];
   const activeTargets = new Set((active?.targets ?? []).map(targetKey));
@@ -169,8 +166,8 @@ function renderProjectPresetOverviewHtml(
   const groupTabHtml = renderSkillGroupTabs(skillSections, activeTargets, activeSkillTool, activeGroupIds, t);
   const filterHtml = renderFilterOptions(rows, t);
   const missingText = active && active.missingCount > 0
-    ? `<span class="badge danger">${active.missingCount} ${esc(t("missing", "누락"))}</span>`
-    : `<span class="badge">${esc(t("ready", "준비됨"))}</span>`;
+    ? `<span class="badge danger">${active.missingCount} ${esc(t("missing"))}</span>`
+    : `<span class="badge">${esc(t("ready"))}</span>`;
   return `<!doctype html>
 <html lang="${language}">
 <head>
@@ -236,21 +233,20 @@ function renderProjectPresetOverviewHtml(
 <body>
   <div class="wrap sb-root">
     <header class="top sb-topbar">
-      <h1>${esc(t("Project Presets", "프로젝트 프리셋"))}</h1>
-      <div class="summary">${rows.length} ${esc(t("presets", "프리셋"))} · ${centralSkillFolderTargets(centralSkills).length} ${esc(t("Central skills", "Central 스킬"))}</div>
+      <h1>${esc(t("Project Presets"))}</h1>
+      <div class="summary">${rows.length} ${esc(t("presets"))} · ${centralSkillFolderTargets(centralSkills).length} ${esc(t("Central skills"))}</div>
     </header>
     <div class="toolbar">
-      <input class="toolbar-search" id="search" aria-label="${escAttr(t("Search project presets", "프로젝트 프리셋 검색"))}" placeholder="${escAttr(t("Search presets, agents, or skills...", "프리셋, 에이전트, 스킬 검색..."))}" />
-      <label class="toolbar-field">${esc(t("Filter", "필터"))}<select id="filter" aria-label="${escAttr(t("Filter project presets", "프로젝트 프리셋 필터"))}">${filterHtml}</select></label>
-      <button data-create type="button">${esc(t("Create preset", "프리셋 만들기"))}</button>
-      <button data-repair-metadata type="button">${esc(t("Repair metadata", "메타데이터 복구"))}</button>
-      <button data-language type="button">${esc(isKo ? "English" : "한국어")}</button>
+      <input class="toolbar-search" id="search" aria-label="${escAttr(t("Search project presets"))}" placeholder="${escAttr(t("Search presets, agents, or skills..."))}" />
+      <label class="toolbar-field">${esc(t("Filter"))}<select id="filter" aria-label="${escAttr(t("Filter project presets"))}">${filterHtml}</select></label>
+      <button data-create type="button">${esc(t("Create preset"))}</button>
+      <button data-repair-metadata type="button">${esc(t("Repair metadata"))}</button>
     </div>
     <main class="content">
       <section class="panel table-panel">
         <table>
-          <thead><tr><th>${esc(t("Preset", "프리셋"))}</th><th style="width:74px">${esc(t("Skills", "스킬"))}</th><th style="width:74px">${esc(t("Agents", "에이전트"))}</th></tr></thead>
-          <tbody>${rowHtml || `<tr><td colspan="3"><div class="muted">${esc(t("No project presets yet.", "프로젝트 프리셋이 아직 없습니다."))}</div></td></tr>`}</tbody>
+          <thead><tr><th>${esc(t("Preset"))}</th><th style="width:74px">${esc(t("Skills"))}</th><th style="width:74px">${esc(t("Agents"))}</th></tr></thead>
+          <tbody>${rowHtml || `<tr><td colspan="3"><div class="muted">${esc(t("No project presets yet."))}</div></td></tr>`}</tbody>
         </table>
       </section>
       <section class="panel">
@@ -258,30 +254,30 @@ function renderProjectPresetOverviewHtml(
         <article class="detail" data-active-id="${escAttr(active.id)}">
           <div class="top">
             <h2>${esc(active.name)}</h2>
-            <div class="meta">${missingText}<span class="badge">${active.targets.length} ${esc(t("skills", "스킬"))}</span><span class="badge">${active.agentCount} ${esc(t("agents", "에이전트"))}</span></div>
+            <div class="meta">${missingText}<span class="badge">${active.targets.length} ${esc(t("skills"))}</span><span class="badge">${active.agentCount} ${esc(t("agents"))}</span></div>
           </div>
           <div class="actions">
-            <button class="primary" data-apply="${escAttr(active.id)}" type="button">${esc(t("Apply to Workspace", "작업공간에 적용"))}</button>
-            <button data-save="${escAttr(active.id)}" type="button">${esc(t("Save preset", "프리셋 저장"))}</button>
-            <button class="danger" data-delete="${escAttr(active.id)}" type="button">${esc(t("Delete preset", "프리셋 삭제"))}</button>
+            <button class="primary" data-apply="${escAttr(active.id)}" type="button">${esc(t("Apply to Workspace"))}</button>
+            <button data-save="${escAttr(active.id)}" type="button">${esc(t("Save preset"))}</button>
+            <button class="danger" data-delete="${escAttr(active.id)}" type="button">${esc(t("Delete preset"))}</button>
           </div>
           <div class="form-grid">
-            <label>${esc(t("Name", "이름"))}<input id="presetName" value="${escAttr(active.name)}" /></label>
-            <label>${esc(t("Description", "설명"))}<textarea id="presetDescription">${esc(active.description)}</textarea></label>
+            <label>${esc(t("Name"))}<input id="presetName" value="${escAttr(active.name)}" /></label>
+            <label>${esc(t("Description"))}<textarea id="presetDescription">${esc(active.description)}</textarea></label>
           </div>
           <div class="meta muted">
-            <span>${esc(t("Created", "생성"))}: ${esc(formatTimestamp(active.createdAt, t))}</span>
-            <span>${esc(t("Updated", "수정"))}: ${esc(formatTimestamp(active.updatedAt, t))}</span>
-            <span>${esc(t("Applied", "적용"))}: ${esc(formatTimestamp(active.lastAppliedAt, t))}</span>
+            <span>${esc(t("Created"))}: ${esc(formatTimestamp(active.createdAt, t))}</span>
+            <span>${esc(t("Updated"))}: ${esc(formatTimestamp(active.updatedAt, t))}</span>
+            <span>${esc(t("Applied"))}: ${esc(formatTimestamp(active.lastAppliedAt, t))}</span>
           </div>
-          <div class="muted">${esc(t("Choose Central skills included in this preset.", "이 프리셋에 포함할 Central 스킬을 선택하세요."))}</div>
+          <div class="muted">${esc(t("Choose Central skills included in this preset."))}</div>
           ${skillTabHtml}
           ${groupTabHtml}
-          <div class="skills">${optionHtml || `<div class="muted">${esc(t("No Central skills available.", "사용 가능한 Central 스킬이 없습니다."))}</div>`}</div>
-        </article>` : `<div class="detail muted">${esc(t("Create a project preset to start.", "프로젝트 프리셋을 만들어 시작하세요."))}</div>`}
+          <div class="skills">${optionHtml || `<div class="muted">${esc(t("No Central skills available."))}</div>`}</div>
+        </article>` : `<div class="detail muted">${esc(t("Create a project preset to start."))}</div>`}
       </section>
     </main>
-    <div id="statusLine" class="status-bar sb-status-bar info">${esc(t("Ready", "준비됨"))}</div>
+    <div id="statusLine" class="status-bar sb-status-bar info">${esc(t("Ready"))}</div>
   </div>
   <script nonce="${nonce}">
     ${renderWebviewClientCommonScript()}
@@ -295,7 +291,7 @@ function renderProjectPresetOverviewHtml(
     }
     function post(message, label){
       if(busy) return;
-      setBusy(label || "${esc(t("Working...", "작업 중..."))}");
+      setBusy(label || "${esc(t("Working..."))}");
       vscode.postMessage(message);
     }
     document.body.addEventListener("click", (event)=>{
@@ -312,15 +308,15 @@ function renderProjectPresetOverviewHtml(
         return;
       }
       const row = target.closest("[data-preset-id]");
-      if(row instanceof HTMLElement) post({type:"select", id: row.getAttribute("data-preset-id") || ""}, "${esc(t("Opening preset...", "프리셋 여는 중..."))}");
+      if(row instanceof HTMLElement) post({type:"select", id: row.getAttribute("data-preset-id") || ""}, "${esc(t("Opening preset..."))}");
       const apply = target.closest("[data-apply]");
-      if(apply instanceof HTMLElement) post({type:"apply", id: apply.getAttribute("data-apply") || ""}, "${esc(t("Applying preset...", "프리셋 적용 중..."))}");
+      if(apply instanceof HTMLElement) post({type:"apply", id: apply.getAttribute("data-apply") || ""}, "${esc(t("Applying preset..."))}");
       const create = target.closest("[data-create]");
-      if(create instanceof HTMLElement) post({type:"create"}, "${esc(t("Creating preset...", "프리셋 만드는 중..."))}");
+      if(create instanceof HTMLElement) post({type:"create"}, "${esc(t("Creating preset..."))}");
       const repair = target.closest("[data-repair-metadata]");
-      if(repair instanceof HTMLElement) post({type:"repairMetadata"}, "${esc(t("Repairing metadata...", "메타데이터 복구 중..."))}");
+      if(repair instanceof HTMLElement) post({type:"repairMetadata"}, "${esc(t("Repairing metadata..."))}");
       const del = target.closest("[data-delete]");
-      if(del instanceof HTMLElement) post({type:"delete", id: del.getAttribute("data-delete") || ""}, "${esc(t("Deleting preset...", "프리셋 삭제 중..."))}");
+      if(del instanceof HTMLElement) post({type:"delete", id: del.getAttribute("data-delete") || ""}, "${esc(t("Deleting preset..."))}");
       const save = target.closest("[data-save]");
       if(save instanceof HTMLElement){
         const targets = Array.from(document.querySelectorAll("input[data-target]:checked")).map((input)=>input.getAttribute("data-target") || "");
@@ -330,10 +326,8 @@ function renderProjectPresetOverviewHtml(
           name: document.getElementById("presetName")?.value || "",
           description: document.getElementById("presetDescription")?.value || "",
           targets
-        }, "${esc(t("Saving preset...", "프리셋 저장 중..."))}");
+        }, "${esc(t("Saving preset..."))}");
       }
-      const language = target.closest("[data-language]");
-      if(language instanceof HTMLElement) post({type:"toggleLanguage"}, "${esc(t("Switching language...", "언어 전환 중..."))}");
     });
     const search = document.getElementById("search");
     const filter = document.getElementById("filter");
@@ -386,27 +380,27 @@ function renderProjectPresetOverviewHtml(
 </html>`;
 }
 
-function renderPresetRow(row: PresetOverviewRow, t: (en: string, ko: string) => string, active: boolean): string {
+function renderPresetRow(row: PresetOverviewRow, t: (message: string, ...args: Array<string | number | boolean>) => string, active: boolean): string {
   const search = `${row.name} ${row.description} ${row.targets.map((target) => `${target.tool} ${target.relativePath}`).join(" ")}`.toLowerCase();
   const agents = [...new Set(row.targets.map((target) => target.tool))].join(" ");
   return `<tr class="preset-row ${active ? "active" : ""}" data-preset-id="${escAttr(row.id)}" data-search="${escAttr(search)}" data-agents="${escAttr(agents)}" data-missing="${row.missingCount > 0 ? "true" : "false"}">
-    <td><div class="name">${esc(row.name)}</div><div class="muted">${esc(row.description || t("No description", "설명 없음"))}</div>${row.missingCount ? `<span class="badge danger">${row.missingCount} ${esc(t("missing", "누락"))}</span>` : ""}</td>
+    <td><div class="name">${esc(row.name)}</div><div class="muted">${esc(row.description || t("No description"))}</div>${row.missingCount ? `<span class="badge danger">${row.missingCount} ${esc(t("missing"))}</span>` : ""}</td>
     <td>${row.targets.length}</td>
     <td>${row.agentCount}</td>
   </tr>`;
 }
 
-function renderFilterOptions(rows: PresetOverviewRow[], t: (en: string, ko: string) => string): string {
+function renderFilterOptions(rows: PresetOverviewRow[], t: (message: string, ...args: Array<string | number | boolean>) => string): string {
   const agents = [...new Set(rows.flatMap((row) => row.targets.map((target) => target.tool)))].sort();
   return [
-    `<option value="all">${esc(t("All presets", "전체 프리셋"))}</option>`,
-    `<option value="missing">${esc(t("Missing targets", "누락 대상"))}</option>`,
+    `<option value="all">${esc(t("All presets"))}</option>`,
+    `<option value="missing">${esc(t("Missing targets"))}</option>`,
     ...agents.map((agent) => `<option value="${escAttr(agent)}">${esc(agent)}</option>`)
   ].join("");
 }
 
-function formatTimestamp(value: string | undefined, t: (en: string, ko: string) => string): string {
-  return value?.trim() ? value : t("Never", "없음");
+function formatTimestamp(value: string | undefined, t: (message: string, ...args: Array<string | number | boolean>) => string): string {
+  return value?.trim() ? value : t("Never");
 }
 
 function renderSkillGroupSections(
@@ -428,12 +422,12 @@ function renderSkillGroupTabs(
   activeTargets: Set<string>,
   activeTool: ToolType | null,
   activeGroupIds: Map<ToolType, string>,
-  t: (en: string, ko: string) => string
+  t: (message: string, ...args: Array<string | number | boolean>) => string
 ): string {
   const tabs = sections.map((section) => {
     const selectedCount = section.targets.filter((target) => activeTargets.has(targetKey(target))).length;
     const countText = `${selectedCount}/${section.targets.length}`;
-    const name = section.id.startsWith("ungrouped:") ? t("Ungrouped", "그룹 없음") : section.name;
+    const name = section.id.startsWith("ungrouped:") ? t("Ungrouped") : section.name;
     const active = section.tool === activeTool && section.id === activeGroupIds.get(section.tool);
     const visible = section.tool === activeTool;
     return `<button class="group-tab ${active ? "active" : ""} ${visible ? "" : "hidden"}" data-tool="${escAttr(section.tool)}" data-group-tab="${escAttr(section.id)}" type="button" role="tab" aria-selected="${active ? "true" : "false"}" title="${escAttr(name)}"><span class="group-tab-name">${esc(name)}</span><span class="group-tab-count">${esc(countText)}</span></button>`;
@@ -583,9 +577,6 @@ function isCreateMessage(message: unknown): message is { type: "create" } {
 }
 function isRepairMetadataMessage(message: unknown): message is { type: "repairMetadata" } {
   return isRecord(message) && message.type === "repairMetadata";
-}
-function isToggleLanguageMessage(message: unknown): message is { type: "toggleLanguage" } {
-  return isRecord(message) && message.type === "toggleLanguage";
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object";

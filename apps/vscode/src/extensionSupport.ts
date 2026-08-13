@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
-import { ALL_AGENTS, type GroupTarget, type InstructionFile, type SelectionGroup, type SkillAssetTreeMeta, type SkillAssetWarning, type SkillFile, type SkillSelection, type SkillTreeFilterMode, type SkillTreeNode, type ToolType } from "./types";
+import { ALL_AGENTS, type GroupTarget, type InstructionFile, type ProjectPreset, type SelectionGroup, type SkillAssetTreeMeta, type SkillAssetWarning, type SkillFile, type SkillSelection, type SkillTreeFilterMode, type SkillTreeNode, type ToolType } from "./types";
 import { formatHostPathIssue, resolveHostPath } from "./centralPath";
 import { INSTRUCTION_ROOT, INSTRUCTION_RULE_DIRS, NESTED_INSTRUCTION_FILES, resolveSkillPath, ROOT_INSTRUCTION_FILES } from "./skillPaths";
 import {
@@ -382,9 +382,11 @@ export async function copyNode(from: string, to: string): Promise<void> {
     await mapWithConcurrency(entries, 12, async (entry) => {
       const src = path.join(from, entry.name);
       const dst = path.join(to, entry.name);
-      if (entry.isDirectory()) {
+      const childStat = await fs.stat(src).catch(() => null);
+      if (!childStat) return;
+      if (childStat.isDirectory()) {
         await copyNode(src, dst);
-      } else if (entry.isFile()) {
+      } else if (childStat.isFile()) {
         await fs.copyFile(src, dst);
       }
     });
@@ -436,6 +438,8 @@ export function applyTabFilter(
     centralAssetMeta: Map<string, SkillAssetTreeMeta>;
     treeFilter: SkillTreeFilterMode;
     groups: SelectionGroup[];
+    centralProjectPresets: ProjectPreset[];
+    selectedGroupId: string | null;
   },
   workspaceProvider: SkillTreeProvider,
   centralProvider: SkillTreeProvider
@@ -447,6 +451,8 @@ export function applyTabFilter(
     groups: state.groups,
     instructions: state.workspaceInstructions,
     missingSkillFolders: state.workspaceMissingSkillFolders,
+    projectPresets: [],
+    selectedGroupId: state.selectedGroupId,
     skills: state.workspaceSkills
   });
   centralProvider.updateState({
@@ -456,6 +462,8 @@ export function applyTabFilter(
     groups: state.groups,
     instructions: state.centralInstructions,
     missingSkillFolders: state.centralMissingSkillFolders,
+    projectPresets: state.centralProjectPresets,
+    selectedGroupId: state.selectedGroupId,
     skills: state.centralSkills
   });
 }

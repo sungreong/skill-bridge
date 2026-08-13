@@ -5,7 +5,13 @@ packages/core/dist/
 release/
 
 .agents
+.antigravity/
 .claude
+.codegraph/
+.codex/
+.cursor/
+.gemini/
+.mps/
 .skillbridge/
 skill_workspace.json
 skills-lock.json
@@ -19,6 +25,9 @@ PLAN.md
 
 # VSCode extension build output
 *.vsix
+
+# Local editor settings
+.vscode/settings.json
 
 # Local benchmark outputs
 .benchmarks/*

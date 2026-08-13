@@ -13,7 +13,9 @@ import {
   GROUP_MARKDOWN_FILE,
   GROUP_STORE_FILE,
   LEGACY_GROUP_STORE_FILE,
-  SKILL_BRIDGE_STATE_DIR
+  SKILL_BRIDGE_STATE_DIR,
+  legacySkillsLockPath,
+  skillsLockPath
 } from "./storagePaths";
 import type { InstructionFile, ProjectPreset, SelectionGroup, SkillAssetTreeMeta, SkillFile, SkillTreeFilterMode, SkillTreeNode, ToolType } from "./types";
 import { normalizeSourceTab, type SourceTab } from "./extensionSupport";
@@ -67,6 +69,15 @@ type WatchedFileInput = {
   centralSkills: SkillFile[];
   workspaceInstructions: InstructionFile[];
   centralInstructions: InstructionFile[];
+};
+
+type PostRefreshAnalysisInput = {
+  workspacePath: string;
+  centralRepoPath: string;
+  workspaceSkills: SkillFile[];
+  centralSkills: SkillFile[];
+  workspaceMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
+  centralMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
 };
 
 async function measureAsync<T>(operation: () => Promise<T>): Promise<TimedResult<T>> {
@@ -246,7 +257,7 @@ async function mapWithConcurrency<T>(
 }
 
 export function createExtensionRefreshRuntime(args: {
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   toUserError: (error: unknown) => string;
   output: vscode.OutputChannel;
   state: {
@@ -335,6 +346,7 @@ export function createExtensionRefreshRuntime(args: {
     refreshAgainRequested: boolean;
     scheduledRefreshAfterInFlight: boolean;
     watchedFileStats: Map<string, string>;
+    watchedFileStatsGeneration: number;
     pendingWatcherPaths: Set<string>;
     refreshGeneration: number;
     watchers: vscode.FileSystemWatcher[];
@@ -342,6 +354,12 @@ export function createExtensionRefreshRuntime(args: {
     autoSyncTimer: NodeJS.Timeout | null;
     autoSyncInFlight: Promise<void> | null;
     autoSyncPending: Map<string, { tool: ToolType; skillFolderRel: string }>;
+    postRefreshTimer: NodeJS.Timeout | null;
+    postRefreshInFlight: Promise<void> | null;
+    pendingPostRefreshAnalysis: { refreshGeneration: number; input: PostRefreshAnalysisInput } | null;
+    fingerprintImmediate: NodeJS.Immediate | null;
+    fingerprintInFlight: Promise<void> | null;
+    pendingFingerprint: { refreshGeneration: number; input: WatchedFileInput } | null;
   };
   scheduleRefresh: (runtime: ReturnType<typeof createExtensionRefreshRuntime>["createRefreshState"] extends () => infer R ? R : never) => void;
   flushWorkspaceAutoSync: (runtime: ReturnType<typeof createExtensionRefreshRuntime>["createRefreshState"] extends () => infer R ? R : never) => Promise<void>;
@@ -354,6 +372,7 @@ export function createExtensionRefreshRuntime(args: {
     refreshAgainRequested: boolean;
     scheduledRefreshAfterInFlight: boolean;
     watchedFileStats: Map<string, string>;
+    watchedFileStatsGeneration: number;
     pendingWatcherPaths: Set<string>;
     refreshGeneration: number;
     watchers: vscode.FileSystemWatcher[];
@@ -361,6 +380,12 @@ export function createExtensionRefreshRuntime(args: {
     autoSyncTimer: NodeJS.Timeout | null;
     autoSyncInFlight: Promise<void> | null;
     autoSyncPending: Map<string, { tool: ToolType; skillFolderRel: string }>;
+    postRefreshTimer: NodeJS.Timeout | null;
+    postRefreshInFlight: Promise<void> | null;
+    pendingPostRefreshAnalysis: { refreshGeneration: number; input: PostRefreshAnalysisInput } | null;
+    fingerprintImmediate: NodeJS.Immediate | null;
+    fingerprintInFlight: Promise<void> | null;
+    pendingFingerprint: { refreshGeneration: number; input: WatchedFileInput } | null;
   };
 
   const createRefreshState = (): RuntimeState => ({
@@ -369,14 +394,77 @@ export function createExtensionRefreshRuntime(args: {
     refreshAgainRequested: false,
     scheduledRefreshAfterInFlight: false,
     watchedFileStats: new Map(),
+    watchedFileStatsGeneration: 0,
     pendingWatcherPaths: new Set(),
     refreshGeneration: 0,
     watchers: [],
     watcherKey: null,
     autoSyncTimer: null,
     autoSyncInFlight: null,
-    autoSyncPending: new Map()
+    autoSyncPending: new Map(),
+    postRefreshTimer: null,
+    postRefreshInFlight: null,
+    pendingPostRefreshAnalysis: null,
+    fingerprintImmediate: null,
+    fingerprintInFlight: null,
+    pendingFingerprint: null
   });
+
+  const startPendingFingerprint = (runtime: RuntimeState): Promise<void> | null => {
+    if (runtime.fingerprintInFlight) return runtime.fingerprintInFlight;
+    const pending = runtime.pendingFingerprint;
+    if (!pending) return null;
+    runtime.pendingFingerprint = null;
+    const fingerprint = (async () => {
+      const startedAt = Date.now();
+      const stats = await buildWatchedFileStats(pending.input);
+      const stale = runtime.refreshGeneration !== pending.refreshGeneration;
+      if (!stale) {
+        runtime.watchedFileStats = stats;
+        runtime.watchedFileStatsGeneration = pending.refreshGeneration;
+      }
+      args.output.appendLine(
+        `[Refresh:fingerprint] completed=${Date.now() - startedAt}ms files=${stats.size} generation=${pending.refreshGeneration}${stale ? " stale=true" : ""}`
+      );
+    })().catch((error) => {
+      args.output.appendLine(`[Refresh:fingerprint] ${args.toUserError(error)}`);
+    });
+    runtime.fingerprintInFlight = fingerprint;
+    void fingerprint.finally(() => {
+      if (runtime.fingerprintInFlight === fingerprint) runtime.fingerprintInFlight = null;
+      if (runtime.pendingFingerprint) armFingerprint(runtime);
+    });
+    return fingerprint;
+  };
+
+  const armFingerprint = (runtime: RuntimeState): void => {
+    if (runtime.fingerprintImmediate) clearImmediate(runtime.fingerprintImmediate);
+    runtime.fingerprintImmediate = setImmediate(() => {
+      runtime.fingerprintImmediate = null;
+      startPendingFingerprint(runtime);
+    });
+  };
+
+  const scheduleFingerprint = (
+    runtime: RuntimeState,
+    refreshGeneration: number,
+    input: WatchedFileInput
+  ): void => {
+    runtime.pendingFingerprint = { refreshGeneration, input };
+    if (!runtime.fingerprintInFlight) armFingerprint(runtime);
+  };
+
+  const waitForCurrentFingerprint = async (runtime: RuntimeState): Promise<void> => {
+    while (runtime.watchedFileStatsGeneration !== runtime.refreshGeneration) {
+      if (runtime.fingerprintImmediate) {
+        clearImmediate(runtime.fingerprintImmediate);
+        runtime.fingerprintImmediate = null;
+      }
+      const fingerprint = runtime.fingerprintInFlight ?? startPendingFingerprint(runtime);
+      if (!fingerprint) return;
+      await fingerprint;
+    }
+  };
 
   const scheduleRefresh = (runtime: RuntimeState): void => {
     if (runtime.refreshTimer) clearTimeout(runtime.refreshTimer);
@@ -399,6 +487,7 @@ export function createExtensionRefreshRuntime(args: {
     const pendingPaths = [...runtime.pendingWatcherPaths];
     runtime.pendingWatcherPaths.clear();
     if (pendingPaths.length === 0) return false;
+    await waitForCurrentFingerprint(runtime);
     if (runtime.watchedFileStats.size === 0) return true;
     const ctx = args.resolveContext();
     for (const pendingPath of pendingPaths) {
@@ -442,16 +531,11 @@ export function createExtensionRefreshRuntime(args: {
     runtime.autoSyncInFlight = (async () => {
       try {
         const summary = await args.syncWorkspaceAgentFoldersToCentral(pending, "auto");
-        if (summary.syncedFolders === 0) return;
-        args.output.appendLine(args.tr(
-          `[AutoSave] Workspace → Central folders=${summary.syncedFolders} copied=${summary.copied} deleted=${summary.deleted} unchanged=${summary.unchanged} mirroredGroups=${summary.mirroredGroups} centralFolders=${summary.centralFolders} centralFiles=${summary.centralFiles} skippedMissingSkillMd=${summary.skippedMissingSkillMd}`,
-          `[AutoSave] 작업공간 → 중앙 폴더=${summary.syncedFolders} 복사=${summary.copied} 삭제=${summary.deleted} 변경없음=${summary.unchanged} 그룹반영=${summary.mirroredGroups} 중앙확인폴더=${summary.centralFolders} 중앙확인파일=${summary.centralFiles} SKILL.md없음제외=${summary.skippedMissingSkillMd}`
-        ));
+        const changed = summary.copied + summary.deleted + summary.mirroredGroups;
+        if (summary.syncedFolders === 0 || changed === 0) return;
+        args.output.appendLine(args.tr("[AutoSave] Workspace → Central folders={0} copied={1} deleted={2} unchanged={3} mirroredGroups={4} centralFolders={5} centralFiles={6} skippedMissingSkillMd={7}", String(summary.syncedFolders), String(summary.copied), String(summary.deleted), String(summary.unchanged), String(summary.mirroredGroups), String(summary.centralFolders), String(summary.centralFiles), String(summary.skippedMissingSkillMd)));
         vscode.window.setStatusBarMessage(
-          args.tr(
-            `Skill Bridge auto save to Central: ${summary.syncedFolders} folder(s) · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders}/${summary.centralFiles} · skipped ${summary.skippedMissingSkillMd}`,
-            `Skill Bridge 자동 중앙 반영: 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 그룹 ${summary.mirroredGroups}개 · 중앙 ${summary.centralFolders}/${summary.centralFiles} · 제외 ${summary.skippedMissingSkillMd}`
-          ),
+          args.tr("Skill Bridge auto save to Central: {0} folder(s) · copied {1} · deleted {2} · groups {3} · central {4}/{5} · skipped {6}", String(summary.syncedFolders), String(summary.copied), String(summary.deleted), String(summary.mirroredGroups), String(summary.centralFolders), String(summary.centralFiles), String(summary.skippedMissingSkillMd)),
           3500
         );
       } catch (error) {
@@ -473,14 +557,7 @@ export function createExtensionRefreshRuntime(args: {
   const runPostRefreshAnalysis = async (
     runtime: RuntimeState,
     refreshGeneration: number,
-    input: {
-      workspacePath: string;
-      centralRepoPath: string;
-      workspaceSkills: SkillFile[];
-      centralSkills: SkillFile[];
-      workspaceMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
-      centralMissingSkillFolders: Array<{ tool: ToolType; relativePath: string }>;
-    }
+    input: PostRefreshAnalysisInput
   ): Promise<void> => {
     const startedAt = Date.now();
     const assetMeta = await args.buildTreeAssetMeta(input);
@@ -503,6 +580,34 @@ export function createExtensionRefreshRuntime(args: {
     args.output.appendLine(
       `[Refresh:enrich] metadata=${Date.now() - startedAt}ms providers+diagnostics=${providerMs}ms workspaceMeta=${assetMeta.workspace.size} centralMeta=${assetMeta.central.size}`
     );
+  };
+
+  const armPostRefreshAnalysis = (runtime: RuntimeState): void => {
+    if (runtime.postRefreshTimer) clearTimeout(runtime.postRefreshTimer);
+    runtime.postRefreshTimer = setTimeout(() => {
+      runtime.postRefreshTimer = null;
+      if (runtime.postRefreshInFlight) return;
+      const pending = runtime.pendingPostRefreshAnalysis;
+      if (!pending) return;
+      runtime.pendingPostRefreshAnalysis = null;
+      const analysis = runPostRefreshAnalysis(runtime, pending.refreshGeneration, pending.input).catch((error) => {
+        args.output.appendLine(`[Refresh:enrich] ${args.toUserError(error)}`);
+      });
+      runtime.postRefreshInFlight = analysis;
+      void analysis.finally(() => {
+        if (runtime.postRefreshInFlight === analysis) runtime.postRefreshInFlight = null;
+        if (runtime.pendingPostRefreshAnalysis) armPostRefreshAnalysis(runtime);
+      });
+    }, WATCHER_REFRESH_DEBOUNCE_MS);
+  };
+
+  const schedulePostRefreshAnalysis = (
+    runtime: RuntimeState,
+    refreshGeneration: number,
+    input: PostRefreshAnalysisInput
+  ): void => {
+    runtime.pendingPostRefreshAnalysis = { refreshGeneration, input };
+    if (!runtime.postRefreshInFlight) armPostRefreshAnalysis(runtime);
   };
 
   const runRefresh = async (runtime: RuntimeState): Promise<ExtensionRefreshResult> => {
@@ -560,8 +665,6 @@ export function createExtensionRefreshRuntime(args: {
     try {
       const presetResult = await args.loadProjectPresets(ctx.centralRepoPath);
       args.state.centralProjectPresets = presetResult.file.presets;
-      args.centralProvider.setProjectPresets(args.state.centralProjectPresets);
-      args.workspaceProvider.setProjectPresets?.([]);
       if (presetResult.migratedFromLegacy) {
         await args.saveProjectPresets(ctx.centralRepoPath, {
           version: 1,
@@ -571,11 +674,17 @@ export function createExtensionRefreshRuntime(args: {
       }
     } catch (error) {
       args.state.centralProjectPresets = [];
-      args.centralProvider.setProjectPresets([]);
       args.output.appendLine(`[ProjectPresets] ${args.toUserError(error)}`);
     }
+    const lockGroupResult = await addNpxGroupsFromSkillLocks({
+      workspacePath: ctx.workspacePath,
+      centralRepoPath: ctx.centralRepoPath,
+      groups: loadedGroupResult.groups,
+      workspaceSkills: args.state.workspaceSkills,
+      centralSkills: args.state.centralSkills
+    });
     const normalizedGroupResult = args.normalizeGroupsForCurrentSkills({
-      input: loadedGroupResult.groups,
+      input: lockGroupResult.groups,
       workspaceSkills: args.state.workspaceSkills,
       centralSkills: args.state.centralSkills,
       dedupeGroupTargets: args.dedupeGroupTargets,
@@ -583,16 +692,12 @@ export function createExtensionRefreshRuntime(args: {
       options: { skipExistenceValidation: true }
     });
     args.state.groups = normalizedGroupResult.groups;
-    if (normalizedGroupResult.changed || loadedGroupResult.needsSave) {
+    if (normalizedGroupResult.changed || loadedGroupResult.needsSave || lockGroupResult.changed) {
       await args.saveSelectionGroups(ctx.workspacePath, ctx.centralRepoPath, args.state.groups);
     }
     if (args.state.selectedGroupId && !args.state.groups.some((item) => item.id === args.state.selectedGroupId)) {
       args.state.selectedGroupId = null;
     }
-    args.workspaceProvider.setGroups(args.state.groups);
-    args.centralProvider.setGroups(args.state.groups);
-    args.workspaceProvider.setSelectedGroup(args.state.selectedGroupId);
-    args.centralProvider.setSelectedGroup(args.state.selectedGroupId);
     if (args.state.selectedGroupId) {
       const selected = args.state.groups.find((item) => item.id === args.state.selectedGroupId);
       if (selected) {
@@ -626,27 +731,23 @@ export function createExtensionRefreshRuntime(args: {
       }
     }
     const watchersMs = Date.now() - watchersStartedAt;
-    const fingerprintStartedAt = Date.now();
-    runtime.watchedFileStats = await buildWatchedFileStats({
+    scheduleFingerprint(runtime, refreshGeneration, {
       ctx,
       workspaceSkills: args.state.workspaceSkills,
       centralSkills: args.state.centralSkills,
       workspaceInstructions: args.state.workspaceInstructions,
       centralInstructions: args.state.centralInstructions
     });
-    const fingerprintMs = Date.now() - fingerprintStartedAt;
 
     const groupCounts = args.countGroups(args.filterGroupsByTab(args.state.groups, args.state.activeTab));
     const totalMs = Date.now() - startedAt;
     args.output.appendLine(`[Refresh] completed in ${totalMs}ms - workspace=${args.state.workspaceSkills.length}, central=${args.state.centralSkills.length}`);
     args.output.appendLine(`[Refresh:visible] completed=${totalMs}ms workspace=${args.state.workspaceSkills.length} central=${args.state.centralSkills.length}`);
-    args.output.appendLine(`[Refresh:timing] scan=${scanMs}ms inventory+meta=${inventoryMs}ms providers+diagnostics=${providerMs}ms groups+chrome=${groupsMs}ms watchers=${watchersMs}ms fingerprint=${fingerprintMs}ms`);
+    args.output.appendLine(`[Refresh:timing] scan=${scanMs}ms inventory+meta=${inventoryMs}ms providers+diagnostics=${providerMs}ms groups+chrome=${groupsMs}ms watchers=${watchersMs}ms fingerprint=0ms`);
     args.output.appendLine(
       `[Refresh:scan] workspaceSkills=${workspaceSkillScan.ms}ms/${workspaceSkills.length} centralSkills=${centralSkillScan.ms}ms/${centralSkills.length} workspaceInstructions=${workspaceInstructionScan.ms}ms/${workspaceInstructions.length} centralInstructions=${centralInstructionScan.ms}ms/${centralInstructions.length} agents=${ctx.agents.length}`
     );
-    void runPostRefreshAnalysis(runtime, refreshGeneration, enrichmentInput).catch((error) => {
-      args.output.appendLine(`[Refresh:enrich] ${args.toUserError(error)}`);
-    });
+    schedulePostRefreshAnalysis(runtime, refreshGeneration, enrichmentInput);
     return {
       workspaceFileCount: args.state.workspaceSkills.length,
       centralFileCount: args.state.centralSkills.length,
@@ -696,4 +797,166 @@ export function createExtensionRefreshRuntime(args: {
     refresh,
     registerWatcherEvent
   };
+}
+
+type SkillsLockFile = {
+  version?: number;
+  skills?: Record<string, {
+    source?: string;
+    sourceType?: string;
+    skillPath?: string;
+  }>;
+};
+
+async function addNpxGroupsFromSkillLocks(args: {
+  workspacePath: string;
+  centralRepoPath: string;
+  groups: SelectionGroup[];
+  workspaceSkills: SkillFile[];
+  centralSkills: SkillFile[];
+}): Promise<{ groups: SelectionGroup[]; changed: boolean }> {
+  let groups = args.groups;
+  let changed = false;
+  const workspace = await buildNpxGroupsFromLock("workspace", args.workspacePath, args.workspaceSkills, groups);
+  groups = workspace.groups;
+  changed = changed || workspace.changed;
+  const central = await buildNpxGroupsFromLock("central", args.centralRepoPath, args.centralSkills, groups);
+  groups = central.groups;
+  changed = changed || central.changed;
+  return { groups, changed };
+}
+
+async function buildNpxGroupsFromLock(
+  side: TreeSide,
+  basePath: string,
+  skills: SkillFile[],
+  groups: SelectionGroup[]
+): Promise<{ groups: SelectionGroup[]; changed: boolean }> {
+  const lock = await loadSkillsLock(basePath);
+  if (!lock?.skills) return { groups, changed: false };
+
+  const skillFoldersByName = new Map<string, Array<{ tool: ToolType; relativePath: string }>>();
+  for (const file of skills) {
+    const folder = skillFolderFromRelativePath(file.relativePath);
+    if (!folder) continue;
+    const name = folder.split("/")[1];
+    if (!name) continue;
+    const entries = skillFoldersByName.get(name) ?? [];
+    if (!entries.some((entry) => entry.tool === file.tool && entry.relativePath === folder)) {
+      entries.push({ tool: file.tool, relativePath: folder });
+    }
+    skillFoldersByName.set(name, entries);
+  }
+
+  const byRepoTool = new Map<string, { repoKey: string; repoUrl: string; tool: ToolType; skillNames: Set<string>; targets: Array<{ kind: "folder"; tool: ToolType; relativePath: string }> }>();
+  for (const [skillName, entry] of Object.entries(lock.skills)) {
+    const repoKey = normalizeRepoKey(entry.source ?? "");
+    if (!repoKey) continue;
+    const installedFolders = skillFoldersByName.get(skillName) ?? [];
+    for (const folder of installedFolders) {
+      const key = `${repoKey}:${folder.tool}`;
+      const bucket = byRepoTool.get(key) ?? {
+        repoKey,
+        repoUrl: repoUrlFromKey(repoKey),
+        tool: folder.tool,
+        skillNames: new Set<string>(),
+        targets: []
+      };
+      bucket.skillNames.add(skillName);
+      if (!bucket.targets.some((target) => target.tool === folder.tool && target.relativePath === folder.relativePath)) {
+        bucket.targets.push({ kind: "folder", tool: folder.tool, relativePath: folder.relativePath });
+      }
+      byRepoTool.set(key, bucket);
+    }
+  }
+
+  if (byRepoTool.size === 0) return { groups, changed: false };
+
+  const nextGroups = [...groups];
+  let changed = false;
+  for (const bucket of byRepoTool.values()) {
+    bucket.targets.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    const existingIndex = nextGroups.findIndex((group) =>
+      group.side === side
+      && group.meta?.source === "npx"
+      && group.meta.repoKey === bucket.repoKey
+      && (group.meta.tool === bucket.tool || group.targets.some((target) => target.tool === bucket.tool))
+    );
+    const now = new Date().toISOString();
+    const nextGroup: SelectionGroup = {
+      ...(existingIndex >= 0 ? nextGroups[existingIndex] as SelectionGroup : {
+        id: uniqueGroupId(nextGroups, `${side}-npx-${bucket.tool}-${slugifyGroupId(bucket.repoKey)}`),
+        name: bucket.repoKey,
+        description: `Installed from ${bucket.repoUrl}`,
+        side
+      }),
+      targets: bucket.targets,
+      meta: {
+        ...(existingIndex >= 0 ? nextGroups[existingIndex]?.meta : undefined),
+        source: "npx",
+        tool: bucket.tool,
+        repoKey: bucket.repoKey,
+        repoUrl: bucket.repoUrl,
+        lastInstalledAt: existingIndex >= 0 ? nextGroups[existingIndex]?.meta?.lastInstalledAt : now,
+        installSkills: [...bucket.skillNames].sort((left, right) => left.localeCompare(right))
+      }
+    };
+    if (existingIndex >= 0) {
+      if (!selectionGroupsEqual(nextGroups[existingIndex] as SelectionGroup, nextGroup)) {
+        nextGroups[existingIndex] = nextGroup;
+        changed = true;
+      }
+    } else {
+      nextGroups.push(nextGroup);
+      changed = true;
+    }
+  }
+  return { groups: nextGroups, changed };
+}
+
+async function loadSkillsLock(basePath: string): Promise<SkillsLockFile | null> {
+  for (const target of [skillsLockPath(basePath), legacySkillsLockPath(basePath)]) {
+    try {
+      const raw = await fs.readFile(target, "utf8");
+      const parsed = JSON.parse(raw) as SkillsLockFile;
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Try the next lock location.
+    }
+  }
+  return null;
+}
+
+function skillFolderFromRelativePath(relativePath: string): string | null {
+  const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts[0] !== "skills" || !parts[1]) return null;
+  return `skills/${parts[1]}`;
+}
+
+function normalizeRepoKey(source: string): string {
+  return source
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^\/+|\/+$/g, "")
+    .trim();
+}
+
+function repoUrlFromKey(repoKey: string): string {
+  return /^https?:\/\//i.test(repoKey) ? repoKey : `https://github.com/${repoKey}`;
+}
+
+function slugifyGroupId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "skills";
+}
+
+function uniqueGroupId(groups: SelectionGroup[], baseId: string): string {
+  const used = new Set(groups.map((group) => group.id));
+  if (!used.has(baseId)) return baseId;
+  let index = 2;
+  while (used.has(`${baseId}-${index}`)) index += 1;
+  return `${baseId}-${index}`;
+}
+
+function selectionGroupsEqual(left: SelectionGroup, right: SelectionGroup): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

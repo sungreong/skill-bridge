@@ -17,7 +17,7 @@ import {
 } from "./extensionSupport";
 import type { SkillAssetTreeMeta, SkillAssetWarning, SkillFile, ToolType } from "./types";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type TreeSide = "workspace" | "central";
 type BuildTreeAssetMetaInput = {
   workspacePath: string;
@@ -80,7 +80,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
       warnings.push({
         code: "script-file",
         severity: "warning",
-        message: args.tr("Contains an executable script.", "실행 스크립트가 포함되어 있습니다."),
+        message: args.tr("Contains an executable script."),
         relativePath
       });
     }
@@ -91,7 +91,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
       warnings.push({
         code: "sensitive-content",
         severity: "danger",
-        message: args.tr("Contains possible sensitive information.", "민감정보 후보 문자열이 포함되어 있습니다."),
+        message: args.tr("Contains possible sensitive information."),
         relativePath
       });
     }
@@ -99,7 +99,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
       warnings.push({
         code: "workspace-specific-path",
         severity: "warning",
-        message: args.tr("Contains text that looks like a local absolute path.", "로컬 절대경로로 보이는 문자열이 있습니다."),
+        message: args.tr("Contains text that looks like a local absolute path."),
         relativePath
       });
     }
@@ -143,7 +143,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
         draft.warnings.push({
           code: "duplicate-name",
           severity: "info",
-          message: args.tr(`Multiple agents contain a skill with the same name: ${tools.join(", ")}`, `같은 이름의 스킬이 여러 에이전트에 있습니다: ${tools.join(", ")}`),
+          message: args.tr("Multiple agents contain a skill with the same name: {0}", String(tools.join(", "))),
           relativePath: draft.rootRelativePath
         });
       }
@@ -219,7 +219,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
       draft.warnings.push({
         code: "missing-skill-md",
         severity: "danger",
-        message: args.tr("SKILL.md is missing, so this may be excluded when applying changes.", "SKILL.md가 없어 변경 반영 대상에서 제외될 수 있습니다."),
+        message: args.tr("SKILL.md is missing, so this may be excluded when applying changes."),
         relativePath: folder
       });
     }
@@ -242,7 +242,7 @@ export function createDiagnosticsTools(args: CreateDiagnosticsArgs): {
         draft.warnings.push({
           code: "target-newer",
           severity: "warning",
-          message: args.tr("The skill on the other side is newer. Review the diff before overwriting.", "반대편 스킬이 더 최신입니다. 덮어쓰기 전 Diff 확인이 필요합니다."),
+          message: args.tr("The skill on the other side is newer. Review the diff before overwriting."),
           relativePath: draft.rootRelativePath
         });
       }

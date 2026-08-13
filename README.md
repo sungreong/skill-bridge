@@ -130,13 +130,14 @@ The selection is saved in `skillBridge.visibleAgents`.
 
 ## Settings
 
+The UI follows the VS Code display language. English and Korean are supported; other VS Code locales use English.
+
 | Setting | Purpose |
 | --- | --- |
 | `skillBridge.centralRepoPath` | Central skill library path. Supports `${userHome}`, `${workspaceFolder}`, `${workspaceRoot}`, and `${env:NAME}`. The path must be reachable from the same host that runs the extension. |
 | `skillBridge.defaultAgents` | Agents managed by Skill Bridge. |
 | `skillBridge.visibleAgents` | Agents currently visible in the tree. Empty means all agents. |
 | `skillBridge.visibleQuickTools` | Quick Tools commands visible in the tree. Empty means the default core tool set. |
-| `skillBridge.language` | UI language, `en` or `ko`. |
 | `skillBridge.autoSyncWorkspaceAgents` | Workspace agents that auto-sync changed skill folders to Central. |
 
 ## Project Structure

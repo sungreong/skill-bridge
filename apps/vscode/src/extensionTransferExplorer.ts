@@ -18,7 +18,7 @@ import {
 import type { UiLanguage } from "./uiLanguage";
 
 type TreeSide = "workspace" | "central";
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 type ExplorerTarget = { tool: ToolType; relativePath: string; kind: "file" | "folder" };
 type ExplorerTransferSummary = { requested: number; processed: number; copied: number; deleted: number; unchanged: number; skipped: number; mirroredGroups: number };
 type ExplorerGroupSummary = { changed: number; skipped: number };
@@ -84,9 +84,8 @@ type ExplorerDeps = {
   state: ExplorerState;
   tr: TranslationFn;
   getUiLanguage: () => UiLanguage;
-  setUiLanguage: (language: UiLanguage) => Promise<void>;
   refresh: () => Promise<void>;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   getSkillFolderRelativePath: (relativePath: string) => string | null;
   transferPathFromExplorer: (
     sourceSide: TreeSide,
@@ -423,7 +422,7 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
     await deps.refresh();
     const panel = vscode.window.createWebviewPanel(
       "skillBridgeTransferExplorer",
-      deps.tr("Compare and Apply Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)"),
+      deps.tr("Compare and Apply Changes (Workspace ↔ Central)"),
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -435,27 +434,21 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
       panel.webview.postMessage({ type: "ui", payload });
     };
     const render = async (): Promise<void> => {
-      panel.title = deps.tr("Compare and Apply Changes (Workspace ↔ Central)", "변경 비교/반영 (작업공간 ↔ 중앙)");
+      panel.title = deps.tr("Compare and Apply Changes (Workspace ↔ Central)");
       panel.webview.html = renderComparedTransferExplorerHtml(panel.webview, await buildTransferExplorerPayload(), deps.getUiLanguage());
     };
-    deps.registerLanguageRefresh(panel, render);
+    deps.applyPanelBranding(panel, render);
 
     await render();
     panel.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== "object") return;
       const message = msg as { type?: string; payload?: unknown };
       try {
-        if (message.type === "setLanguage") {
-          const nextLanguage: UiLanguage = ((message.payload as { language?: string } | undefined)?.language === "ko") ? "ko" : "en";
-          await deps.setUiLanguage(nextLanguage);
-          await render();
-          return;
-        }
         if (message.type === "refresh") {
-          postUi({ busy: true, message: deps.tr("Refreshing list...", "목록을 새로고침하는 중..."), tone: "info" });
+          postUi({ busy: true, message: deps.tr("Refreshing list..."), tone: "info" });
           await deps.refresh();
           await postState();
-          postUi({ busy: false, message: deps.tr("List refreshed.", "목록이 최신 상태로 갱신되었습니다."), tone: "info" });
+          postUi({ busy: false, message: deps.tr("List refreshed."), tone: "info" });
           return;
         }
         if (message.type === "movePath") {
@@ -465,10 +458,10 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           const relativePath = normalizeRel(String(payload.relativePath ?? ""));
           const kind = payload.kind === "file" ? "file" : "folder";
           if (!tool || !relativePath) return;
-          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply in progress: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: true, message: `${kind === "file" ? deps.tr("File") : deps.tr("Folder")} apply in progress: ${tool}/${relativePath}`, tone: "info" });
           await deps.transferPathFromExplorer(sourceSide, tool, relativePath, kind, payload.selectedGroupIds);
           await postState();
-          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File", "파일") : deps.tr("Folder", "폴더")} apply completed: ${tool}/${relativePath}`, tone: "info" });
+          postUi({ busy: false, message: `${kind === "file" ? deps.tr("File") : deps.tr("Folder")} apply completed: ${tool}/${relativePath}`, tone: "info" });
           return;
         }
         if (message.type === "moveGroup") {
@@ -478,13 +471,13 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           if (!groupId) return;
           const group = deps.state.groups.find((entry) => entry.id === groupId && entry.side === sourceSide);
           if (!group) {
-            vscode.window.showWarningMessage(deps.tr("The group to apply was not found.", "반영할 그룹을 찾지 못했습니다."));
+            vscode.window.showWarningMessage(deps.tr("The group to apply was not found."));
             return;
           }
-          postUi({ busy: true, message: deps.tr(`Group apply in progress: ${group.name}`, `그룹 반영 중: ${group.name}`), tone: "info" });
+          postUi({ busy: true, message: deps.tr("Group apply in progress: {0}", String(group.name)), tone: "info" });
           await deps.exportGroup(sourceSide, group);
           await postState();
-          postUi({ busy: false, message: deps.tr(`Group apply completed: ${group.name}`, `그룹 반영 완료: ${group.name}`), tone: "info" });
+          postUi({ busy: false, message: deps.tr("Group apply completed: {0}", String(group.name)), tone: "info" });
           return;
         }
         if (message.type === "moveCompared") {
@@ -492,21 +485,18 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           const mode = payload.mode === "centralToWorkspace" ? "centralToWorkspace" : "workspaceToCentral";
           const sourceSide: TreeSide = mode === "workspaceToCentral" ? "workspace" : "central";
           const targets = parseLibraryTargets(payload.targets).map((target) => ({ ...target, kind: "folder" as const }));
-          if (targets.length === 0) throw new Error(deps.tr("There are no skills to apply.", "반영할 스킬이 없습니다."));
+          if (targets.length === 0) throw new Error(deps.tr("There are no skills to apply."));
           const status = normalizeTransferExplorerActionStatus(payload.status);
           const selectedStatuses = transferExplorerSelectedStatuses(status);
-          postUi({ busy: true, message: deps.tr(`Reviewing compared area apply... (${targets.length} skills)`, `비교 영역 반영 검토 중... (${targets.length}개 스킬)`), tone: "info" });
+          postUi({ busy: true, message: deps.tr("Reviewing compared area apply... ({0} skills)", String(targets.length)), tone: "info" });
           const summary = await deps.transferComparedTargetsFromExplorer(sourceSide, targets, selectedStatuses);
           await postState();
           const groupSuffix = summary.mirroredGroups > 0
-            ? deps.tr(` · applied groups ${summary.mirroredGroups}`, ` · 반영된 그룹 ${summary.mirroredGroups}`)
+            ? deps.tr(" · applied groups {0}", String(summary.mirroredGroups))
             : "";
           postUi({
             busy: false,
-            message: deps.tr(
-              `Area applied: requested ${summary.requested} skills · reviewed ${summary.processed} skills · copied ${summary.copied} · deleted ${summary.deleted} · unchanged ${summary.unchanged} · skipped ${summary.skipped}${groupSuffix}`,
-              `영역 반영 완료: 요청 ${summary.requested}개 스킬 · 검토 ${summary.processed}개 스킬 · 복사 ${summary.copied} · 삭제 ${summary.deleted} · 동일 ${summary.unchanged} · 건너뜀 ${summary.skipped}${groupSuffix}`
-            ),
+            message: deps.tr("Area applied: requested {0} skills · reviewed {1} skills · copied {2} · deleted {3} · unchanged {4} · skipped {5}{6}", String(summary.requested), String(summary.processed), String(summary.copied), String(summary.deleted), String(summary.unchanged), String(summary.skipped), String(groupSuffix)),
             tone: summary.copied + summary.deleted > 0 ? "info" : "warn"
           });
           return;
@@ -518,34 +508,28 @@ export function createTransferExplorerTools(deps: ExplorerDeps): {
           const targetSide: TreeSide = sourceSide === "workspace" ? "central" : "workspace";
           const status = normalizeTransferExplorerActionStatus(payload.status);
           const groupIds = (Array.isArray(payload.groupIds) ? payload.groupIds : []).map((id) => String(id)).filter(Boolean);
-          if (groupIds.length === 0) throw new Error(deps.tr("There are no groups to apply.", "반영할 그룹이 없습니다."));
+          if (groupIds.length === 0) throw new Error(deps.tr("There are no groups to apply."));
           if (groupIds.length > 1) {
-            const continueLabel = deps.tr("Continue", "진행");
+            const continueLabel = deps.tr("Continue");
             const confirm = await vscode.window.showWarningMessage(
-              deps.tr(
-                `Apply ${groupIds.length} groups at once? This updates multiple group definitions in one pass.`,
-                `그룹 ${groupIds.length}개를 한 번에 반영할까요? 여러 그룹 정의가 한 번에 업데이트됩니다.`
-              ),
+              deps.tr("Apply {0} groups at once? This updates multiple group definitions in one pass.", String(groupIds.length)),
               { modal: true },
               continueLabel
             );
             if (confirm !== continueLabel) {
-              postUi({ busy: false, message: deps.tr("Bulk group apply was canceled.", "그룹 일괄 반영을 취소했습니다."), tone: "warn" });
+              postUi({ busy: false, message: deps.tr("Bulk group apply was canceled."), tone: "warn" });
               return;
             }
           }
 
-          postUi({ busy: true, message: deps.tr(`Applying group differences... (${groupIds.length} groups)`, `그룹 차이 반영 중... (${groupIds.length}개 그룹)`), tone: "info" });
+          postUi({ busy: true, message: deps.tr("Applying group differences... ({0} groups)", String(groupIds.length)), tone: "info" });
           const result = status === "removed"
             ? await deps.deleteComparedGroupsFromExplorer(targetSide, groupIds)
             : await deps.mirrorComparedGroupsFromExplorer(sourceSide, groupIds);
           await postState();
           postUi({
             busy: false,
-            message: deps.tr(
-              `Groups applied: requested ${groupIds.length} · changed ${result.changed} · skipped ${result.skipped}`,
-              `그룹 반영 완료: 요청 ${groupIds.length} · 변경 ${result.changed} · 건너뜀 ${result.skipped}`
-            ),
+            message: deps.tr("Groups applied: requested {0} · changed {1} · skipped {2}", String(groupIds.length), String(result.changed), String(result.skipped)),
             tone: result.changed > 0 ? "info" : "warn"
           });
           return;

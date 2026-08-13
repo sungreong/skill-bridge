@@ -15,10 +15,10 @@ export function getSkillInnerPath(normalizeRel: (value: string | undefined | nul
 }
 
 export function summarizeGroupTargets(
-  tr: (english: string, korean: string) => string,
+  tr: (message: string, ...args: Array<string | number | boolean>) => string,
   targets: GroupTarget[]
 ): string {
-  return tr(`${targets.length} skills`, `스킬 ${targets.length}`);
+  return tr("{0} skills", String(targets.length));
 }
 
 export function getGroupTool(group: SelectionGroup): ToolType | null {
@@ -31,7 +31,7 @@ export function normalizeGroupNameKey(name: string): string {
 
 export function ensureUniqueGroupNameForTool(args: {
   groups: SelectionGroup[];
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   side: "workspace" | "central";
   tool: ToolType;
   name: string;
@@ -46,10 +46,7 @@ export function ensureUniqueGroupNameForTool(args: {
     return normalizeGroupNameKey(group.name) === key;
   });
   if (duplicate) {
-    throw new Error(args.tr(
-      `A group named "${args.name.trim()}" already exists for the same agent (${args.tool}).`,
-      `같은 에이전트(${args.tool})에는 동일한 그룹명 "${args.name.trim()}"을 만들 수 없습니다.`
-    ));
+    throw new Error(args.tr("A group named \"{0}\" already exists for the same agent ({1}).", String(args.name.trim()), String(args.tool)));
   }
 }
 

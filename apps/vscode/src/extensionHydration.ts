@@ -12,7 +12,7 @@ import type { WizardAssetPick } from "./extensionAddMoveWizard";
 import { loadProjectPresets, saveProjectPresets } from "./extensionStorage";
 
 type TreeSide = "workspace" | "central";
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 type HydrationDeps = {
   tr: TranslationFn;
@@ -56,11 +56,11 @@ export function createHydrationTools(deps: HydrationDeps): {
       centralAssets.map((asset) => ({
         label: `${asset.tool}/${asset.skillName}`,
         description: deps.statusLabelForWizard(asset.status),
-        detail: `${asset.rootRelativePath} · ${deps.tr("files", "파일")} ${asset.fileCount} · ${deps.tr("warnings", "경고")} ${asset.warnings.length}`,
+        detail: `${asset.rootRelativePath} · ${deps.tr("files")} ${asset.fileCount} · ${deps.tr("warnings")} ${asset.warnings.length}`,
         value: asset
       })),
       {
-        title: deps.tr("Choose Central Skills for This Project", "현재 프로젝트에 가져올 중앙 스킬 선택"),
+        title: deps.tr("Choose Central Skills for This Project"),
         canPickMany: true,
         matchOnDescription: true,
         matchOnDetail: true
@@ -79,7 +79,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       name: `Manual: ${defaultName}`,
       id: `manual-${Date.now()}`,
       targets,
-      description: deps.tr("Manually selected Central skills", "직접 선택한 중앙 스킬")
+      description: deps.tr("Manually selected Central skills")
     };
   };
 
@@ -89,7 +89,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       const presetsFile = (await loadProjectPresets(deps.centralRepoPath())).file;
       const centralAssets = deps.getWizardAssetPicks("central").filter((asset) => asset.status !== "missingSkillMd");
       if (presetsFile.presets.length === 0 && centralAssets.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("There are no skills to bring from the Central Skill Home.", "중앙 스킬 홈에 가져올 스킬이 없습니다."));
+        vscode.window.showWarningMessage(deps.tr("There are no skills to bring from the Central Skill Home."));
         return;
       }
 
@@ -101,21 +101,21 @@ export function createHydrationTools(deps: HydrationDeps): {
         ...presetsFile.presets.map((preset) => ({
           actionKind: "preset" as const,
           label: `$(package) ${preset.name}`,
-          description: deps.tr(`${preset.targets.length} skills`, `스킬 ${preset.targets.length}개`),
-          detail: preset.description || deps.tr("Project preset", "프로젝트 프리셋"),
+          description: deps.tr("{0} skills", String(preset.targets.length)),
+          detail: preset.description || deps.tr("Project preset"),
           preset
         })),
         {
           actionKind: "manual" as const,
-          label: deps.tr("$(list-selection) Select Central Skills Manually", "$(list-selection) 중앙 스킬 직접 선택"),
-          description: deps.tr(`Choose from ${centralAssets.length} skills`, `스킬 ${centralAssets.length}개 중 선택`),
-          detail: deps.tr("Choose only the skills this project needs and review them before applying.", "현재 프로젝트에 필요한 스킬만 골라 반영 전 검토 화면에서 확인합니다.")
+          label: deps.tr("$(list-selection) Select Central Skills Manually"),
+          description: deps.tr("Choose from {0} skills", String(centralAssets.length)),
+          detail: deps.tr("Choose only the skills this project needs and review them before applying.")
         }
       ];
 
       const choice = await vscode.window.showQuickPick(picks, {
-        title: deps.tr("Apply Project Preset", "프로젝트 프리셋 적용"),
-        placeHolder: deps.tr("Choose a project preset or individual Central skills to add to this workspace.", "이 workspace에 적용할 프로젝트 프리셋 또는 중앙 스킬을 선택하세요."),
+        title: deps.tr("Apply Project Preset"),
+        placeHolder: deps.tr("Choose a project preset or individual Central skills to add to this workspace."),
         matchOnDescription: true,
         matchOnDetail: true
       });
@@ -134,16 +134,16 @@ export function createHydrationTools(deps: HydrationDeps): {
       const availableTargets = selected.targets.filter((target) => deps.targetExistsInFiles(target, deps.centralSkills()));
       const missingCount = selected.targets.length - availableTargets.length;
       if (availableTargets.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("The selected preset or skills are not in the current Central Skill Home.", "선택한 프리셋/스킬이 현재 중앙 스킬 홈에 없습니다."));
+        vscode.window.showWarningMessage(deps.tr("The selected preset or skills are not in the current Central Skill Home."));
         return;
       }
       if (missingCount > 0) {
-        vscode.window.showWarningMessage(deps.tr(`Skipping ${missingCount} skills that are not in Central.`, `중앙에 없는 스킬 ${missingCount}개는 건너뜁니다.`));
+        vscode.window.showWarningMessage(deps.tr("Skipping {0} skills that are not in Central.", String(missingCount)));
       }
 
       const selections = deps.targetsToSelections(deps.centralSkills(), availableTargets);
       if (selections.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("No files were found to bring in.", "가져올 파일을 찾지 못했습니다."));
+        vscode.window.showWarningMessage(deps.tr("No files were found to bring in."));
         return;
       }
 
@@ -154,10 +154,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       await deps.upsertHydratedWorkspaceGroup(selected.name, selected.id, availableTargets);
       await deps.refresh();
       vscode.window.showInformationMessage(
-        deps.tr(
-          `Added skills to workspace: copied ${result.copied} · deleted ${result.deleted} · unchanged ${result.unchanged}`,
-          `프로젝트 프리셋 적용 완료: 복사 행 ${result.copied}개 / 삭제 행 ${result.deleted}개 / 변경없음 행 ${result.unchanged}개`
-        )
+        deps.tr("Added skills to workspace: copied {0} · deleted {1} · unchanged {2}", String(result.copied), String(result.deleted), String(result.unchanged))
       );
     } catch (error) {
       await deps.handleError(error);
@@ -169,7 +166,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       if (!deps.workspacePath() || !deps.centralRepoPath()) await deps.refresh();
       const centralAssets = deps.getWizardAssetPicks("central").filter((asset) => asset.status !== "missingSkillMd");
       if (centralAssets.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("There are no Central skills to bring to Workspace.", "작업공간으로 가져올 중앙 스킬이 없습니다."));
+        vscode.window.showWarningMessage(deps.tr("There are no Central skills to bring to Workspace."));
         return;
       }
 
@@ -177,12 +174,12 @@ export function createHydrationTools(deps: HydrationDeps): {
         centralAssets.map((asset) => ({
           label: `${asset.tool}/${asset.skillName}`,
           description: deps.statusLabelForWizard(asset.status),
-          detail: `${asset.rootRelativePath} · ${deps.tr("files", "파일")} ${asset.fileCount} · ${deps.tr("warnings", "경고")} ${asset.warnings.length}${asset.updatedAt ? ` · ${asset.updatedAt}` : ""}`,
+          detail: `${asset.rootRelativePath} · ${deps.tr("files")} ${asset.fileCount} · ${deps.tr("warnings")} ${asset.warnings.length}${asset.updatedAt ? ` · ${asset.updatedAt}` : ""}`,
           value: asset
         })),
         {
-          title: deps.tr("Search Central Skills to Bring", "가져올 중앙 스킬 검색"),
-          placeHolder: deps.tr("Search by skill name, agent, or path.", "스킬 이름, 에이전트, 경로로 검색하세요."),
+          title: deps.tr("Search Central Skills to Bring"),
+          placeHolder: deps.tr("Search by skill name, agent, or path."),
           matchOnDescription: true,
           matchOnDetail: true
         }
@@ -193,21 +190,21 @@ export function createHydrationTools(deps: HydrationDeps): {
       const targetPick = await vscode.window.showQuickPick(
         [
           {
-            label: deps.tr("All Agents", "모든 에이전트"),
-            description: deps.tr("Install into every configured workspace agent folder", "설정된 모든 작업공간 에이전트 폴더에 설치"),
+            label: deps.tr("All Agents"),
+            description: deps.tr("Install into every configured workspace agent folder"),
             detail: agents.map((agent) => agent === "agents" ? ".agents" : `.${agent}`).join(", "),
             value: "all" as const
           },
           ...agents.map((agent) => ({
             label: agent === "agents" ? ".agents" : `.${agent}`,
-            description: deps.tr("Workspace target agent folder", "작업공간 대상 에이전트 폴더"),
+            description: deps.tr("Workspace target agent folder"),
             detail: path.join(deps.workspacePath(), deps.getWritableSkillRoot("", agent, "workspace")),
             value: agent
           }))
         ],
         {
-          title: deps.tr("Choose Target Agent Folder", "대상 에이전트 폴더 선택"),
-          placeHolder: deps.tr("Choose the workspace agent folder to receive this skill.", "이 스킬을 받을 작업공간 에이전트 폴더를 선택하세요."),
+          title: deps.tr("Choose Target Agent Folder"),
+          placeHolder: deps.tr("Choose the workspace agent folder to receive this skill."),
           matchOnDescription: true,
           matchOnDetail: true
         }
@@ -217,7 +214,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       const sourceRoot = deps.getSkillRoot(deps.centralRepoPath(), sourcePick.value.tool, "central");
       const sourceAbs = path.join(sourceRoot, sourcePick.value.rootRelativePath);
       if (!(await deps.exists(path.join(sourceAbs, "SKILL.md")))) {
-        vscode.window.showErrorMessage(deps.tr(`Central skill is missing SKILL.md: ${sourcePick.value.tool}/${sourcePick.value.rootRelativePath}`, `중앙 스킬에 SKILL.md가 없습니다: ${sourcePick.value.tool}/${sourcePick.value.rootRelativePath}`));
+        vscode.window.showErrorMessage(deps.tr("Central skill is missing SKILL.md: {0}/{1}", String(sourcePick.value.tool), String(sourcePick.value.rootRelativePath)));
         return;
       }
 
@@ -234,14 +231,11 @@ export function createHydrationTools(deps: HydrationDeps): {
       const existingTargets = targetInfos.filter((info) => info.targetExists);
       if (existingTargets.length > 0) {
         const ok = await vscode.window.showWarningMessage(
-          deps.tr(
-            `${existingTargets.length} target(s) already contain ${sourcePick.value.rootRelativePath}. Update them with Central ${sourcePick.value.tool}/${sourcePick.value.rootRelativePath}?`,
-            `${existingTargets.length}개 대상에 ${sourcePick.value.rootRelativePath}이(가) 이미 있습니다. Central의 ${sourcePick.value.tool}/${sourcePick.value.rootRelativePath} 내용으로 업데이트할까요?`
-          ),
+          deps.tr("{0} target(s) already contain {1}. Update them with Central {2}/{3}?", String(existingTargets.length), String(sourcePick.value.rootRelativePath), String(sourcePick.value.tool), String(sourcePick.value.rootRelativePath)),
           { modal: true },
-          deps.tr("Update", "업데이트")
+          deps.tr("Update")
         );
-        if (ok !== deps.tr("Update", "업데이트")) return;
+        if (ok !== deps.tr("Update")) return;
         await Promise.all(existingTargets.map((info) => fs.rm(info.targetAbs, { recursive: true, force: true })));
       }
 
@@ -260,12 +254,9 @@ export function createHydrationTools(deps: HydrationDeps): {
         targets
       );
       await deps.refresh();
-      const targetLabel = targetPick.value === "all" ? deps.tr(`all agents (${targetInfos.length})`, `모든 agent (${targetInfos.length}개)`) : targetPick.value;
+      const targetLabel = targetPick.value === "all" ? deps.tr("all agents ({0})", String(targetInfos.length)) : targetPick.value;
       vscode.window.showInformationMessage(
-        deps.tr(
-          `Installed: Central ${sourcePick.value.tool}/${sourcePick.value.skillName} to Workspace ${targetLabel}`,
-          `설치 완료: 중앙 ${sourcePick.value.tool}/${sourcePick.value.skillName} → 작업공간 ${targetLabel}`
-        )
+        deps.tr("Installed: Central {0}/{1} to Workspace {2}", String(sourcePick.value.tool), String(sourcePick.value.skillName), String(targetLabel))
       );
     } catch (error) {
       await deps.handleError(error);
@@ -277,7 +268,7 @@ export function createHydrationTools(deps: HydrationDeps): {
       if (!deps.workspacePath() || !deps.centralRepoPath()) await deps.refresh();
       const sourceAbs = path.join(deps.extensionPath, "resources", "bundled-skills", ...deps.bundledSkillManagerRelativePath.split("/"));
       if (!(await deps.exists(path.join(sourceAbs, "SKILL.md")))) {
-        vscode.window.showErrorMessage(deps.tr(`Bundled skill-manager skill was not found: ${sourceAbs}`, `번들된 skill-manager 스킬을 찾을 수 없습니다: ${sourceAbs}`));
+        vscode.window.showErrorMessage(deps.tr("Bundled skill-manager skill was not found: {0}", String(sourceAbs)));
         return;
       }
 
@@ -285,21 +276,21 @@ export function createHydrationTools(deps: HydrationDeps): {
       const targetPick = await vscode.window.showQuickPick(
         [
           {
-            label: deps.tr("All Agents", "모든 에이전트"),
-            description: deps.tr("Install into every configured workspace agent folder", "설정된 모든 작업공간 에이전트 폴더에 설치"),
+            label: deps.tr("All Agents"),
+            description: deps.tr("Install into every configured workspace agent folder"),
             detail: agents.map((agent) => agent === "agents" ? ".agents" : `.${agent}`).join(", "),
             value: "all" as const
           },
           ...agents.map((agent) => ({
             label: agent === "agents" ? ".agents" : `.${agent}`,
-            description: deps.tr("Workspace target agent folder", "작업공간 대상 에이전트 폴더"),
+            description: deps.tr("Workspace target agent folder"),
             detail: path.join(deps.workspacePath(), deps.getWritableSkillRoot("", agent, "workspace")),
             value: agent
           }))
         ],
         {
-          title: deps.tr("Install Skill Manager Helper", "Skill Manager 도우미 설치"),
-          placeHolder: deps.tr("Choose the workspace agent folder that will receive the skill-manager skill.", "skill-manager 스킬을 받을 작업공간 에이전트 폴더를 선택하세요."),
+          title: deps.tr("Install Skill Manager Helper"),
+          placeHolder: deps.tr("Choose the workspace agent folder that will receive the skill-manager skill."),
           matchOnDescription: true,
           matchOnDetail: true
         }
@@ -319,14 +310,11 @@ export function createHydrationTools(deps: HydrationDeps): {
       const existingTargets = targetInfos.filter((info) => info.targetExists);
       if (existingTargets.length > 0) {
         const ok = await vscode.window.showWarningMessage(
-          deps.tr(
-            `${existingTargets.length} target(s) already contain ${deps.bundledSkillManagerRelativePath}. Update them with the bundled skill-manager content?`,
-            `${existingTargets.length}개 대상에 ${deps.bundledSkillManagerRelativePath}이(가) 이미 있습니다. 번들된 skill-manager 내용으로 업데이트할까요?`
-          ),
+          deps.tr("{0} target(s) already contain {1}. Update them with the bundled skill-manager content?", String(existingTargets.length), String(deps.bundledSkillManagerRelativePath)),
           { modal: true },
-          deps.tr("Update", "업데이트")
+          deps.tr("Update")
         );
-        if (ok !== deps.tr("Update", "업데이트")) return;
+        if (ok !== deps.tr("Update")) return;
         await Promise.all(existingTargets.map((info) => fs.rm(info.targetAbs, { recursive: true, force: true })));
       }
 
@@ -344,12 +332,9 @@ export function createHydrationTools(deps: HydrationDeps): {
         }))
       );
       await deps.refresh();
-      const targetLabel = targetPick.value === "all" ? deps.tr(`all agents (${targetInfos.length})`, `모든 agent (${targetInfos.length}개)`) : targetPick.value;
+      const targetLabel = targetPick.value === "all" ? deps.tr("all agents ({0})", String(targetInfos.length)) : targetPick.value;
       vscode.window.showInformationMessage(
-        deps.tr(
-          `Installed: bundled skill-manager to Workspace ${targetLabel}`,
-          `설치 완료: 번들 skill-manager → 작업공간 ${targetLabel}`
-        )
+        deps.tr("Installed: bundled skill-manager to Workspace {0}", String(targetLabel))
       );
     } catch (error) {
       await deps.handleError(error);
@@ -361,18 +346,18 @@ export function createHydrationTools(deps: HydrationDeps): {
       if (!deps.workspacePath() || !deps.centralRepoPath()) await deps.refresh();
       const centralAssets = deps.getWizardAssetPicks("central").filter((asset) => asset.status !== "missingSkillMd");
       if (centralAssets.length === 0) {
-        vscode.window.showWarningMessage(deps.tr("There are no Central skills to save as a project preset.", "프로젝트 프리셋으로 저장할 중앙 스킬이 없습니다."));
+        vscode.window.showWarningMessage(deps.tr("There are no Central skills to save as a project preset."));
         return;
       }
       const selected = await vscode.window.showQuickPick(
         centralAssets.map((asset) => ({
           label: `${asset.tool}/${asset.skillName}`,
           description: deps.statusLabelForWizard(asset.status),
-          detail: `${asset.rootRelativePath} · ${deps.tr("files", "파일")} ${asset.fileCount} · ${deps.tr("warnings", "경고")} ${asset.warnings.length}`,
+          detail: `${asset.rootRelativePath} · ${deps.tr("files")} ${asset.fileCount} · ${deps.tr("warnings")} ${asset.warnings.length}`,
           value: asset
         })),
         {
-          title: deps.tr("Choose Central Skills for the Project Preset", "프로젝트 프리셋에 넣을 중앙 스킬 선택"),
+          title: deps.tr("Choose Central Skills for the Project Preset"),
           canPickMany: true,
           matchOnDescription: true,
           matchOnDetail: true
@@ -381,15 +366,15 @@ export function createHydrationTools(deps: HydrationDeps): {
       if (!selected || selected.length === 0) return;
 
       const name = await vscode.window.showInputBox({
-        title: deps.tr("Project Preset Name", "프로젝트 프리셋 이름"),
-        prompt: deps.tr("Example: personal-default, frontend-project, langgraph-project", "예: personal-default, frontend-project, langgraph-project"),
-        validateInput: (value) => value.trim() ? null : deps.tr("Enter a preset name.", "프리셋 이름을 입력하세요."),
+        title: deps.tr("Project Preset Name"),
+        prompt: deps.tr("Example: personal-default, frontend-project, langgraph-project"),
+        validateInput: (value) => value.trim() ? null : deps.tr("Enter a preset name."),
         ignoreFocusOut: true
       });
       if (!name?.trim()) return;
       const description = await vscode.window.showInputBox({
-        title: deps.tr("Project Preset Description", "프로젝트 프리셋 설명"),
-        prompt: deps.tr("Optional. Describe which projects this preset is useful for so it is easier to find later.", "선택 사항입니다. 어떤 프로젝트에 쓰는 프리셋인지 적어두면 나중에 찾기 쉽습니다."),
+        title: deps.tr("Project Preset Description"),
+        prompt: deps.tr("Optional. Describe which projects this preset is useful for so it is easier to find later."),
         ignoreFocusOut: true
       });
 
@@ -404,11 +389,11 @@ export function createHydrationTools(deps: HydrationDeps): {
       const previous = presetsFile.presets.find((item) => item.id === id);
       if (previous) {
         const ok = await vscode.window.showWarningMessage(
-          deps.tr(`A project preset with this name already exists: ${previous.name}. Replace it with this selection?`, `이미 같은 이름의 프로젝트 프리셋이 있습니다: ${previous.name}. 새 선택으로 바꿀까요?`),
+          deps.tr("A project preset with this name already exists: {0}. Replace it with this selection?", String(previous.name)),
           { modal: true },
-          deps.tr("Replace", "바꾸기")
+          deps.tr("Replace")
         );
-        if (ok !== deps.tr("Replace", "바꾸기")) return;
+        if (ok !== deps.tr("Replace")) return;
       }
       const preset: ProjectPreset = {
         id,
@@ -422,7 +407,7 @@ export function createHydrationTools(deps: HydrationDeps): {
         .sort((a, b) => a.name.localeCompare(b.name));
       presetsFile.updatedAt = now;
       await saveProjectPresets(deps.centralRepoPath(), presetsFile);
-      vscode.window.showInformationMessage(deps.tr(`Project preset saved: ${preset.name} (${preset.targets.length} skills)`, `프로젝트 프리셋 저장 완료: ${preset.name} (스킬 ${preset.targets.length}개)`));
+      vscode.window.showInformationMessage(deps.tr("Project preset saved: {0} ({1} skills)", String(preset.name), String(preset.targets.length)));
     } catch (error) {
       await deps.handleError(error);
     }

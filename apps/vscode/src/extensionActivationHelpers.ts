@@ -8,7 +8,7 @@ export function createExtensionActivationHelpers(args: {
   state: {
     groups: SelectionGroup[];
   };
-  tr: (english: string, korean: string) => string;
+  tr: (message: string, ...args: Array<string | number | boolean>) => string;
   normalizeRel: (input: string) => string;
   getSkillFolderRelativePath: (relativePath: string) => string | null;
   dedupeGroupTargets: (targets: GroupTarget[]) => GroupTarget[];

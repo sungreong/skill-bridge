@@ -23,6 +23,7 @@
     "check:vsix-runtime-deps": "node scripts/check-vsix-runtime-deps.cjs",
     "check:manifest": "npm --workspace apps/vscode run check:manifest",
     "check:action-labels": "npm --workspace apps/vscode run check:action-labels",
+    "check:l10n": "npm --workspace apps/vscode run check:l10n",
     "check:context-menu-density": "node scripts/check-context-menu-density.cjs",
     "check:pre-vsix": "npm --workspace apps/vscode run check:pre-vsix",
     "check:prepush": "npm run typecheck && npm --workspace apps/vscode run check:pre-vsix",

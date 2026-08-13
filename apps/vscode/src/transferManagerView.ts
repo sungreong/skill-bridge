@@ -1,8 +1,8 @@
 import type * as vscode from "vscode";
 import { buildTransferReviewMeta } from "./reviewPrompt";
 import type { TransferPlan } from "./types";
-import type { UiLanguage } from "./uiLanguage";
-import { createWebviewNonce } from "./webviewCommon";
+import { localize, type UiLanguage } from "./uiLanguage";
+import { createWebviewNonce, renderWebviewL10nRuntime } from "./webviewCommon";
 import { renderWebviewClientCommonScript } from "./webviewClientCommon";
 import { renderWebviewCommonStyles } from "./webviewCommonStyles";
 
@@ -11,6 +11,8 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
   const nonce = createWebviewNonce();
   const initial = JSON.stringify(plan).replace(/</g, "\\u003c");
   const reviewInitial = JSON.stringify(buildTransferReviewMeta(plan)).replace(/</g, "\\u003c");
+  const workspaceToCentralTitle = JSON.stringify(localize("Workspace <span class=\"arrow\">→</span> Save to Central")).replace(/</g, "\\u003c");
+  const centralToWorkspaceTitle = JSON.stringify(localize("Central <span class=\"arrow\">→</span> Bring to Workspace")).replace(/</g, "\\u003c");
   const isKo = language === "ko";
   return `<!doctype html>
 <html lang="${language}">
@@ -18,24 +20,26 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${isKo ? "변경 검토" : "Review Changes"}</title>
+  <title>${localize("Review Changes")}</title>
   <style>
+    /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+    /* Hallmark · macrostructure: Workbench · tone: utilitarian technical · anchor hue: VS Code semantic accent */
     ${renderWebviewCommonStyles()}
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; height: 100vh; overflow: hidden; }
-    .wrap { padding: 8px 10px; display: grid; gap: 6px; height: 100vh; box-sizing: border-box; grid-template-areas: "head" "direction" "summary" "review" "feedback" "toolbar" "table" "predict" "foot"; grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr) auto auto; }
+    html, body { height: 100%; overflow: clip; }
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
+    .wrap { padding: 8px 10px; display: grid; gap: 6px; height: 100vh; height: 100dvh; box-sizing: border-box; grid-template-areas: "head" "error" "direction" "review" "toolbar" "table" "foot"; grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto; }
     .head { grid-area: head; }
+    .fatal-error { grid-area: error; border: 1px solid var(--vscode-inputValidation-errorBorder, var(--sb-danger)); border-radius: 6px; padding: 8px 10px; color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground)); background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-background)); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .fatal-error[hidden] { display: none; }
     .direction-panel { grid-area: direction; }
-    .summary { grid-area: summary; }
     .review-panel { grid-area: review; }
-    .feedback { grid-area: feedback; }
     .toolbar { grid-area: toolbar; }
     .table-wrap { grid-area: table; }
-    .predict-box { grid-area: predict; }
     .foot { grid-area: foot; }
     .head { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .head h2 { font-size: 17px; line-height: 1.2; }
+    .head h2 { min-width: 0; font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
     .meta { font-size: 11px; opacity: 0.9; display: flex; gap: 8px; flex-wrap: wrap; }
-    .direction-panel { min-width: 0; border: 1px solid var(--sb-accent); border-radius: 6px; padding: 6px 8px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 7px; align-items: center; background: var(--vscode-sideBar-background); }
+    .direction-panel { min-width: 0; border: 1px solid var(--sb-accent); border-radius: 6px; padding: 6px 8px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto auto; gap: 7px; align-items: center; background: var(--vscode-sideBar-background); }
     .direction-panel.import { background: var(--vscode-sideBar-background); }
     .direction-title { font-weight: 800; font-size: 13px; white-space: nowrap; }
     .direction-title .arrow { padding: 0 6px; color: var(--sb-accent); }
@@ -44,12 +48,14 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .scope-chip { border: 1px solid var(--vscode-panel-border); border-radius: 999px; padding: 2px 7px; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); max-width: min(620px, 60vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .scope-chip.locked { border-color: var(--sb-accent); color: var(--vscode-foreground); }
     .direction-panel.import .scope-chip.locked { border-color: var(--sb-accent); color: var(--vscode-foreground); }
-    .scope-action { background: transparent; color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 3px 7px; font-size: 12px; }
-    .summary { display: flex; flex-wrap: wrap; gap: 5px; align-items: stretch; min-height: 0; }
-    .card { flex: 1 1 150px; min-width: 0; border: 1px solid var(--vscode-panel-border); padding: 4px 7px; border-radius: 5px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card b { font-size: 14px; }
-    .review-panel { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 5px 7px; background: color-mix(in oklab, var(--vscode-editor-background) 94%, var(--vscode-editor-foreground) 6%); display: grid; gap: 4px; }
-    .review-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-width: 0; font-size: 12px; }
+    .scope-action, .compact-button { min-height: 26px; padding-block: 2px; font-size: 12px; white-space: nowrap; }
+    .change-summary { display: inline-flex; align-items: center; gap: 0; color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .change-summary span { padding-inline: 7px; }
+    .change-summary span + span { border-inline-start: 1px solid var(--vscode-panel-border); }
+    .change-summary b { color: var(--vscode-foreground); font-size: 12px; }
+    .review-panel { border-block: 1px solid var(--vscode-panel-border); padding-block: 5px; display: grid; gap: 4px; }
+    .review-row, .review-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-width: 0; font-size: 12px; }
+    .review-row > .review-strip { flex: 1 1 420px; }
     .review-strip strong { margin-right: 2px; }
     .review-note { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 180px; flex: 1 1 240px; }
     .risk-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; border: 1px solid var(--vscode-panel-border); padding: 1px 7px; font-size: 11px; white-space: nowrap; }
@@ -59,149 +65,221 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     .risk-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
     .asset-details { border-top: 1px solid var(--vscode-panel-border); padding-top: 4px; }
     .asset-details summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 12px; user-select: none; }
-    .asset-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 5px; margin-top: 5px; max-height: 82px; overflow: auto; }
-    .asset-card { border: 1px solid var(--vscode-panel-border); border-radius: 5px; padding: 5px; background: var(--vscode-sideBar-background); display: grid; gap: 3px; min-width: 0; }
-    .asset-card .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .asset-card .line { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
+    .asset-details summary:hover { color: var(--vscode-foreground); }
+    .asset-details summary:active { color: var(--sb-accent); }
+    .asset-details summary:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+    .asset-strip { display: grid; margin-top: 5px; max-height: 112px; overflow: auto; }
+    .asset-row { min-width: 0; display: grid; grid-template-columns: minmax(160px, 1fr) auto auto; gap: 8px; align-items: center; padding: 5px 2px; border-top: 1px solid var(--vscode-panel-border); }
+    .asset-row:first-child { border-top: 0; }
+    .asset-row .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .asset-row .line { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
     .asset-empty { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px 0; }
     .recommend-apply { color: var(--sb-success); border-color: var(--sb-success); }
     .recommend-inspect { color: var(--sb-warning); border-color: var(--sb-warning); }
     .recommend-skip { color: var(--sb-danger); border-color: var(--sb-danger); }
     .toolbar { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-    .toolbar input, .toolbar select, .toolbar button { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 4px 7px; min-height: 28px; }
+    .toolbar input, .toolbar select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 4px 7px; min-height: 30px; font: inherit; }
+    .toolbar input:hover, .toolbar select:hover { border-color: var(--vscode-focusBorder, var(--vscode-input-border)); }
+    .toolbar input:focus-visible, .toolbar select:focus-visible, input[type="checkbox"]:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+    .toolbar input:disabled, .toolbar select:disabled { opacity: .55; cursor: not-allowed; }
     .toolbar input { flex: 1 1 280px; min-width: 200px; }
-    button { cursor: pointer; }
-    button:disabled { opacity: .5; cursor: default; }
-    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; min-height: 160px; }
+    .selection-count { margin-inline-start: auto; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .selection-count b { color: var(--vscode-foreground); }
+    .table-wrap { border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; min-height: 160px; scrollbar-gutter: stable; }
     table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
     thead { background: var(--vscode-sideBar-background); }
+    thead th { position: sticky; top: 0; z-index: 1; background: var(--vscode-sideBar-background); white-space: nowrap; }
     th, td { padding: 5px 7px; border-bottom: 1px solid var(--vscode-panel-border); text-align: left; }
     tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+    tbody tr.group-row td { background: var(--vscode-sideBar-background); border-top: 1px solid var(--vscode-panel-border); }
+    tbody tr.group-row:first-child td { border-top: 0; }
+    .group-row .path-main { font-weight: 800; }
+    .group-row .path-sub { color: var(--vscode-descriptionForeground); }
+    .group-select { display: inline-flex; align-items: center; gap: 4px; }
+    .expand-toggle { width: 22px; min-width: 22px; height: 22px; padding: 0; border: 0; color: var(--vscode-foreground); background: transparent; cursor: pointer; border-radius: 3px; }
+    .expand-toggle:hover { background: var(--vscode-toolbar-hoverBackground); }
+    .expand-toggle:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+    .file-row .item-cell { padding-inline-start: 30px; position: relative; }
+    .file-row .item-cell::before { content: "└"; position: absolute; inset-inline-start: 12px; color: var(--vscode-descriptionForeground); }
     .status-added { color: var(--sb-success); }
     .status-removed { color: var(--sb-danger); }
     .status-modified { color: var(--sb-warning); }
     .status-typeChanged { color: var(--sb-danger); }
     .status-same { color: var(--vscode-descriptionForeground); }
     .change-code { font-weight: 800; font-size: 13px; }
-    .relation-main { display: block; font-weight: 700; }
-    .predict-box { border: 1px solid var(--sb-warning); color: var(--vscode-foreground); border-radius: 6px; padding: 5px 7px; font-size: 12px; background: var(--vscode-sideBar-background); }
-    .feedback { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 4px 7px; font-size: 12px; }
-    .feedback.warn { border-color: var(--sb-warning); color: var(--sb-warning); }
-    .feedback.info { border-color: var(--vscode-panel-border); color: var(--vscode-foreground); }
     .path-main { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
     .path-sub { opacity: 0.85; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 580px; }
-    .foot { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-sideBar-background); box-shadow: 0 -8px 20px var(--vscode-widget-shadow); }
-    .foot-copy { min-width: 0; display: grid; gap: 2px; }
-    .foot-kicker { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--vscode-descriptionForeground); }
-    .foot-title { font-size: 13px; font-weight: 700; color: var(--vscode-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .foot-note { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .time-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .row-action { min-height: 26px; padding-block: 2px; font-size: 12px; white-space: nowrap; }
+    .action-empty { display: inline-block; min-width: 32px; color: var(--vscode-descriptionForeground); text-align: center; }
+    .foot { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 2px 0; border-top: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
+    .foot-copy { min-width: 0; display: grid; gap: 3px; }
+    .impact-summary { color: var(--vscode-foreground); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+    .feedback.sb-status-bar { border: 0; border-radius: 0; padding: 0; font-size: 11px; }
+    .feedback.warn { color: var(--sb-warning); }
+    .feedback.info { color: var(--vscode-descriptionForeground); }
     .foot-actions { display: inline-flex; justify-content: flex-end; gap: 8px; align-items: center; }
-    .btn { min-height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--vscode-panel-border); background: color-mix(in oklab, var(--vscode-button-secondaryBackground, var(--vscode-input-background)) 72%, transparent); color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); font-weight: 700; letter-spacing: 0; transition: background .16s ease, border-color .16s ease, transform .16s ease, opacity .16s ease, color .16s ease; }
-    .btn:hover:not(:disabled) { transform: translateY(-1px); }
-    .btn:active:not(:disabled) { transform: translateY(0); }
-    .btn-ghost { background: transparent; border-color: var(--vscode-panel-border); color: var(--vscode-foreground); }
-    .btn-ghost:hover:not(:disabled) { background: color-mix(in oklab, var(--vscode-list-hoverBackground) 75%, transparent); }
-    .btn-primary { border-color: var(--vscode-button-background); background: var(--vscode-button-background); color: var(--vscode-button-foreground); box-shadow: none; }
-    .btn-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); border-color: var(--vscode-button-hoverBackground); }
-    .btn:disabled { opacity: .42; cursor: default; transform: none; box-shadow: none; }
-    .btn-primary:disabled { background: var(--vscode-button-background); color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground)); border-color: var(--vscode-panel-border); }
-    @media (max-width: 960px) {
-      .direction-panel { grid-template-columns: minmax(0, 1fr); align-items: start; }
+    .foot-actions .sb-button { padding-inline: 12px; font-weight: 700; white-space: nowrap; }
+    .sb-button:active:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-activeSelectionBackground)); }
+    .sb-button-primary:active:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+    @media (pointer: coarse) {
+      .sb-button, .toolbar input, .toolbar select { min-height: 44px; }
+    }
+    @media (max-width: 60rem) {
+      .direction-panel { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
       .direction-title { white-space: normal; }
       .scope-chip { max-width: 100%; }
-      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .scope-line { grid-column: 1 / -1; }
+      .change-summary { justify-self: start; }
       .foot { grid-template-columns: 1fr; }
       .foot-actions { justify-content: stretch; }
-      .foot-actions .btn { flex: 1 1 0; }
+      .foot-actions .sb-button { flex: 1 1 0; }
     }
-    @media (max-width: 640px) {
-      .summary { grid-template-columns: minmax(0, 1fr); }
+    @media (max-width: 40rem) {
+      .wrap { padding: 6px; }
+      .meta { display: none; }
+      .direction-panel { grid-template-columns: minmax(0, 1fr) auto; }
+      .scope-line, .change-summary { grid-column: 1 / -1; }
+      .asset-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+      .review-note { min-width: 100%; white-space: normal; }
       .toolbar input { min-width: 100%; }
-      .foot-title, .foot-note { white-space: normal; }
-      .toolbar button { min-height: 36px; flex: 1 1 calc(50% - 3px); }
+      .selection-count { margin-inline-start: 0; flex: 1 1 100%; }
+      .toolbar .sb-button { flex: 1 1 calc(50% - 3px); }
+      table, tbody { display: block; width: 100%; min-width: 0; }
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      tbody { display: grid; gap: 6px; padding: 6px; }
+      tbody tr { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-areas: "select item action" ". status action" ". review review" ". source source" ". target target"; gap: 4px 8px; padding: 7px; border: 1px solid var(--vscode-panel-border); border-radius: 5px; }
+      tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+      tbody td { min-width: 0; padding: 0; border-bottom: 0; }
+      .row-select { grid-area: select; }
+      .item-cell { grid-area: item; }
+      .status-cell { grid-area: status; }
+      .review-cell { grid-area: review; }
+      .source-time { grid-area: source; }
+      .target-time { grid-area: target; }
+      .action-cell { grid-area: action; align-self: start; }
+      .status-cell::before, .review-cell::before, .time-cell::before { content: attr(data-label) ": "; color: var(--vscode-descriptionForeground); font-weight: 400; }
+      .path-main, .path-sub { max-width: 100%; }
+      .risk-tags { display: inline-flex; max-width: 100%; vertical-align: middle; }
       .foot-actions { flex-direction: column-reverse; }
-      .foot-actions .btn { width: 100%; min-height: 40px; }
-      table { min-width: 760px; }
+      .foot-actions .sb-button { width: 100%; min-height: 40px; }
+      .impact-summary { white-space: normal; }
     }
   </style>
 </head>
 <body>
   <div class="wrap sb-root">
     <div class="head sb-topbar">
-      <h2 style="margin:0;">${isKo ? "변경 검토" : "Review Changes"}</h2>
+      <h2 style="margin:0;">${localize("Review Changes")}</h2>
       <div class="meta">
         <span id="groupLabel"></span>
         <span id="repoLabel"></span>
       </div>
     </div>
+    <div id="fatalError" class="fatal-error" role="alert" aria-live="assertive" hidden></div>
     <div id="directionPanel" class="direction-panel">
       <div id="directionTitle" class="direction-title"></div>
       <div class="scope-line">
-        <span>${isKo ? "현재 범위" : "Current scope"}</span>
+        <span>${localize("Current scope")}</span>
         <span id="scopeLabel" class="scope-chip"></span>
         <span id="scopeCount"></span>
       </div>
-      <button id="expandScopeBtn" class="scope-action">${isKo ? "전체 보기" : "Show All"}</button>
-    </div>
-    <div class="summary">
-      <div class="card">${isKo ? "새 파일/폴더" : "New files/folders"} <b id="sumAdded">0</b></div>
-      <div class="card">${isKo ? "변경 파일/폴더" : "Changed files/folders"} <b id="sumChanged">0</b></div>
-      <div class="card">${isKo ? "선택된 행" : "Selected rows"} <b id="sumSelectedApply">0</b></div>
+      <div class="change-summary" aria-label="${localize("Change summary")}">
+        <span>${localize("New")} <b id="sumAdded">0</b></span>
+        <span>${localize("Changed")} <b id="sumChanged">0</b></span>
+      </div>
+      <button id="expandScopeBtn" class="scope-action sb-button sb-button-ghost">${localize("Show All")}</button>
     </div>
     <div class="review-panel">
-      <div id="reviewStrip" class="review-strip">${isKo ? "검토 요약을 계산하는 중..." : "Calculating review summary..."}</div>
+      <div class="review-row">
+        <div id="reviewStrip" class="review-strip">${localize("Calculating review summary…")}</div>
+        <button id="copyReviewPrompt" class="compact-button sb-button sb-button-ghost">${localize("Copy for AI Review")}</button>
+      </div>
       <details id="assetDetails" class="asset-details">
-        <summary id="assetSummary">${isKo ? "스킬별 검토 힌트 보기" : "Show per-skill review hints"}</summary>
+        <summary id="assetSummary">${localize("Show per-skill review hints")}</summary>
         <div id="assetStrip" class="asset-strip"></div>
       </details>
     </div>
-    <div id="feedback" class="feedback sb-status-bar info">${isKo ? "작업 결과가 여기에 표시됩니다." : "Action results will appear here."}</div>
-    <div class="toolbar">
-      <input id="search" placeholder="${isKo ? "스킬 또는 파일 경로 검색..." : "Search skill or file path..."}" />
-      <select id="statusFilter">
-        <option value="">${isKo ? "모든 상태" : "All statuses"}</option>
-        <option value="added">${isKo ? "신규" : "New"}</option>
-        <option value="removed">${isKo ? "삭제" : "Delete"}</option>
-        <option value="modified">${isKo ? "수정" : "Modified"}</option>
-        <option value="typeChanged">${isKo ? "유형 충돌" : "Type conflict"}</option>
+    <div class="toolbar sb-toolbar">
+      <input id="search" aria-label="${localize("Search skill or file path")}" placeholder="${localize("Search skill or file path…")}" />
+      <select id="statusFilter" aria-label="${localize("Change status filter")}">
+        <option value="">${localize("All statuses")}</option>
+        <option value="added">${localize("New")}</option>
+        <option value="removed">${localize("Delete")}</option>
+        <option value="modified">${localize("Modified")}</option>
+        <option value="typeChanged">${localize("Type conflict")}</option>
       </select>
-      <button id="bulkSelectAll">${isKo ? "전체 선택" : "Select All"}</button>
-      <button id="bulkConflict">${isKo ? "변경 선택" : "Select Changes"}</button>
-      <button id="copyReviewPrompt">${isKo ? "AI 검토 복사" : "Copy AI Review"}</button>
-      <button id="refreshPlan">${isKo ? "새로고침" : "Refresh"}</button>
+      <span class="selection-count">${localize("Selected")} <b id="sumSelectedApply">0</b> ${localize("skills")} · <b id="sumSelectedFiles">0</b> ${localize("files")}</span>
+      <button id="bulkSelectAll" class="sb-button">${localize("Select All")}</button>
+      <button id="bulkConflict" class="sb-button">${localize("Select Changes")}</button>
+      <button id="refreshPlan" class="sb-button sb-button-ghost">${localize("Refresh")}</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th><input id="toggleAllRows" type="checkbox" title="${isKo ? "보이는 행 전체 선택 또는 해제" : "Select or clear all visible rows"}"></th>
-            <th>${isKo ? "관계 (현재 → 반영 후)" : "Relation (current → after apply)"}</th>
-            <th>${isKo ? "상태" : "Status"}</th>
-            <th>${isKo ? "검토 힌트" : "Review hint"}</th>
-            <th>${isKo ? "원본 수정 시각" : "Source modified"}</th>
-            <th>${isKo ? "대상 수정 시각" : "Target modified"}</th>
-            <th>${isKo ? "작업" : "Action"}</th>
+            <th><input id="toggleAllRows" type="checkbox" aria-label="${localize("Select or clear all visible rows")}" title="${localize("Select or clear all visible rows")}"></th>
+            <th>${localize("Item and change")}</th>
+            <th>${localize("Status")}</th>
+            <th>${localize("Review hint")}</th>
+            <th class="source-time">${localize("Source modified")}</th>
+            <th class="target-time">${localize("Target modified")}</th>
+            <th>${localize("Action")}</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <div class="predict-box" id="predictText">${isKo ? "예상 결과: 생성 0 / 덮어쓰기 0 / 삭제 0" : "Expected result: create 0 / overwrite 0 / delete 0"}</div>
     <div class="foot">
       <div class="foot-copy">
-        <div class="foot-kicker">${isKo ? "Final Step" : "Final Step"}</div>
-        <div id="footTitle" class="foot-title">${isKo ? "검토를 마치면 선택한 변경만 반영됩니다." : "Only the selected changes will be applied."}</div>
-        <div id="footNote" class="foot-note">${isKo ? "선택이 없으면 반영 버튼이 비활성화됩니다." : "The apply button stays disabled until you select at least one item."}</div>
+        <div class="impact-summary" id="predictText">${localize("Expected result: create 0 / overwrite 0 / delete 0")}</div>
+        <div id="feedback" class="feedback sb-status-bar info" aria-live="polite">${localize("Select changes, then review the expected result.")}</div>
       </div>
       <div class="foot-actions">
-        <button id="cancelBtn" class="btn btn-ghost">${isKo ? "취소" : "Cancel"}</button>
-        <button id="applyBtn" class="btn btn-primary">${isKo ? "선택 변경 반영" : "Apply Selected Changes"}</button>
+        <button id="cancelBtn" class="sb-button sb-button-ghost">${localize("Cancel")}</button>
+        <button id="applyBtn" class="sb-button sb-button-primary">${localize("Apply Selected Changes")}</button>
       </div>
     </div>
   </div>
   <script nonce="${nonce}">
+    (() => {
+      const vscode = acquireVsCodeApi();
+      const errorPrefix = ${JSON.stringify(localize("Change review screen error: {0}", "{0}"))};
+      const fallbackMessage = ${JSON.stringify(localize("Unknown error"))};
+      let lastReport = "";
+      const report = (detail) => {
+        const message = String(detail?.message || fallbackMessage);
+        const line = Number(detail?.line || 0);
+        const column = Number(detail?.column || 0);
+        const location = line > 0 ? " (line " + line + (column > 0 ? ", column " + column : "") + ")" : "";
+        const reportKey = message + location;
+        if (reportKey === lastReport) return;
+        lastReport = reportKey;
+        const element = document.getElementById("fatalError");
+        if (element) {
+          element.hidden = false;
+          element.textContent = errorPrefix.replace("{0}", message + location);
+        }
+        try {
+          vscode.postMessage({ type: "clientError", payload: { message, line, column } });
+        } catch {
+          // The visible error remains available even if host messaging fails.
+        }
+      };
+      window.addEventListener("error", (event) => report({
+        message: event.message,
+        line: event.lineno,
+        column: event.colno
+      }));
+      window.addEventListener("unhandledrejection", (event) => report({
+        message: event.reason?.message || event.reason
+      }));
+      window.__skillBridgeTransferManager = { vscode, report };
+    })();
+  </script>
+  <script nonce="${nonce}">
     ${renderWebviewClientCommonScript()}
-    const vscode = acquireVsCodeApi();
+    const vscode = window.__skillBridgeTransferManager.vscode;
     const state = ${initial};
     const reviewMeta = ${reviewInitial};
     const language = ${JSON.stringify(language)};
@@ -213,6 +291,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       sumAdded: document.getElementById("sumAdded"),
       sumChanged: document.getElementById("sumChanged"),
       sumSelectedApply: document.getElementById("sumSelectedApply"),
+      sumSelectedFiles: document.getElementById("sumSelectedFiles"),
       reviewStrip: document.getElementById("reviewStrip"),
       assetSummary: document.getElementById("assetSummary"),
       assetStrip: document.getElementById("assetStrip"),
@@ -224,11 +303,9 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       groupLabel: document.getElementById("groupLabel"),
       repoLabel: document.getElementById("repoLabel"),
       feedback: document.getElementById("feedback"),
-      predictText: document.getElementById("predictText"),
-      footTitle: document.getElementById("footTitle"),
-      footNote: document.getElementById("footNote")
+      predictText: document.getElementById("predictText")
     };
-    function t(en, ko){ return language === "ko" ? ko : en; }
+    ${renderWebviewL10nRuntime()}
     function fmtDate(v){
       if (!v) return "-";
       const d = new Date(v);
@@ -250,17 +327,23 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       const fileName = String(it.relativePath || "").replaceAll("\\\\", "/").split("/").pop() || "";
       return fileName ? (it.tool + " / " + base + " / " + fileName) : (it.tool + " / " + base);
     }
+    function getChildDisplayPath(it){
+      const normalized = String(it.relativePath || "").replaceAll("\\\\", "/");
+      const parts = normalized.split("/").filter(Boolean);
+      const skillIndex = parts.indexOf("skills");
+      return skillIndex >= 0 ? parts.slice(skillIndex + 2).join("/") || getSkillFolderName(normalized) : normalized;
+    }
     function getEntryKindLabel(kind){
-      if (kind === "folder") return t("folder", "폴더");
-      if (kind === "file") return t("file", "파일");
+      if (kind === "folder") return t("folder");
+      if (kind === "file") return t("file");
       return String(kind || "");
     }
     function getStatusLabel(status){
-      if (status === "added") return t("New", "신규");
-      if (status === "removed") return t("Delete", "삭제");
-      if (status === "modified") return t("Modified", "수정");
-      if (status === "typeChanged") return t("Type conflict", "유형 충돌");
-      return t("Same", "동일");
+      if (status === "added") return t("New");
+      if (status === "removed") return t("Delete");
+      if (status === "modified") return t("Modified");
+      if (status === "typeChanged") return t("Type conflict");
+      return t("Same");
     }
     function getStatusClass(status){
       if (status === "added") return "status-added";
@@ -270,7 +353,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       return "status-same";
     }
     function getReview(it){
-      return reviewMeta.items[it.key] || { severity: "low", tags: [t("General change", "일반 변경")], notes: [], checklist: [] };
+      return reviewMeta.items[it.key] || { severity: "low", tags: [t("General change")], notes: [], checklist: [] };
     }
     function getRiskCounts(items){
       return items.reduce((acc, it) => {
@@ -281,42 +364,127 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     }
     function renderRiskTags(it){
       const review = getReview(it);
-      const tags = Array.isArray(review.tags) && review.tags.length > 0 ? review.tags : [t("General change", "일반 변경")];
+      const tags = Array.isArray(review.tags) && review.tags.length > 0 ? review.tags : [t("General change")];
       const severityLabel = review.severity === "high"
-        ? t("High", "높음")
+        ? t("High")
         : review.severity === "medium"
-          ? t("Medium", "중간")
-          : t("Low", "낮음");
+          ? t("Medium")
+          : t("Low");
       return '<div class="risk-tags"><span class="risk-chip risk-' + esc(review.severity) + '">' + esc(severityLabel) + '</span>' + tags.slice(0, 3).map(tag => '<span class="risk-chip">' + esc(tag) + '</span>').join("") + '</div>';
     }
     function getSourceTargetLabels(){
       if (state.mode === "workspaceToCentral") {
-        return { source: t("Workspace (current)", "작업공간 (현재)"), target: t("Central (after apply)", "중앙 (반영 후)") };
+        return { source: t("Workspace (current)"), target: t("Central (after apply)") };
       }
-      return { source: t("Central (current)", "중앙 (현재)"), target: t("Workspace (after apply)", "작업공간 (반영 후)") };
+      return { source: t("Central (current)"), target: t("Workspace (after apply)") };
     }
     function getDecisionText(it){
       const labels = getSourceTargetLabels();
-      if (it.status === "added") return labels.source + t(" exists; ", " 있음 · ") + labels.target + t(" is missing", " 없음");
-      if (it.status === "removed") return labels.source + t(" is missing; ", " 없음 · ") + labels.target + t(" exists", " 있음");
-      if (it.status === "modified") return t("Both sides exist; content differs", "양쪽 모두 존재 · 내용이 다름");
-      if (it.status === "typeChanged") return t("Type mismatch (file/folder)", "유형 불일치 (파일/폴더)");
-      return t("Both sides match", "양쪽이 동일함");
+      if (it.status === "added") return labels.source + t(" exists; ") + labels.target + t(" is missing");
+      if (it.status === "removed") return labels.source + t(" is missing; ") + labels.target + t(" exists");
+      if (it.status === "modified") return t("Both sides exist; content differs");
+      if (it.status === "typeChanged") return t("Type mismatch (file/folder)");
+      return t("Both sides match");
     }
     function getStatsBaseItems(items){
       const files = items.filter(it => it.entryKind === "file");
       return files.length > 0 ? files : items;
     }
-    function buildFolderSummaryMap(items){
+    const expandedGroups = new Set();
+    function buildSkillGroups(items){
       const groups = new Map();
       for (const it of items) {
         const folder = getSkillFolderName(it.relativePath);
         const key = it.tool + "::" + folder;
-        const prev = groups.get(key) || [];
-        prev.push(it.key);
-        groups.set(key, prev);
+        const group = groups.get(key) || { key, tool: it.tool, folder, items: [], folderItems: [], files: [] };
+        group.items.push(it);
+        if (it.entryKind === "folder") group.folderItems.push(it);
+        else group.files.push(it);
+        groups.set(key, group);
       }
-      return groups;
+      return Array.from(groups.values()).map(group => {
+        group.folderItems.sort((left, right) => left.relativePath.length - right.relativePath.length || left.relativePath.localeCompare(right.relativePath));
+        group.files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+        group.primaryFolder = group.folderItems[0] || null;
+        return group;
+      }).sort((left, right) => left.tool.localeCompare(right.tool) || left.folder.localeCompare(right.folder));
+    }
+    function groupBaseItems(group){
+      return group.files.length > 0 ? group.files : group.primaryFolder ? [group.primaryFolder] : [];
+    }
+    function summarizeGroupStatus(group){
+      const statuses = new Set(groupBaseItems(group).map(it => it.status));
+      if (statuses.has("typeChanged")) return "typeChanged";
+      if (statuses.has("modified")) return "modified";
+      if (statuses.has("added") && statuses.has("removed")) return "modified";
+      if (statuses.has("added")) return "added";
+      if (statuses.has("removed")) return "removed";
+      return "same";
+    }
+    function groupSelection(group){
+      if (group.primaryFolder?.selected) return { checked: true, indeterminate: false };
+      const selectable = groupBaseItems(group).filter(it => it.status !== "same");
+      const selected = selectable.filter(it => it.selected).length;
+      return {
+        checked: selectable.length > 0 && selected === selectable.length,
+        indeterminate: selected > 0 && selected < selectable.length
+      };
+    }
+    function setGroupSelected(group, selected){
+      for (const it of group.items) it.selected = selected && it.status !== "same";
+    }
+    function syncGroupParentSelection(group){
+      for (const folder of group.folderItems) folder.selected = false;
+      const selectableFiles = group.files.filter(it => it.status !== "same");
+      if (group.primaryFolder && selectableFiles.length > 0 && selectableFiles.every(it => it.selected)) {
+        group.primaryFolder.selected = true;
+      }
+    }
+    function selectedReviewItems(groups){
+      return groups.flatMap(group => {
+        const selectedFiles = group.files.filter(it => it.selected && it.status !== "same");
+        if (selectedFiles.length > 0) return selectedFiles;
+        return group.primaryFolder?.selected && group.primaryFolder.status !== "same" ? [group.primaryFolder] : [];
+      });
+    }
+    function groupSeverity(group, selectedOnly = false){
+      const candidates = groupBaseItems(group).filter(it => !selectedOnly || it.selected || group.primaryFolder?.selected);
+      const severities = candidates.map(it => getReview(it).severity);
+      return severities.includes("high") ? "high" : severities.includes("medium") ? "medium" : "low";
+    }
+    function groupRiskCounts(groups){
+      return groups.reduce((counts, group) => {
+        if (!groupSelection(group).checked && !groupSelection(group).indeterminate) return counts;
+        const severity = groupSeverity(group, true);
+        counts[severity] += 1;
+        return counts;
+      }, { high: 0, medium: 0, low: 0 });
+    }
+    function latestGroupTime(group, field){
+      const timestamps = groupBaseItems(group).map(it => Date.parse(it[field] || "")).filter(Number.isFinite);
+      return timestamps.length > 0 ? new Date(Math.max(...timestamps)).toISOString() : null;
+    }
+    function filteredGroups(){
+      const q = ui.search.value.trim().toLowerCase();
+      const status = ui.status.value;
+      return buildSkillGroups(state.items).filter(group => {
+        const baseItems = groupBaseItems(group);
+        const statusMatch = !status || baseItems.some(it => it.status === status);
+        const searchMatch = !q
+          || (group.tool + " / " + group.folder).toLowerCase().includes(q)
+          || group.items.some(it => String(it.relativePath).toLowerCase().includes(q));
+        return statusMatch && searchMatch;
+      });
+    }
+    function visibleGroupFiles(group){
+      const q = ui.search.value.trim().toLowerCase();
+      const status = ui.status.value;
+      if (!expandedGroups.has(group.key) && !q && !status) return [];
+      return group.files.filter(it => {
+        if (status && it.status !== status) return false;
+        if (q && !String(it.relativePath).toLowerCase().includes(q) && !(group.tool + " / " + group.folder).toLowerCase().includes(q)) return false;
+        return true;
+      });
     }
     function buildAssetSummaries(items){
       const groups = new Map();
@@ -333,18 +501,18 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
         const reviewItems = group.items.map(it => getReview(it));
         const hasHigh = reviewItems.some(item => item.severity === "high");
         const hasMedium = reviewItems.some(item => item.severity === "medium");
-        let status = t("Same", "동일");
-        if (statuses.has("typeChanged")) status = t("Type conflict", "유형 충돌");
-        else if (statuses.has("removed")) status = t("Delete candidate", "삭제 후보");
-        else if (statuses.has("modified")) status = t("Modified", "수정");
-        else if (statuses.has("added")) status = t("New skill", "새 스킬");
-        let recommendation = t("Safe to apply", "바로 반영 가능");
+        let status = t("Same");
+        if (statuses.has("typeChanged")) status = t("Type conflict");
+        else if (statuses.has("removed")) status = t("Delete candidate");
+        else if (statuses.has("modified")) status = t("Modified");
+        else if (statuses.has("added")) status = t("New skill");
+        let recommendation = t("Safe to apply");
         let recommendClass = "recommend-apply";
         if (statuses.has("removed")) {
-          recommendation = t("Skip recommended", "건너뛰기 권장");
+          recommendation = t("Skip recommended");
           recommendClass = "recommend-skip";
         } else if (statuses.has("typeChanged") || hasHigh || hasMedium) {
-          recommendation = t("Inspect diff first", "먼저 diff 확인");
+          recommendation = t("Inspect diff first");
           recommendClass = "recommend-inspect";
         }
         return {
@@ -366,7 +534,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
       });
     }
     function syncMasterToggle(){
-      const visible = filtered();
+      const visible = filteredGroups().filter(group => summarizeGroupStatus(group) !== "same");
       const master = document.getElementById("toggleAllRows");
       if (!(master instanceof HTMLInputElement)) return;
       if (visible.length === 0) {
@@ -374,124 +542,152 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
         master.indeterminate = false;
         return;
       }
-      const selected = visible.filter(it => it.selected).length;
+      const states = visible.map(groupSelection);
+      const selected = states.filter(item => item.checked).length;
       master.checked = selected === visible.length;
-      master.indeterminate = selected > 0 && selected < visible.length;
+      master.indeterminate = states.some(item => item.indeterminate) || (selected > 0 && selected < visible.length);
     }
-    function filtered(){
-      const q = ui.search.value.trim().toLowerCase();
-      const s = ui.status.value;
-      return state.items.filter(it => {
-        if (s && it.status !== s) return false;
-        const displayPath = getDisplayPath(it).toLowerCase();
-        if (q && !(displayPath.includes(q) || it.relativePath.toLowerCase().includes(q))) return false;
-        return true;
+    function syncRenderedGroupToggles(){
+      const groups = buildSkillGroups(state.items);
+      ui.rows.querySelectorAll('input[data-kind="toggle-group"]').forEach(input => {
+        if (!(input instanceof HTMLInputElement)) return;
+        const group = groups.find(item => item.key === input.dataset.groupKey);
+        if (!group) return;
+        const selection = groupSelection(group);
+        input.checked = selection.checked;
+        input.indeterminate = selection.indeterminate;
       });
+    }
+    function renderGroupRows(group){
+      const status = summarizeGroupStatus(group);
+      const statusLabel = getStatusLabel(status);
+      const statusClass = getStatusClass(status);
+      const selection = groupSelection(group);
+      const checked = selection.checked ? "checked" : "";
+      const expanded = expandedGroups.has(group.key) || !!ui.search.value.trim() || !!ui.status.value;
+      const changedFiles = group.files.filter(it => it.status !== "same").length;
+      const detail = group.files.length > 0
+        ? t("Changed ") + changedFiles + " " + t("files")
+        : t("Folder-level apply");
+      const severity = groupSeverity(group);
+      const severityLabel = severity === "high" ? t("High") : severity === "medium" ? t("Medium") : t("Low");
+      const summaryKeys = group.items.map(it => it.key);
+      const expandControl = group.files.length > 0
+        ? '<button class="expand-toggle" data-kind="toggle-expand" data-group-key="' + esc(group.key) + '" aria-expanded="' + String(expanded) + '" title="' + esc(expanded ? t("Collapse skill details") : t("Expand skill details")) + '">' + (expanded ? "▾" : "▸") + '</button>'
+        : '<span class="expand-toggle" aria-hidden="true"></span>';
+      const actionHtml = status === "same"
+        ? '<span class="action-empty" title="' + esc(t("No differences")) + '">—</span>'
+        : '<button class="row-action sb-button" data-kind="diff-folder-summary" data-tool="' + esc(group.tool) + '" data-folder="' + esc(group.folder) + '" data-summary-keys="' + esc(summaryKeys.join(",")) + '">' + esc(t("Summary Diff")) + '</button>';
+      const sourceTime = latestGroupTime(group, "srcMtime");
+      const targetTime = latestGroupTime(group, "dstMtime");
+      const groupRow = \`<tr class="group-row" data-group-key="\${esc(group.key)}" aria-level="1">
+        <td class="row-select"><span class="group-select">\${expandControl}<input type="checkbox" aria-label="\${esc(group.tool + " / " + group.folder + t(" select"))}" data-kind="toggle-group" data-group-key="\${esc(group.key)}" \${checked}></span></td>
+        <td class="item-cell" title="\${esc(group.tool + " / " + group.folder)}"><span class="path-main">📁 \${esc(group.tool)} / \${esc(group.folder)}</span><span class="path-sub">\${esc(detail)}</span></td>
+        <td class="status-cell change-code \${esc(statusClass)}" data-label="\${esc(t("Status"))}">\${esc(statusLabel)}</td>
+        <td class="review-cell" data-label="\${esc(t("Review"))}"><div class="risk-tags"><span class="risk-chip risk-\${esc(severity)}">\${esc(severityLabel)}</span><span class="risk-chip">\${esc(detail)}</span></div></td>
+        <td class="time-cell source-time" data-label="\${esc(t("Source"))}" title="\${esc(sourceTime ?? "-")}">\${esc(fmtDate(sourceTime))}</td>
+        <td class="time-cell target-time" data-label="\${esc(t("Target"))}" title="\${esc(targetTime ?? "-")}">\${esc(fmtDate(targetTime))}</td>
+        <td class="action-cell">\${actionHtml}</td>
+      </tr>\`;
+      const fileRows = visibleGroupFiles(group).map(it => {
+        const fileChecked = it.selected ? "checked" : "";
+        const fileStatusLabel = getStatusLabel(it.status);
+        const fileStatusClass = getStatusClass(it.status);
+        const fileAction = it.status === "same"
+          ? '<span class="action-empty" title="' + esc(t("No differences")) + '">—</span>'
+          : '<button class="row-action sb-button" data-kind="diff" data-key="' + esc(it.key) + '">' + esc(t("View Diff")) + '</button>';
+        return \`<tr class="file-row" data-parent-group="\${esc(group.key)}" aria-level="2">
+          <td class="row-select"><input type="checkbox" aria-label="\${esc(getChildDisplayPath(it) + t(" select"))}" data-kind="toggle-file" data-key="\${esc(it.key)}" \${fileChecked} \${it.status === "same" ? "disabled" : ""}></td>
+          <td class="item-cell" title="\${esc(it.relativePath)} | \${esc(it.src)} -> \${esc(it.dst)}"><span class="path-main">\${esc(getChildDisplayPath(it))}</span><span class="path-sub">\${esc(getDecisionText(it))}</span></td>
+          <td class="status-cell change-code \${esc(fileStatusClass)}" data-label="\${esc(t("Status"))}">\${esc(fileStatusLabel)}</td>
+          <td class="review-cell" data-label="\${esc(t("Review"))}">\${renderRiskTags(it)}</td>
+          <td class="time-cell source-time" data-label="\${esc(t("Source"))}" title="\${esc(it.srcMtime ?? "-")}">\${esc(fmtDate(it.srcMtime))}</td>
+          <td class="time-cell target-time" data-label="\${esc(t("Target"))}" title="\${esc(it.dstMtime ?? "-")}">\${esc(fmtDate(it.dstMtime))}</td>
+          <td class="action-cell">\${fileAction}</td>
+        </tr>\`;
+      }).join("");
+      return groupRow + fileRows;
     }
     function setFeedback(message, tone){
       ui.feedback.textContent = message;
       ui.feedback.className = "feedback sb-status-bar " + (tone || "info");
     }
     function render(){
-      const labels = getSourceTargetLabels();
       const isExport = state.mode === "workspaceToCentral";
       ui.directionPanel.className = "direction-panel" + (isExport ? "" : " import");
       ui.directionTitle.innerHTML = isExport
-        ? t('Workspace <span class="arrow">→</span> Save to Central', '작업공간 <span class="arrow">→</span> 중앙에 반영')
-        : t('Central <span class="arrow">→</span> Bring to Workspace', '중앙 <span class="arrow">→</span> 작업공간으로 가져오기');
-      const scope = state.scopeContext || { type: "all", label: isExport ? t("All Workspace", "작업공간 전체") : t("All Central", "중앙 전체"), count: 0, expandable: false };
-      ui.scopeLabel.textContent = scope.label || (isExport ? t("All Workspace", "작업공간 전체") : t("All Central", "중앙 전체"));
+        ? ${workspaceToCentralTitle}
+        : ${centralToWorkspaceTitle};
+      const scope = state.scopeContext || { type: "all", label: isExport ? t("All Workspace") : t("All Central"), count: 0, expandable: false };
+      ui.scopeLabel.textContent = scope.label || (isExport ? t("All Workspace") : t("All Central"));
       ui.scopeLabel.className = "scope-chip" + (scope.type === "all" ? "" : " locked");
-      ui.scopeCount.textContent = scope.count ? t("Targets ", "대상 ") + scope.count : t("Full scope", "전체 범위");
+      ui.scopeCount.textContent = scope.count ? t("Targets ") + scope.count : t("Full scope");
       ui.expandScopeBtn.style.display = scope.expandable ? "" : "none";
-      ui.groupLabel.textContent = state.groupContext ? (t("Group: ", "그룹: ") + state.groupContext.name) : "";
-      ui.repoLabel.textContent = state.repoContext ? (t("Repo: ", "저장소: ") + state.repoContext.repo) : "";
+      ui.groupLabel.textContent = state.groupContext ? (t("Group: ") + state.groupContext.name) : "";
+      ui.repoLabel.textContent = state.repoContext ? (t("Repo: ") + state.repoContext.repo) : "";
       const baseSummaryItems = getStatsBaseItems(state.items);
       const added = baseSummaryItems.filter(it => it.status === "added").length;
       const modified = baseSummaryItems.filter(it => it.status === "modified").length;
       const typeChanged = baseSummaryItems.filter(it => it.status === "typeChanged").length;
-      const selectedCount = state.items.filter(it => it.selected).length;
-      const selectedBaseItems = getStatsBaseItems(state.items.filter(it => it.selected));
+      const skillGroups = buildSkillGroups(state.items);
+      const selectedGroups = skillGroups.filter(group => {
+        const selection = groupSelection(group);
+        return selection.checked || selection.indeterminate;
+      });
+      const selectedItems = selectedReviewItems(skillGroups);
+      const selectedCount = selectedGroups.length;
+      const selectedFileCount = selectedItems.filter(it => it.entryKind === "file").length;
+      const selectedBaseItems = getStatsBaseItems(selectedItems);
       const predictedCreate = selectedBaseItems.filter(it => it.status === "added").length;
       const predictedOverwrite = selectedBaseItems.filter(it => it.status === "modified" || it.status === "typeChanged").length;
       const predictedDelete = selectedBaseItems.filter(it => it.status === "removed").length;
-      const selectedItems = state.items.filter(it => it.selected);
-      const riskCounts = getRiskCounts(selectedItems);
+      const riskCounts = groupRiskCounts(skillGroups);
       ui.sumAdded.textContent = String(added);
       ui.sumChanged.textContent = String(modified + typeChanged);
       ui.sumSelectedApply.textContent = String(selectedCount);
-      ui.reviewStrip.innerHTML = '<strong>' + esc(t("AI review summary", "AI 검토 요약")) + '</strong>'
-        + '<span class="risk-chip risk-high">' + esc(t("High ", "높음 ")) + riskCounts.high + '</span>'
-        + '<span class="risk-chip risk-medium">' + esc(t("Medium ", "중간 ")) + riskCounts.medium + '</span>'
-        + '<span class="risk-chip risk-low">' + esc(t("Low ", "낮음 ")) + riskCounts.low + '</span>'
-        + '<span class="review-note">' + esc(t("Only selected rows are included in the prompt. File contents and absolute paths are excluded.", "프롬프트에는 선택한 행만 포함되며 파일 내용과 절대 경로는 제외됩니다.")) + '</span>';
+      ui.sumSelectedFiles.textContent = String(selectedFileCount);
+      ui.reviewStrip.innerHTML = '<strong>' + esc(t("Change risk summary")) + '</strong>'
+        + '<span class="risk-chip risk-high">' + esc(t("High ")) + riskCounts.high + '</span>'
+        + '<span class="risk-chip risk-medium">' + esc(t("Medium ")) + riskCounts.medium + '</span>'
+        + '<span class="risk-chip risk-low">' + esc(t("Low ")) + riskCounts.low + '</span>'
+        + '<span class="review-note">' + esc(t("Based on selected rows. The AI review copy excludes file contents and absolute paths.")) + '</span>';
       const allAssetSummaries = buildAssetSummaries(selectedItems);
       const assetSummaries = allAssetSummaries.slice(0, 8);
-      ui.assetSummary.textContent = t("Per-skill review hints ", "스킬별 검토 힌트 ") + allAssetSummaries.length + (allAssetSummaries.length > 8 ? t(" (showing top 8)", " (상위 8개 표시)") : "");
+      ui.assetSummary.textContent = t("Per-skill review hints ") + allAssetSummaries.length + (allAssetSummaries.length > 8 ? t(" (showing top 8)") : "");
       ui.assetStrip.innerHTML = assetSummaries.length
-        ? assetSummaries.map(asset => '<div class="asset-card"><div class="name" title="' + esc(asset.key) + '">' + esc(asset.tool) + ' / ' + esc(asset.folder) + '</div><div class="line"><span class="risk-chip">' + esc(asset.status) + '</span><span class="risk-chip risk-high">' + esc(t("High ", "높음 ")) + asset.highCount + '</span><span class="risk-chip risk-medium">' + esc(t("Medium ", "중간 ")) + asset.mediumCount + '</span></div><div class="line"><span class="risk-chip ' + esc(asset.recommendClass) + '">' + esc(asset.recommendation) + '</span><span class="risk-chip">' + esc(t("Changed ", "변경 ")) + asset.changedCount + '</span></div></div>').join("")
-        : '<div class="asset-empty">' + esc(t("No selected items.", "선택된 항목이 없습니다.")) + '</div>';
-      ui.predictText.textContent = t("Expected result (file/folder rows): create ", "예상 결과 (파일/폴더 행): 생성 ") + predictedCreate + t(" / overwrite ", " / 덮어쓰기 ") + predictedOverwrite + t(" / delete ", " / 삭제 ") + predictedDelete + t(" (hard to undo after apply)", " (반영 후 되돌리기 어려움)");
+        ? assetSummaries.map(asset => '<div class="asset-row"><div class="name" title="' + esc(asset.key) + '">' + esc(asset.tool) + ' / ' + esc(asset.folder) + '</div><div class="line"><span class="risk-chip">' + esc(asset.status) + '</span><span class="risk-chip risk-high">' + esc(t("High ")) + asset.highCount + '</span><span class="risk-chip risk-medium">' + esc(t("Medium ")) + asset.mediumCount + '</span></div><div class="line"><span class="risk-chip ' + esc(asset.recommendClass) + '">' + esc(asset.recommendation) + '</span><span class="risk-chip">' + esc(t("Changed ")) + asset.changedCount + '</span></div></div>').join("")
+        : '<div class="asset-empty">' + esc(t("No selected items.")) + '</div>';
+      ui.predictText.textContent = t("Expected result: create ") + predictedCreate + t(" · overwrite ") + predictedOverwrite + t(" · delete ") + predictedDelete + t(" (hard to undo after apply)");
       const promptButton = document.getElementById("copyReviewPrompt");
       if (promptButton instanceof HTMLButtonElement) promptButton.disabled = selectedCount === 0;
       const applyButton = document.getElementById("applyBtn");
       if (applyButton instanceof HTMLButtonElement) {
         applyButton.disabled = selectedCount === 0;
-        applyButton.title = selectedCount === 0 ? t("Select items to apply first.", "먼저 반영할 항목을 선택하세요.") : t("Apply selected changes.", "선택한 변경을 반영합니다.");
+        applyButton.title = selectedCount === 0 ? t("Select items to apply first.") : t("Apply selected changes.");
       }
-      if (ui.footTitle) {
-        ui.footTitle.textContent = selectedCount === 0
-          ? t("Select changes before applying.", "반영하려면 먼저 변경 항목을 선택하세요.")
-          : t(selectedCount + " selected rows are ready to apply.", selectedCount + "개 선택 행이 반영 준비되었습니다.");
-      }
-      if (ui.footNote) {
-        ui.footNote.textContent = selectedCount === 0
-          ? t("Review summary and expected result first, then choose the rows you want.", "검토 요약과 예상 결과를 먼저 보고 원하는 행을 선택하세요.")
-          : t("The current selection will be applied in one step.", "현재 선택 항목이 한 번에 반영됩니다.");
-      }
-      const list = filtered();
-      const summaryMap = buildFolderSummaryMap(state.items);
-      ui.rows.innerHTML = list.map(it => {
-        const checked = it.selected ? "checked" : "";
-        const isSame = it.status === "same";
-        const isFolder = it.entryKind === "folder";
-        const displayPath = getDisplayPath(it);
-        const statusLabel = getStatusLabel(it.status);
-        const statusClass = getStatusClass(it.status);
-        const folderName = getSkillFolderName(it.relativePath);
-        const summaryKey = it.tool + "::" + folderName;
-        const summaryKeys = summaryMap.get(summaryKey) || [];
-        const actionKind = isFolder ? "diff-folder-summary" : "diff";
-        const diffLabel = isSame ? t("Same item", "동일 항목") : (isFolder ? t("Summary Diff", "요약 Diff") : t("View Diff", "Diff 보기"));
-        const diffDisabled = isSame ? "disabled" : "";
-        return \`<tr>
-          <td><input type="checkbox" data-kind="toggle" data-key="\${esc(it.key)}" \${checked}></td>
-          <td title="\${esc(it.relativePath)} | \${esc(it.src)} -> \${esc(it.dst)}"><span class="path-main">\${esc(displayPath)}</span> <small>[\${esc(getEntryKindLabel(it.entryKind))}]</small><span class="relation-main">\${esc(labels.source)} → \${esc(labels.target)}</span><span class="path-sub">\${esc(getDecisionText(it))}</span></td>
-          <td class="change-code \${esc(statusClass)}" title="\${esc(it.status)}">\${esc(statusLabel)}</td>
-          <td>\${renderRiskTags(it)}</td>
-          <td title="\${esc(it.srcMtime ?? "-")}">\${esc(fmtDate(it.srcMtime))}</td>
-          <td title="\${esc(it.dstMtime ?? "-")}">\${esc(fmtDate(it.dstMtime))}</td>
-          <td><button data-kind="\${esc(actionKind)}" data-key="\${esc(it.key)}" data-tool="\${esc(it.tool)}" data-folder="\${esc(folderName)}" data-summary-keys="\${esc(summaryKeys.join(","))}" \${diffDisabled}>\${diffLabel}</button></td>
-        </tr>\`;
-      }).join("");
+      ui.rows.innerHTML = filteredGroups().map(renderGroupRows).join("");
       if (selectedCount === 0) {
-        setFeedback(t("No rows selected. Nothing will be copied in the current state.", "선택된 행이 없습니다. 현재 상태에서는 복사되지 않습니다."), "warn");
+        setFeedback(t("No rows selected. Nothing will be copied in the current state."), "warn");
       } else {
-        setFeedback(selectedCount + t(" selected rows will be applied. Check the expected result before applying.", "개 선택 행이 반영됩니다. 적용 전에 예상 결과를 확인하세요."), "info");
+        setFeedback(t("{0} selected skill(s) · {1} file(s) will be applied. Check the expected result before applying.", selectedCount, selectedFileCount), "info");
       }
+      syncRenderedGroupToggles();
       syncMasterToggle();
       vscode.postMessage({ type: "filterChanged", payload: { status: ui.status.value, search: ui.search.value } });
     }
     function setBulk(kind){
-      if (kind === "selectAll") state.items.forEach(it => { it.selected = true; });
+      if (kind === "selectAll") buildSkillGroups(state.items).forEach(group => setGroupSelected(group, true));
       if (kind === "conflict") state.items.forEach(it => { it.selected = it.status === "added" || it.status === "modified" || it.status === "typeChanged"; });
-      const afterSelected = state.items.filter(it => it.selected).length;
+      const afterSelected = buildSkillGroups(state.items).filter(group => {
+        const selection = groupSelection(group);
+        return selection.checked || selection.indeterminate;
+      }).length;
       if (kind === "selectAll") {
-        setFeedback(t("Select all applied: every item is selected.", "전체 선택 적용: 모든 항목이 선택되었습니다."), "info");
+        setFeedback(t("Select all applied: every item is selected."), "info");
       } else if (kind === "conflict" && afterSelected === 0) {
-        setFeedback(t("Select changes found nothing: there are no new, modified, or type-conflict items.", "변경 선택 결과가 없습니다. 신규/수정/유형 충돌 항목이 없습니다."), "warn");
+        setFeedback(t("Select changes found nothing: there are no new, modified, or type-conflict items."), "warn");
       } else {
-        setFeedback(t("Bulk action applied: ", "일괄 작업 적용: ") + afterSelected + t(" selected rows", "개 행 선택"), "info");
+        setFeedback(t("Bulk action applied: ") + afterSelected + t(" selected rows"), "info");
       }
       vscode.postMessage({ type: "bulkAction", payload: { kind } });
       render();
@@ -501,27 +697,27 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     document.getElementById("bulkSelectAll").addEventListener("click", () => setBulk("selectAll"));
     document.getElementById("bulkConflict").addEventListener("click", () => setBulk("conflict"));
     document.getElementById("copyReviewPrompt").addEventListener("click", () => {
-      const keys = state.items.filter(it => it.selected).map(it => it.key);
+      const keys = selectedReviewItems(buildSkillGroups(state.items)).map(it => it.key);
       if (keys.length === 0) {
-        setFeedback(t("There are no items to include in the review prompt.", "검토 프롬프트에 포함할 항목이 없습니다."), "warn");
+        setFeedback(t("There are no items to include in the review prompt."), "warn");
         return;
       }
       vscode.postMessage({ type: "copyReviewPrompt", payload: { selectedKeys: keys } });
     });
     document.getElementById("refreshPlan").addEventListener("click", () => {
       const keys = state.items.filter(it => it.selected).map(it => it.key);
-      setFeedback(t("Checking file state again...", "파일 상태를 다시 확인하는 중..."), "info");
+      setFeedback(t("Checking file state again..."), "info");
       vscode.postMessage({ type: "refreshPlan", payload: { selectedKeys: keys } });
     });
     document.getElementById("expandScopeBtn").addEventListener("click", () => {
-      setFeedback(t("Removing the scope filter and loading the full apply plan...", "범위 필터를 해제하고 전체 반영 계획을 불러오는 중..."), "info");
+      setFeedback(t("Removing the scope filter and loading the full apply plan..."), "info");
       vscode.postMessage({ type: "expandScope" });
     });
     document.getElementById("cancelBtn").addEventListener("click", () => vscode.postMessage({ type: "cancel" }));
     document.getElementById("applyBtn").addEventListener("click", () => {
       const keys = state.items.filter(it => it.selected).map(it => it.key);
       if (keys.length === 0) {
-        setFeedback(t("There are no items to apply. Select items and try again.", "반영할 항목이 없습니다. 항목을 선택한 뒤 다시 시도하세요."), "warn");
+        setFeedback(t("There are no items to apply. Select items and try again."), "warn");
         return;
       }
       vscode.postMessage({ type: "apply", payload: { selectedKeys: keys } });
@@ -529,11 +725,20 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     ui.rows.addEventListener("change", (ev) => {
       const el = ev.target;
       if (!(el instanceof HTMLInputElement)) return;
-      if (el.dataset.kind === "toggle") {
+      if (el.dataset.kind === "toggle-group") {
+        const group = buildSkillGroups(state.items).find(item => item.key === el.dataset.groupKey);
+        if (!group) return;
+        setGroupSelected(group, el.checked);
+        vscode.postMessage({ type: "toggleItem", payload: { key: group.key, selected: el.checked } });
+      }
+      if (el.dataset.kind === "toggle-file") {
         const key = el.dataset.key || "";
         const target = state.items.find(it => it.key === key);
         if (!target) return;
         target.selected = el.checked;
+        const groupKey = target.tool + "::" + getSkillFolderName(target.relativePath);
+        const group = buildSkillGroups(state.items).find(item => item.key === groupKey);
+        if (group) syncGroupParentSelection(group);
         vscode.postMessage({ type: "toggleItem", payload: { key, selected: el.checked } });
       }
       render();
@@ -541,6 +746,13 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     ui.rows.addEventListener("click", (ev) => {
       const el = ev.target;
       if (!(el instanceof HTMLButtonElement)) return;
+      if (el.dataset.kind === "toggle-expand") {
+        const key = el.dataset.groupKey || "";
+        if (expandedGroups.has(key)) expandedGroups.delete(key);
+        else expandedGroups.add(key);
+        render();
+        return;
+      }
       if (el.dataset.kind === "diff") {
         const key = el.dataset.key || "";
         vscode.postMessage({ type: "openDiff", payload: { key } });
@@ -552,7 +764,7 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
         const keyCsv = el.dataset.summaryKeys || "";
         const itemKeys = keyCsv.split(",").map(v => v.trim()).filter(Boolean);
         if (itemKeys.length === 0) {
-          setFeedback(t("This group has no diff to show.", "이 그룹에는 표시할 diff가 없습니다."), "warn");
+          setFeedback(t("This group has no diff to show."), "warn");
           return;
         }
         vscode.postMessage({
@@ -568,21 +780,17 @@ export function renderTransferManagerHtml(webview: vscode.Webview, plan: Transfe
     document.getElementById("toggleAllRows").addEventListener("change", (ev) => {
       const el = ev.target;
       if (!(el instanceof HTMLInputElement)) return;
-      const visible = filtered();
-      const keys = new Set(visible.map(it => it.key));
-      state.items.forEach((it) => {
-        if (keys.has(it.key)) it.selected = el.checked;
-      });
+      filteredGroups().forEach(group => setGroupSelected(group, el.checked));
       render();
     });
     window.addEventListener("message", (ev) => {
       const message = ev.data || {};
       if (message.type === "promptCopied") {
         const count = message.payload && typeof message.payload.selectedCount === "number" ? message.payload.selectedCount : 0;
-        setFeedback(t("AI review prompt copied to the clipboard. It includes ", "AI 검토 프롬프트를 클립보드에 복사했습니다. 선택 행 ") + count + t(" selected rows.", "개를 포함합니다."), "info");
+        setFeedback(t("AI review prompt copied to the clipboard. It includes ") + count + t(" selected rows."), "info");
       }
       if (message.type === "promptCopyFailed") {
-        setFeedback(String(message.payload?.message || t("Prompt copy failed", "프롬프트 복사 실패")), "warn");
+        setFeedback(String(message.payload?.message || t("Prompt copy failed")), "warn");
       }
     });
     render();

@@ -7,7 +7,7 @@ import type { UiLanguage } from "./uiLanguage";
 import type { WizardAssetPick } from "./extensionAddMoveWizard";
 
 type TreeSide = "workspace" | "central";
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export function createProjectPresetCommandTools(args: {
   tr: TranslationFn;
@@ -24,7 +24,7 @@ export function createProjectPresetCommandTools(args: {
   };
   refresh: () => Promise<void>;
   getUiLanguage: () => UiLanguage;
-  registerLanguageRefresh: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
+  applyPanelBranding: (panel: vscode.WebviewPanel, render: () => void | Promise<void>) => void;
   loadProjectPresets: (centralRepoPath: string) => Promise<{ file: ProjectPresetsFile; migratedFromLegacy: boolean }>;
   saveProjectPresets: (centralRepoPath: string, file: ProjectPresetsFile) => Promise<void>;
   saveSelectionGroups: (workspacePath: string, centralRepoPath: string, groups: SelectionGroup[]) => Promise<void>;
@@ -81,7 +81,7 @@ export function createProjectPresetCommandTools(args: {
     tr: args.tr,
     getUiLanguage: args.getUiLanguage,
     refresh: args.refresh,
-    registerLanguageRefresh: args.registerLanguageRefresh,
+    applyPanelBranding: args.applyPanelBranding,
     state: args.state,
     loadProjectPresets: args.loadProjectPresets,
     saveProjectPresets: args.saveProjectPresets,

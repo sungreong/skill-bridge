@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { GroupTarget, ProjectPreset, ProjectPresetsFile, SelectionGroup, SkillFile } from "./types";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 type RepairSummary = {
   presetCount: number;
@@ -60,19 +60,16 @@ export function createCentralMetadataRepairTools(args: {
       });
       const summary = buildSummary(presetRepair, groupRepair);
       if (!hasChanges(summary)) {
-        vscode.window.showInformationMessage(args.tr(
-          "Central metadata is already up to date.",
-          "Central 메타데이터가 이미 최신 상태입니다."
-        ));
+        vscode.window.showInformationMessage(args.tr("Central metadata is already up to date."));
         return;
       }
 
       const ok = await vscode.window.showWarningMessage(
         formatConfirmMessage(args.tr, summary),
         { modal: true },
-        args.tr("Repair Metadata", "메타데이터 복구")
+        args.tr("Repair Metadata")
       );
-      if (ok !== args.tr("Repair Metadata", "메타데이터 복구")) return;
+      if (ok !== args.tr("Repair Metadata")) return;
 
       const now = new Date().toISOString();
       if (presetRepair.changed) {
@@ -152,17 +149,11 @@ function hasChanges(summary: RepairSummary): boolean {
 }
 
 function formatConfirmMessage(tr: TranslationFn, summary: RepairSummary): string {
-  return tr(
-    `Repair Central metadata now? This will remove ${summary.presetTargetCount} missing preset targets, update ${summary.presetCount} presets, remove ${summary.centralGroupTargetCount} missing central group targets, remove ${summary.centralGroupCount} empty central groups, and split ${summary.centralGroupSplitCount} mixed-agent central groups.`,
-    `Central 메타데이터를 지금 복구할까요? 누락된 프리셋 대상 ${summary.presetTargetCount}개, 수정될 프리셋 ${summary.presetCount}개, 누락된 중앙 그룹 대상 ${summary.centralGroupTargetCount}개, 빈 중앙 그룹 ${summary.centralGroupCount}개, 여러 에이전트가 섞인 중앙 그룹 분리 ${summary.centralGroupSplitCount}개를 반영합니다.`
-  );
+  return tr("Repair Central metadata now? This will remove {0} missing preset targets, update {1} presets, remove {2} missing central group targets, remove {3} empty central groups, and split {4} mixed-agent central groups.", String(summary.presetTargetCount), String(summary.presetCount), String(summary.centralGroupTargetCount), String(summary.centralGroupCount), String(summary.centralGroupSplitCount));
 }
 
 function formatDoneMessage(tr: TranslationFn, summary: RepairSummary): string {
-  return tr(
-    `Central metadata repaired: presets ${summary.presetCount}, preset targets removed ${summary.presetTargetCount}, central groups removed ${summary.centralGroupCount}, central group targets removed ${summary.centralGroupTargetCount}.`,
-    `Central 메타데이터 복구 완료: 프리셋 ${summary.presetCount}개, 제거된 프리셋 대상 ${summary.presetTargetCount}개, 제거된 중앙 그룹 ${summary.centralGroupCount}개, 제거된 중앙 그룹 대상 ${summary.centralGroupTargetCount}개.`
-  );
+  return tr("Central metadata repaired: presets {0}, preset targets removed {1}, central groups removed {2}, central group targets removed {3}.", String(summary.presetCount), String(summary.presetTargetCount), String(summary.centralGroupCount), String(summary.centralGroupTargetCount));
 }
 
 function targetsEqual(left: GroupTarget[], right: GroupTarget[]): boolean {

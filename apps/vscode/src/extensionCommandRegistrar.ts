@@ -2,12 +2,12 @@ import { Buffer } from "node:buffer";
 import * as vscode from "vscode";
 import type { GroupTreeNode, SelectionGroup, SkillTreeFilterMode, SkillTreeNode, ToolType } from "./types";
 import { normalizeSourceTab, sourceTabToVisibleAgents } from "./extensionSupport";
-import { coerceUiLanguage, DEFAULT_UI_LANGUAGE, getNextUiLanguage, getUiLanguageOption, type UiLanguage } from "./uiLanguage";
+import { getUiLanguage } from "./uiLanguage";
 import { buildCommonToolNodes, DEFAULT_QUICK_TOOL_COMMANDS, MANAGE_QUICK_TOOLS_COMMAND } from "./views/commonToolCatalog";
 
 type TreeSide = "workspace" | "central";
 type SourceTab = "all" | ToolType[];
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export function registerExtensionCommands(args: {
   register: <T>(command: string, handler: (...commandArgs: T[]) => unknown) => void;
@@ -92,8 +92,6 @@ export function registerExtensionCommands(args: {
   formatAgentFolderLabel: (tool: ToolType) => string;
   toggleWorkspaceAgentAutoSync: (tool: ToolType) => Promise<boolean>;
   syncWorkspaceAgentToCentralNow: (tool: ToolType) => Promise<{ summary: { syncedFolders: number; copied: number; deleted: number; mirroredGroups: number; centralFolders: number; centralFiles: number; skippedMissingSkillMd: number } }>;
-  setLanguage: (language: UiLanguage) => Promise<void>;
-  applyLanguageChrome: () => void;
   updateStatusChrome: () => void;
   applyTabFilter: () => void;
   setPersonalSkillHome: () => Promise<void>;
@@ -151,28 +149,28 @@ export function registerExtensionCommands(args: {
       const pick = await vscode.window.showQuickPick(
         [
           {
-            label: args.tr("Open Benchmark Guide", "벤치마크 가이드 열기"),
+            label: args.tr("Open Benchmark Guide"),
             description: "BENCHMARKS.md",
             value: "guide" as const
           },
           {
-            label: args.tr("Run Local Performance Check", "로컬 성능 체크 실행"),
+            label: args.tr("Run Local Performance Check"),
             description: checkCommand,
             value: "run" as const
           },
           {
-            label: args.tr("Open Performance Status", "성능 상태 리포트 열기"),
+            label: args.tr("Open Performance Status"),
             description: ".benchmarks/performance-status.md",
             value: "status" as const
           },
           {
-            label: args.tr("Copy Performance Commands", "성능 명령 복사"),
-            description: args.tr("Copy local checks, benchmarks, refresh timing, and CI artifact comparison commands", "로컬 체크/벤치마크/refresh timing/CI 아티팩트 비교 명령 복사"),
+            label: args.tr("Copy Performance Commands"),
+            description: args.tr("Copy local checks, benchmarks, refresh timing, and CI artifact comparison commands"),
             value: "copy" as const
           }
         ],
         {
-          title: args.tr("Skill Bridge Performance Tools", "Skill Bridge 성능 도구"),
+          title: args.tr("Skill Bridge Performance Tools"),
           matchOnDescription: true
         }
       );
@@ -181,10 +179,7 @@ export function registerExtensionCommands(args: {
       if (pick.value === "guide") {
         const guide = await findWorkspaceFile("BENCHMARKS.md");
         if (!guide) {
-          vscode.window.showWarningMessage(args.tr(
-            "BENCHMARKS.md was not found in this workspace.",
-            "이 작업공간에서 BENCHMARKS.md를 찾지 못했습니다."
-          ));
+          vscode.window.showWarningMessage(args.tr("BENCHMARKS.md was not found in this workspace."));
           return;
         }
         await vscode.window.showTextDocument(guide, { preview: true });
@@ -194,10 +189,7 @@ export function registerExtensionCommands(args: {
       if (pick.value === "status") {
         const status = await findWorkspaceFile(".benchmarks/performance-status.md");
         if (!status) {
-          vscode.window.showWarningMessage(args.tr(
-            "Performance status was not found. Run the local performance check first.",
-            "성능 상태 리포트를 찾지 못했습니다. 먼저 로컬 성능 체크를 실행하세요."
-          ));
+          vscode.window.showWarningMessage(args.tr("Performance status was not found. Run the local performance check first."));
           return;
         }
         await vscode.window.showTextDocument(status, { preview: true });
@@ -207,10 +199,7 @@ export function registerExtensionCommands(args: {
       if (pick.value === "run") {
         const folder = await findWorkspaceWithPackageScript("check:performance");
         if (!folder) {
-          vscode.window.showWarningMessage(args.tr(
-            "No workspace package.json with check:performance was found.",
-            "check:performance 스크립트가 있는 package.json을 찾지 못했습니다."
-          ));
+          vscode.window.showWarningMessage(args.tr("No workspace package.json with check:performance was found."));
           return;
         }
         const terminal = vscode.window.createTerminal({ name: "Skill Bridge Performance", cwd: folder.uri.fsPath });
@@ -238,7 +227,7 @@ export function registerExtensionCommands(args: {
         verifyArtifactsCommand,
         reportCommand
       ].join("\n"));
-      vscode.window.showInformationMessage(args.tr("Performance commands copied.", "성능 명령을 복사했습니다."));
+      vscode.window.showInformationMessage(args.tr("Performance commands copied."));
     } catch (error) {
       await args.handleError(error);
     }
@@ -259,17 +248,17 @@ export function registerExtensionCommands(args: {
       if (!args.state.workspacePath) await args.refresh();
       const targetId = node?.kind === "group" ? node.id : args.state.selectedGroupId;
       if (!targetId) {
-        vscode.window.showWarningMessage(args.tr("Select a group to delete.", "삭제할 그룹을 선택하세요."));
+        vscode.window.showWarningMessage(args.tr("Select a group to delete."));
         return;
       }
       const group = args.state.groups.find((item) => item.id === targetId);
       if (!group) return;
       const ok = await vscode.window.showWarningMessage(
-        args.tr(`Delete group "${group.name}"?`, `그룹 "${group.name}"을 삭제할까요?`),
+        args.tr("Delete group \"{0}\"?", String(group.name)),
         { modal: true },
-        args.tr("Delete", "삭제")
+        args.tr("Delete")
       );
-      if (ok !== args.tr("Delete", "삭제")) return;
+      if (ok !== args.tr("Delete")) return;
       args.state.groups = args.state.groups.filter((item) => item.id !== targetId);
       await args.saveSelectionGroups(args.state.workspacePath, args.state.centralRepoPath, args.state.groups);
       if (args.state.selectedGroupId === targetId) args.state.selectedGroupId = null;
@@ -279,7 +268,7 @@ export function registerExtensionCommands(args: {
       args.centralProvider.setSelectedGroup(args.state.selectedGroupId);
       args.workspaceProvider.setHighlight(new Set());
       args.centralProvider.setHighlight(new Set());
-      vscode.window.showInformationMessage(args.tr(`Group deleted: ${group.name}`, `그룹 삭제 완료: ${group.name}`));
+      vscode.window.showInformationMessage(args.tr("Group deleted: {0}", String(group.name)));
     } catch (error) {
       await args.handleError(error);
     }
@@ -290,14 +279,14 @@ export function registerExtensionCommands(args: {
       const picks = await vscode.window.showQuickPick(
         args.state.agents.map((tool) => ({
           label: tool === "agents" ? ".agents" : `.${tool}`,
-          description: args.tr("Automatically save this workspace agent's changed skills to Central", "이 작업공간 에이전트의 변경 스킬을 중앙에 자동 반영"),
+          description: args.tr("Automatically save this workspace agent's changed skills to Central"),
           picked: args.getAutoSyncWorkspaceAgents().includes(tool),
           value: tool
         })),
         {
           canPickMany: true,
-          title: args.tr("Choose Workspace Agents for Auto Save to Central", "자동 중앙 반영할 작업공간 에이전트 선택"),
-          placeHolder: args.tr("Only selected workspace agents will save changed skills to Central automatically.", "선택한 작업공간 에이전트만 변경된 스킬을 중앙에 자동 반영합니다.")
+          title: args.tr("Choose Workspace Agents for Auto Save to Central"),
+          placeHolder: args.tr("Only selected workspace agents will save changed skills to Central automatically.")
         }
       );
       if (!picks) return;
@@ -305,8 +294,8 @@ export function registerExtensionCommands(args: {
       await vscode.workspace.getConfiguration(args.settingsSection).update("autoSyncWorkspaceAgents", selected, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(
         selected.length > 0
-          ? args.tr(`Auto save to Central enabled for: ${selected.join(", ")}`, `자동 중앙 반영 설정 완료: ${selected.join(", ")}`)
-          : args.tr("Auto save to Central disabled.", "자동 중앙 반영을 껐습니다.")
+          ? args.tr("Auto save to Central enabled for: {0}", String(selected.join(", ")))
+          : args.tr("Auto save to Central disabled.")
       );
     } catch (error) {
       await args.handleError(error);
@@ -322,13 +311,13 @@ export function registerExtensionCommands(args: {
           args.state.agents.map((agent) => ({
             label: args.formatAgentFolderLabel(agent),
             description: args.getAutoSyncWorkspaceAgents().includes(agent)
-              ? args.tr("Auto save to Central is on", "자동 중앙 반영 켜짐")
-              : args.tr("Auto save to Central is off", "자동 중앙 반영 꺼짐"),
+              ? args.tr("Auto save to Central is on")
+              : args.tr("Auto save to Central is off"),
             value: agent
           })),
           {
-            title: args.tr("Turn Auto Save to Central On or Off", "자동 중앙 반영 켜기/끄기"),
-            placeHolder: args.tr("Choose a workspace agent to turn auto save to Central on or off.", "자동 중앙 반영을 켜거나 끌 작업공간 에이전트를 고르세요.")
+            title: args.tr("Turn Auto Save to Central On or Off"),
+            placeHolder: args.tr("Choose a workspace agent to turn auto save to Central on or off.")
           }
         );
         if (!picked) return;
@@ -336,8 +325,8 @@ export function registerExtensionCommands(args: {
       }
       const enabled = await args.toggleWorkspaceAgentAutoSync(tool);
       vscode.window.showInformationMessage(enabled
-        ? args.tr(`Auto save to Central turned on for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 중앙 반영을 켰습니다.`)
-        : args.tr(`Auto save to Central turned off for ${args.formatAgentFolderLabel(tool)}.`, `${args.formatAgentFolderLabel(tool)} 자동 중앙 반영을 껐습니다.`));
+        ? args.tr("Auto save to Central turned on for {0}.", String(args.formatAgentFolderLabel(tool)))
+        : args.tr("Auto save to Central turned off for {0}.", String(args.formatAgentFolderLabel(tool))));
     } catch (error) {
       await args.handleError(error);
     }
@@ -352,12 +341,12 @@ export function registerExtensionCommands(args: {
         const picked = await vscode.window.showQuickPick(
           args.state.agents.map((agent) => ({
             label: args.formatAgentFolderLabel(agent),
-            description: args.tr("Save all current workspace skills for this agent to Central now", "이 에이전트의 현재 작업공간 스킬 전체를 지금 중앙에 반영"),
+            description: args.tr("Save all current workspace skills for this agent to Central now"),
             value: agent
           })),
           {
-            title: args.tr("Choose Workspace Agent to Save to Central", "중앙에 반영할 작업공간 에이전트 선택"),
-            placeHolder: args.tr("This copies the selected workspace agent's skill folders to Central and mirrors only related groups.", "선택한 작업공간 에이전트의 스킬 폴더를 중앙에 복사하고 관련 그룹만 미러링합니다.")
+            title: args.tr("Choose Workspace Agent to Save to Central"),
+            placeHolder: args.tr("This copies the selected workspace agent's skill folders to Central and mirrors only related groups.")
           }
         );
         if (!picked) return;
@@ -365,12 +354,9 @@ export function registerExtensionCommands(args: {
       }
       const { summary } = await args.syncWorkspaceAgentToCentralNow(tool);
       const skippedSuffix = summary.skippedMissingSkillMd > 0
-        ? args.tr(` · skipped missing SKILL.md ${summary.skippedMissingSkillMd}`, ` · SKILL.md 없음 제외 ${summary.skippedMissingSkillMd}개`)
+        ? args.tr(" · skipped missing SKILL.md {0}", String(summary.skippedMissingSkillMd))
         : "";
-      const message = args.tr(
-        `Workspace agent saved to Central: ${tool} · folders ${summary.syncedFolders} · copied ${summary.copied} · deleted ${summary.deleted} · groups ${summary.mirroredGroups} · central ${summary.centralFolders} folder(s), ${summary.centralFiles} file(s)${skippedSuffix}`,
-        `작업공간 에이전트 중앙 반영 완료: ${tool} · 폴더 ${summary.syncedFolders}개 · 복사 ${summary.copied}개 · 삭제 ${summary.deleted}개 · 그룹 ${summary.mirroredGroups}개 · 중앙 확인 폴더 ${summary.centralFolders}개, 파일 ${summary.centralFiles}개${skippedSuffix}`
-      );
+      const message = args.tr("Workspace agent saved to Central: {0} · folders {1} · copied {2} · deleted {3} · groups {4} · central {5} folder(s), {6} file(s){7}", String(tool), String(summary.syncedFolders), String(summary.copied), String(summary.deleted), String(summary.mirroredGroups), String(summary.centralFolders), String(summary.centralFiles), String(skippedSuffix));
       if (summary.skippedMissingSkillMd > 0 && summary.copied === 0 && summary.centralFiles === 0) {
         vscode.window.showWarningMessage(message);
       } else {
@@ -385,19 +371,19 @@ export function registerExtensionCommands(args: {
     const visibleAgents = new Set(sourceTabToVisibleAgents(args.state.activeTab, args.state.agents));
     const picks = await vscode.window.showQuickPick(
       [
-        { label: ".claude", description: args.tr("Claude skills", "Claude 스킬"), value: "claude" as ToolType },
-        { label: ".codex", description: args.tr("Codex skills", "Codex 스킬"), value: "codex" as ToolType },
-        { label: ".gemini", description: args.tr("Gemini skills", "Gemini 스킬"), value: "gemini" as ToolType },
-        { label: ".cursor", description: args.tr("Cursor skills", "Cursor 스킬"), value: "cursor" as ToolType },
-        { label: ".antigravity", description: args.tr("Antigravity skills", "Antigravity 스킬"), value: "antigravity" as ToolType },
-        { label: ".agents", description: args.tr("Shared agents skills", "공유 agents 스킬"), value: "agents" as ToolType }
+        { label: ".claude", description: args.tr("Claude skills"), value: "claude" as ToolType },
+        { label: ".codex", description: args.tr("Codex skills"), value: "codex" as ToolType },
+        { label: ".gemini", description: args.tr("Gemini skills"), value: "gemini" as ToolType },
+        { label: ".cursor", description: args.tr("Cursor skills"), value: "cursor" as ToolType },
+        { label: ".antigravity", description: args.tr("Antigravity skills"), value: "antigravity" as ToolType },
+        { label: ".agents", description: args.tr("Shared agents skills"), value: "agents" as ToolType }
       ].filter((item) => args.state.agents.includes(item.value)).map((item) => ({
         ...item,
         picked: visibleAgents.has(item.value)
       })),
       {
-        title: args.tr("Choose Skill Source Agents", "볼 에이전트 선택"),
-        placeHolder: args.tr("Select one or more agents. Selecting all or none shows all.", "하나 이상 선택하세요. 전체 또는 미선택은 전체 보기입니다."),
+        title: args.tr("Choose Skill Source Agents"),
+        placeHolder: args.tr("Select one or more agents. Selecting all or none shows all."),
         matchOnDescription: true,
         canPickMany: true
       }
@@ -414,44 +400,44 @@ export function registerExtensionCommands(args: {
     args.updateStatusChrome();
     vscode.window.showInformationMessage(
       args.state.activeTab === "all"
-        ? args.tr("Agent view set to all agents.", "에이전트 보기를 전체로 설정했습니다.")
-        : args.tr(`Agent view set to: ${args.state.activeTab.join(", ")}`, `에이전트 보기: ${args.state.activeTab.join(", ")}`)
+        ? args.tr("Agent view set to all agents.")
+        : args.tr("Agent view set to: {0}", String(args.state.activeTab.join(", ")))
     );
   };
 
   const switchTreeFilterCommand = async (): Promise<void> => {
     const pick = await vscode.window.showQuickPick(
       [
-        { label: args.tr("All", "전체"), description: args.tr("All skills", "모든 스킬"), value: "all" as SkillTreeFilterMode },
-        { label: args.tr("Changed", "변경"), description: args.tr("Skills with content that differs from the opposite side", "반대편과 내용이 다른 스킬"), value: "changed" as SkillTreeFilterMode },
-        { label: args.tr("New", "신규"), description: args.tr("Skills that exist only on the current side", "현재 쪽에만 있는 스킬"), value: "new" as SkillTreeFilterMode },
-        { label: args.tr("Warnings", "경고"), description: args.tr("Skills with sensitive data, scripts, absolute paths, or other warnings", "민감정보, 스크립트, 절대경로 등 경고가 있는 스킬"), value: "risk" as SkillTreeFilterMode },
-        { label: args.tr("Missing SKILL.md", "SKILL.md 없음"), description: args.tr("Folders without a skill manifest", "스킬 매니페스트가 없는 폴더"), value: "missingSkillMd" as SkillTreeFilterMode },
-        { label: args.tr("Recent", "최근"), description: args.tr("Skills modified in the last 7 days", "최근 7일 안에 수정된 스킬"), value: "recent" as SkillTreeFilterMode }
+        { label: args.tr("All"), description: args.tr("All skills"), value: "all" as SkillTreeFilterMode },
+        { label: args.tr("Changed"), description: args.tr("Skills with content that differs from the opposite side"), value: "changed" as SkillTreeFilterMode },
+        { label: args.tr("New"), description: args.tr("Skills that exist only on the current side"), value: "new" as SkillTreeFilterMode },
+        { label: args.tr("Warnings"), description: args.tr("Skills with sensitive data, scripts, absolute paths, or other warnings"), value: "risk" as SkillTreeFilterMode },
+        { label: args.tr("Missing SKILL.md"), description: args.tr("Folders without a skill manifest"), value: "missingSkillMd" as SkillTreeFilterMode },
+        { label: args.tr("Recent"), description: args.tr("Skills modified in the last 7 days"), value: "recent" as SkillTreeFilterMode }
       ],
-      { title: args.tr("Choose Tree Filter", "트리 필터 선택"), matchOnDescription: true }
+      { title: args.tr("Choose Tree Filter"), matchOnDescription: true }
     );
     if (!pick) return;
     args.state.treeFilter = pick.value;
     args.workspaceProvider.setFilterMode(args.state.treeFilter);
     args.centralProvider.setFilterMode(args.state.treeFilter);
-    vscode.window.setStatusBarMessage(args.tr(`Skill Bridge: tree filter ${pick.label}`, `Skill Bridge: 트리 필터 ${pick.label}`), 2000);
+    vscode.window.setStatusBarMessage(args.tr("Skill Bridge: tree filter {0}", String(pick.label)), 2000);
   };
 
   const manageQuickToolsCommand = async (): Promise<void> => {
-    const language = coerceUiLanguage(vscode.workspace.getConfiguration(args.settingsSection).get<string>("language", DEFAULT_UI_LANGUAGE));
+    const language = getUiLanguage();
     const configured = vscode.workspace.getConfiguration(args.settingsSection).get<string[]>("visibleQuickTools", []);
     const visible = configured.length > 0 ? new Set(configured) : DEFAULT_QUICK_TOOL_COMMANDS;
     const tools = Object.values(buildCommonToolNodes(language)).flat().filter((tool) => tool.command !== MANAGE_QUICK_TOOLS_COMMAND);
     const picks = await vscode.window.showQuickPick(
-      tools.map((tool) => ({ label: tool.label, description: tool.description, detail: tool.command, picked: visible.has(tool.command), value: tool.command })),
-      { title: args.tr("Manage Quick Tools", "빠른 도구 관리"), placeHolder: args.tr("Choose the tools to show in Quick Tools.", "빠른 도구에 표시할 도구를 선택하세요."), canPickMany: true, matchOnDescription: true, matchOnDetail: true }
+      tools.map((tool) => ({ label: tool.label, description: tool.description, picked: visible.has(tool.command), value: tool.command })),
+      { title: args.tr("Manage Quick Tools"), placeHolder: args.tr("Choose the tools to show in Quick Tools."), canPickMany: true, matchOnDescription: true }
     );
     if (!picks) return;
     const selected = picks.map((pick) => pick.value);
     await vscode.workspace.getConfiguration(args.settingsSection).update("visibleQuickTools", selected, vscode.ConfigurationTarget.Global);
     args.applyTabFilter();
-    vscode.window.showInformationMessage(args.tr(`Quick Tools updated: ${selected.length} visible`, `빠른 도구 표시 설정 완료: ${selected.length}개`));
+    vscode.window.showInformationMessage(args.tr("Quick Tools updated: {0} visible", String(selected.length)));
   };
 
   args.register("skillBridge.selectWorkspaceNode", (node: SkillTreeNode) => {
@@ -688,18 +674,6 @@ export function registerExtensionCommands(args: {
   });
   args.register("skillBridge.syncWorkspaceAgentNow", async (node?: SkillTreeNode) => {
     await syncWorkspaceAgentNowCommand(node);
-  });
-  args.register("skillBridge.toggleLanguage", async () => {
-    const current = vscode.workspace.getConfiguration(args.settingsSection).get<string>("language", DEFAULT_UI_LANGUAGE);
-    const currentLanguage = coerceUiLanguage(current);
-    const next = getNextUiLanguage(currentLanguage);
-    await args.setLanguage(next);
-    const selected = getUiLanguageOption(next);
-    vscode.window.showInformationMessage(
-      next === "ko"
-        ? args.tr("Skill Bridge language switched to Korean.", "Skill Bridge 언어를 한국어로 전환했습니다.")
-        : `${args.tr("Skill Bridge language switched to", "Skill Bridge 언어를")} ${selected.label}${args.tr(".", "로 전환했습니다.")}`
-    );
   });
   args.register("skillBridge.setPersonalHome", async () => {
     await args.setPersonalSkillHome();

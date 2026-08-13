@@ -167,11 +167,12 @@ Project Presets are stored in `.skillbridge/project-presets.json` in the Central
 
 ## Settings
 
+The UI follows the VS Code display language. English and Korean are supported; other locales fall back to English.
+
 - `skillBridge.centralRepoPath`
 - `skillBridge.defaultAgents`
 - `skillBridge.visibleAgents`
 - `skillBridge.visibleQuickTools`
-- `skillBridge.language`
 - `skillBridge.autoSyncWorkspaceAgents`
 
 ## Useful Commands

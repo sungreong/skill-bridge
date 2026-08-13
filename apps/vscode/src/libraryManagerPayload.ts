@@ -28,7 +28,7 @@ import type {
   LibraryManagerStateShape
 } from "./libraryManagerTypes";
 
-type TranslationFn = (english: string, korean: string) => string;
+type TranslationFn = (message: string, ...args: Array<string | number | boolean>) => string;
 
 export type LibraryPayloadBuilderDeps = {
   state: LibraryManagerStateShape;

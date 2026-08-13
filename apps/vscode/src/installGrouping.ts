@@ -11,17 +11,31 @@ function stripAnsi(value: string): string {
 }
 
 export function extractInstalledSkillFolderNames(output: string): string[] {
-  const names = new Set<string>();
+  const explicitNames = new Set<string>();
+  const pathNames = new Set<string>();
   for (const rawLine of output.split(/\r?\n/)) {
     const line = stripAnsi(rawLine);
+    const selectedMatch = line.match(/\bSelected\s+\d+\s+skills?:\s*(.+)$/i);
+    if (selectedMatch?.[1]) {
+      for (const name of selectedMatch[1].split(",").map((value) => value.trim()).filter(Boolean)) {
+        explicitNames.add(name);
+      }
+      continue;
+    }
+    const completedMatch = line.match(/^\s*[✓✔]\s+([a-z0-9][a-z0-9._-]*)\s*(?:\(|$)/i);
+    if (completedMatch?.[1]) {
+      explicitNames.add(completedMatch[1]);
+      continue;
+    }
     const skillMdMatch = line.match(/skills[\\/]+([^/\\\s]+)[\\/]+SKILL\.md/i);
     if (skillMdMatch?.[1]) {
-      names.add(skillMdMatch[1]);
+      pathNames.add(skillMdMatch[1]);
       continue;
     }
     const folderMatch = line.match(/(?:^|[\\/])skills[\\/]+([^/\\\s]+)(?:[\\/]|[\s|]|$)/i);
-    if (folderMatch?.[1]) names.add(folderMatch[1]);
+    if (folderMatch?.[1]) pathNames.add(folderMatch[1]);
   }
+  const names = explicitNames.size > 0 ? explicitNames : pathNames;
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
